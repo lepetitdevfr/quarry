@@ -55,3 +55,39 @@ pub async fn ping(pool: &Pool) -> Result<String, AppError> {
     let row = client.query_one("SELECT version()", &[]).await?;
     Ok(row.get::<_, String>(0))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// `rustls::ClientConfig::builder()` panics at runtime if no crypto
+    /// provider is installed as the process default. Nothing else in the
+    /// test suite takes the TLS branch, so this test is what proves the
+    /// provider is actually available. `install_default` returns `Err` if
+    /// a provider is already installed (e.g. by an earlier test in this
+    /// binary), which is fine — we only care that one ends up installed.
+    #[test]
+    fn builds_a_tls_connector() {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        let _ = make_tls();
+    }
+
+    /// The TLS branch must be selected for Prefer and Require, and the
+    /// NoTls branch for Disable. Building a pool opens no socket, so this
+    /// needs no database.
+    #[test]
+    fn builds_pools_for_every_sslmode() {
+        let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+        for mode in [SslMode::Disable, SslMode::Prefer, SslMode::Require] {
+            let cfg = ConnectionConfig {
+                host: "localhost".to_string(),
+                port: 5432,
+                user: "postgres".to_string(),
+                dbname: "postgres".to_string(),
+                password: None,
+                sslmode: mode,
+            };
+            assert!(build_pool(&cfg).is_ok(), "failed to build pool for {mode:?}");
+        }
+    }
+}
