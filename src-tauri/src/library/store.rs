@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use crate::library::db;
-use crate::library::model::{Collection, LibraryTree, Query, POSITION_GAP};
+use crate::library::model::{Collection, LibraryTree, Query, Tab, POSITION_GAP};
 use crate::library::paths;
 use rusqlite::{params, Connection, Row};
 use std::path::Path;
@@ -232,6 +232,109 @@ impl Store {
         Ok(LibraryTree { collections, queries })
     }
 
+    // ---- tabs --------------------------------------------------------
+
+    /// Open a tab for a query, or an untitled tab when `query_id` is
+    /// None. Opening a query that is already open focuses the existing
+    /// tab instead of duplicating it.
+    pub fn open_tab(&self, query_id: Option<&str>) -> Result<Tab, AppError> {
+        let conn = self.lock();
+
+        if let Some(qid) = query_id {
+            let existing: Option<String> = conn
+                .query_row(
+                    "select id from tabs where query_id = ?1",
+                    params![qid],
+                    |r| r.get(0),
+                )
+                .ok();
+
+            if let Some(tab_id) = existing {
+                activate(&conn, &tab_id)?;
+                return read_tab(&conn, &tab_id);
+            }
+        }
+
+        // Tabs are a single flat list, so their position is the max
+        // across ALL tabs. `next_position` cannot be used here: it
+        // scopes the max to rows sharing a parent, which for tabs would
+        // mean "other tabs with a NULL query_id" and would hand the same
+        // position to every saved-query tab.
+        let position: i64 = conn
+            .query_row("select coalesce(max(position), 0) from tabs", [], |r| {
+                r.get::<_, i64>(0)
+            })
+            .map_err(sql_err)?
+            + POSITION_GAP;
+        let id = new_id();
+
+        conn.execute(
+            "insert into tabs (id, query_id, scratch_sql, position, is_active, cursor_pos)
+             values (?1, ?2, null, ?3, 0, 0)",
+            params![id, query_id, position],
+        )
+        .map_err(sql_err)?;
+
+        activate(&conn, &id)?;
+        read_tab(&conn, &id)
+    }
+
+    pub fn tabs(&self) -> Result<Vec<Tab>, AppError> {
+        let conn = self.lock();
+        let mut stmt = conn
+            .prepare(
+                "select id, query_id, scratch_sql, position, is_active, cursor_pos
+                 from tabs order by position",
+            )
+            .map_err(sql_err)?;
+
+        let tabs = stmt
+            .query_map([], |row| {
+                Ok(Tab {
+                    id: row.get(0)?,
+                    query_id: row.get(1)?,
+                    scratch_sql: row.get(2)?,
+                    position: row.get(3)?,
+                    is_active: row.get::<_, i64>(4)? != 0,
+                    cursor_pos: row.get(5)?,
+                })
+            })
+            .map_err(sql_err)?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(sql_err)?;
+
+        Ok(tabs)
+    }
+
+    pub fn activate_tab(&self, id: &str) -> Result<(), AppError> {
+        activate(&self.lock(), id)
+    }
+
+    /// Autosave for an untitled tab.
+    pub fn save_scratch(&self, id: &str, sql: &str) -> Result<(), AppError> {
+        self.lock()
+            .execute(
+                "update tabs set scratch_sql = ?2 where id = ?1",
+                params![id, sql],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    pub fn set_cursor(&self, id: &str, pos: i64) -> Result<(), AppError> {
+        self.lock()
+            .execute("update tabs set cursor_pos = ?2 where id = ?1", params![id, pos])
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    pub fn close_tab(&self, id: &str) -> Result<(), AppError> {
+        self.lock()
+            .execute("delete from tabs where id = ?1", params![id])
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
     fn lock(&self) -> std::sync::MutexGuard<'_, Connection> {
         self.conn.lock().expect("library lock poisoned")
     }
@@ -291,4 +394,33 @@ fn read_query(row: &Row) -> Result<Query, AppError> {
         created_at: row.get(6).map_err(sql_err)?,
         updated_at: row.get(7).map_err(sql_err)?,
     })
+}
+
+/// Make one tab active and clear the flag on every other tab. Done in
+/// two statements inside the caller's lock, so no other thread can
+/// observe two active tabs.
+fn activate(conn: &Connection, id: &str) -> Result<(), AppError> {
+    conn.execute("update tabs set is_active = 0", []).map_err(sql_err)?;
+    conn.execute("update tabs set is_active = 1 where id = ?1", params![id])
+        .map_err(sql_err)?;
+    Ok(())
+}
+
+fn read_tab(conn: &Connection, id: &str) -> Result<Tab, AppError> {
+    conn.query_row(
+        "select id, query_id, scratch_sql, position, is_active, cursor_pos
+         from tabs where id = ?1",
+        params![id],
+        |row| {
+            Ok(Tab {
+                id: row.get(0)?,
+                query_id: row.get(1)?,
+                scratch_sql: row.get(2)?,
+                position: row.get(3)?,
+                is_active: row.get::<_, i64>(4)? != 0,
+                cursor_pos: row.get(5)?,
+            })
+        },
+    )
+    .map_err(sql_err)
 }
