@@ -22,6 +22,15 @@ export function StatusBar({ result, error }: Props) {
     return <div className="status-bar">Ready</div>;
   }
 
+  if (result.affected_rows !== null) {
+    return (
+      <div className="status-bar">
+        {result.affected_rows} {result.affected_rows === 1 ? "row" : "rows"}{" "}
+        affected · {result.duration_ms} ms
+      </div>
+    );
+  }
+
   return (
     <div className="status-bar">
       {result.row_count} {result.row_count === 1 ? "row" : "rows"} ·{" "}

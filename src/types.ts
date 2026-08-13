@@ -9,6 +9,7 @@ export interface QueryResult {
   columns: ColumnMeta[];
   rows: CellValue[][];
   row_count: number;
+  affected_rows: number | null;
   duration_ms: number;
 }
 

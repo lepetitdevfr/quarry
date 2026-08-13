@@ -238,6 +238,54 @@ async fn non_finite_float4_values_render_as_strings_not_null() {
 }
 
 #[tokio::test]
+async fn update_reports_affected_row_count() {
+    let db = common::start().await;
+
+    run_query(&db.pool, "CREATE TABLE widgets (id int)")
+        .await
+        .expect("create table should succeed");
+    run_query(&db.pool, "INSERT INTO widgets VALUES (1), (2), (3)")
+        .await
+        .expect("insert should succeed");
+
+    let result = run_query(&db.pool, "UPDATE widgets SET id = id + 1")
+        .await
+        .expect("update should succeed");
+
+    assert_eq!(result.affected_rows, Some(3));
+    assert_eq!(result.row_count, 0);
+    assert!(result.rows.is_empty());
+}
+
+#[tokio::test]
+async fn insert_reports_affected_row_count() {
+    let db = common::start().await;
+
+    run_query(&db.pool, "CREATE TABLE gadgets (id int)")
+        .await
+        .expect("create table should succeed");
+
+    let result = run_query(&db.pool, "INSERT INTO gadgets VALUES (1), (2)")
+        .await
+        .expect("insert should succeed");
+
+    assert_eq!(result.affected_rows, Some(2));
+    assert_eq!(result.row_count, 0);
+}
+
+#[tokio::test]
+async fn select_reports_rows_returned_and_no_affected_count() {
+    let db = common::start().await;
+
+    let result = run_query(&db.pool, "SELECT 1 as n")
+        .await
+        .expect("select should succeed");
+
+    assert_eq!(result.row_count, 1);
+    assert_eq!(result.affected_rows, None);
+}
+
+#[tokio::test]
 async fn numeric_nan_renders_as_a_string_not_null() {
     let db = common::start().await;
 
