@@ -22,7 +22,11 @@ async fn converts_every_supported_type() {
         '{\"k\": 1}'::jsonb                     as a_jsonb,
         '00000000-0000-0000-0000-000000000001'::uuid as a_uuid,
         null::text                              as a_null,
-        ''::text                                as an_empty_string";
+        ''::text                                as an_empty_string,
+        '2026-01-04 10:30:00+02'::timestamptz   as a_timestamptz,
+        '\\x48690a'::bytea                       as a_bytea,
+        'char10'::char(10)                       as a_bpchar,
+        '{1,2,3}'::int4[]                        as an_int_array";
 
     let result = run_query(&db.pool, sql).await.expect("query should succeed");
 
@@ -57,6 +61,35 @@ async fn converts_every_supported_type() {
     // The distinction the UI depends on: NULL and '' must not collapse.
     assert_eq!(col("a_null"), serde_json::Value::Null);
     assert_eq!(col("an_empty_string"), json!(""));
+
+    // timestamptz: the wire format sends UTC microseconds regardless of
+    // session TimeZone, and our conversion reads it as
+    // chrono::DateTime<Utc>, so this is deterministic across machines —
+    // not dependent on the container's (or host's) local timezone.
+    // '2026-01-04 10:30:00+02' is the same instant as 08:30:00 UTC.
+    let timestamptz = col("a_timestamptz");
+    assert_eq!(timestamptz, json!("2026-01-04T08:30:00+00:00"));
+    assert_eq!(
+        chrono::DateTime::parse_from_rfc3339(timestamptz.as_str().unwrap())
+            .unwrap()
+            .with_timezone(&chrono::Utc),
+        "2026-01-04T08:30:00Z".parse::<chrono::DateTime<chrono::Utc>>().unwrap(),
+        "must represent the same instant regardless of offset formatting"
+    );
+
+    // bytea: '\x48690a' is "Hi\n"; our hex() helper lowercases and
+    // prefixes with a literal backslash-x.
+    assert_eq!(col("a_bytea"), json!("\\x48690a"));
+
+    // bpchar: char(10) blank-pads to the declared length; we pass the
+    // padding through as-is rather than trimming it.
+    assert_eq!(col("a_bpchar"), json!("char10    "));
+
+    // int4[]: arrays have no branch in cell_to_json, so they fall
+    // through to the unsupported-type placeholder. Full array support
+    // is out of scope for this stage; this pins today's fallback
+    // behavior so a future change to it is a deliberate decision.
+    assert_eq!(col("an_int_array"), json!("<unsupported type: _int4>"));
 }
 
 #[tokio::test]
