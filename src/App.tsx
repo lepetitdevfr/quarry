@@ -1,5 +1,7 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ConnectionForm } from "./components/ConnectionForm";
+import type { Creating } from "./components/QueryTree";
 import { ResultGrid } from "./components/ResultGrid";
 import { Sidebar } from "./components/Sidebar";
 import { SqlEditor } from "./components/SqlEditor";
@@ -10,6 +12,9 @@ import { asAppError, execute } from "./lib/ipc";
 import { effectiveSql } from "./lib/tree";
 import type { AppErrorPayload, ConnectionInfo, LibraryTree, QueryResult } from "./types";
 import "./App.css";
+
+/** How long the "Saved" indicator stays visible after a save. */
+const SAVED_FLASH_MS = 2000;
 
 /**
  * Whether deleting this collection would also delete queries — directly
@@ -29,6 +34,12 @@ function collectionHasQueries(library: LibraryTree, collectionId: string): boole
   return library.queries.some((q) => q.collection_id !== null && scope.has(q.collection_id));
 }
 
+interface ConfirmRequest {
+  message: string;
+  confirmLabel: string;
+  onConfirm: () => void;
+}
+
 export default function App() {
   const [connection, setConnection] = useState<ConnectionInfo | null>(null);
   const [result, setResult] = useState<QueryResult | null>(null);
@@ -40,6 +51,32 @@ export default function App() {
 
   // The editor's text is local while typing; autosave persists it.
   const [text, setText] = useState("");
+
+  // In-app replacements for window.prompt/confirm, which a Tauri
+  // WKWebView does not implement.
+  const [creating, setCreating] = useState<Creating | null>(null);
+  const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
+  // Id of the untitled tab currently being named as part of a save.
+  const [namingTabId, setNamingTabId] = useState<string | null>(null);
+
+  // Brief "Saved" confirmation in the status bar after a successful save.
+  const [showSaved, setShowSaved] = useState(false);
+  const savedTimer = useRef<number | null>(null);
+
+  const flashSaved = useCallback(() => {
+    setShowSaved(true);
+    if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
+    savedTimer.current = window.setTimeout(() => {
+      setShowSaved(false);
+      savedTimer.current = null;
+    }, SAVED_FLASH_MS);
+  }, []);
+
+  useEffect(() => {
+    return () => {
+      if (savedTimer.current !== null) window.clearTimeout(savedTimer.current);
+    };
+  }, []);
 
   // When the active tab changes, load its text into the editor.
   useEffect(() => {
@@ -81,18 +118,34 @@ export default function App() {
     }
   }, [connection, text]);
 
+  // Cmd+S saves the active tab. If it is untitled, this opens the
+  // inline naming field in the tab bar instead of saving immediately —
+  // commitNameAndSave (below) finishes the job once a name is entered.
   const save = useCallback(async () => {
     if (!activeTab) return;
     const query = queryById(activeTab.query_id);
     if (query) {
       await actions.save(activeTab, text, query.name);
+      flashSaved();
       return;
     }
-    const name = window.prompt("Name this query");
-    if (name?.trim()) await actions.save(activeTab, text, name.trim());
-  }, [activeTab, queryById, actions, text]);
+    setNamingTabId(activeTab.id);
+  }, [activeTab, queryById, actions, text, flashSaved]);
 
-  // Cmd+S saves the active tab.
+  const commitNameAndSave = useCallback(
+    async (name: string) => {
+      if (!activeTab) return;
+      await actions.save(activeTab, text, name);
+      setNamingTabId(null);
+      flashSaved();
+    },
+    [activeTab, actions, text, flashSaved],
+  );
+
+  // Cmd+S saves the active tab. No default keymap binding in CodeMirror
+  // claims Mod-s, so it never stops the event from bubbling up to this
+  // window-level listener — the handler works whether focus is in the
+  // editor or anywhere else in the app.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if ((e.metaKey || e.ctrlKey) && e.key === "s") {
@@ -103,6 +156,50 @@ export default function App() {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [save]);
+
+  const commitCreate = useCallback(
+    (name: string) => {
+      if (!creating) return;
+      if (creating.kind === "collection") {
+        void actions.createCollection(name, creating.parentId);
+      } else {
+        void actions.createQuery(name, creating.parentId);
+      }
+      setCreating(null);
+    },
+    [creating, actions],
+  );
+
+  const requestDeleteQuery = useCallback(
+    (id: string) => {
+      setConfirmRequest({
+        message: "Delete this query? This cannot be undone.",
+        confirmLabel: "Delete",
+        onConfirm: () => {
+          void actions.deleteQuery(id);
+          setConfirmRequest(null);
+        },
+      });
+    },
+    [actions],
+  );
+
+  const requestDeleteCollection = useCallback(
+    (id: string) => {
+      const message = collectionHasQueries(library, id)
+        ? "Delete this collection and everything in it? This cannot be undone."
+        : "Delete this collection? This cannot be undone.";
+      setConfirmRequest({
+        message,
+        confirmLabel: "Delete",
+        onConfirm: () => {
+          void actions.deleteCollection(id);
+          setConfirmRequest(null);
+        },
+      });
+    },
+    [library, actions],
+  );
 
   if (!connection) {
     return (
@@ -119,19 +216,18 @@ export default function App() {
         library={library}
         activeQueryId={activeTab?.query_id ?? null}
         onOpen={(id) => void actions.openQuery(id)}
-        onNewCollection={() => {
-          const name = window.prompt("Collection name");
-          if (name?.trim()) void actions.createCollection(name.trim(), null);
-        }}
+        onNewQuery={() => setCreating({ kind: "query", parentId: null })}
+        onNewCollection={() => setCreating({ kind: "collection", parentId: null })}
+        onNewQueryInCollection={(collectionId) =>
+          setCreating({ kind: "query", parentId: collectionId })
+        }
         onRenameQuery={(id, name) => void actions.renameQuery(id, name)}
-        onDeleteQuery={(id) => void actions.deleteQuery(id)}
+        onDeleteQuery={requestDeleteQuery}
         onRenameCollection={(id, name) => void actions.renameCollection(id, name)}
-        onDeleteCollection={(id) => {
-          const message = collectionHasQueries(library, id)
-            ? "Delete this collection and everything in it? This cannot be undone."
-            : "Delete this collection? This cannot be undone.";
-          if (window.confirm(message)) void actions.deleteCollection(id);
-        }}
+        onDeleteCollection={requestDeleteCollection}
+        creating={creating}
+        onCommitCreate={commitCreate}
+        onCancelCreate={() => setCreating(null)}
       />
 
       <div className="main-pane">
@@ -151,12 +247,24 @@ export default function App() {
           onActivate={(id) => void actions.activateTab(id)}
           onClose={(id) => void actions.closeTab(id)}
           onNew={() => void actions.newTab()}
+          namingTabId={namingTabId}
+          onCommitName={(name) => void commitNameAndSave(name)}
+          onCancelName={() => setNamingTabId(null)}
         />
 
         <SqlEditor value={text} onChange={onChange} onRun={run} busy={busy} />
         {result && <ResultGrid result={result} />}
-        <StatusBar result={result} error={error} />
+        <StatusBar result={result} error={error} saved={showSaved} />
       </div>
+
+      {confirmRequest && (
+        <ConfirmDialog
+          message={confirmRequest.message}
+          confirmLabel={confirmRequest.confirmLabel}
+          onConfirm={confirmRequest.onConfirm}
+          onCancel={() => setConfirmRequest(null)}
+        />
+      )}
     </main>
   );
 }
