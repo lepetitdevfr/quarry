@@ -1,6 +1,15 @@
 import { useState } from "react";
+import { RenameInput } from "./RenameInput";
 import { buildTree, isDirty } from "../lib/tree";
 import type { LibraryTree, Query, TreeNode } from "../types";
+
+/** What is currently being named — a brand-new query or collection,
+ * not yet persisted. `parentId` is the collection it will live in
+ * (null for the top level). */
+export interface Creating {
+  kind: "query" | "collection";
+  parentId: string | null;
+}
 
 interface Props {
   library: LibraryTree;
@@ -10,6 +19,10 @@ interface Props {
   onDeleteQuery: (id: string) => void;
   onRenameCollection: (id: string, name: string) => void;
   onDeleteCollection: (id: string) => void;
+  onNewQueryInCollection: (collectionId: string) => void;
+  creating: Creating | null;
+  onCommitCreate: (name: string) => void;
+  onCancelCreate: () => void;
 }
 
 export function QueryTree({
@@ -20,6 +33,10 @@ export function QueryTree({
   onDeleteQuery,
   onRenameCollection,
   onDeleteCollection,
+  onNewQueryInCollection,
+  creating,
+  onCommitCreate,
+  onCancelCreate,
 }: Props) {
   const { roots, looseQueries } = buildTree(library);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
@@ -79,6 +96,7 @@ export function QueryTree({
 
   function renderNode(node: TreeNode, depth: number) {
     const isCollapsed = collapsed.has(node.collection.id);
+    const creatingHere = creating?.kind === "query" && creating.parentId === node.collection.id;
 
     return (
       <div key={node.collection.id}>
@@ -103,6 +121,16 @@ export function QueryTree({
             <span className="tree-name">{node.collection.name}</span>
             <button
               className="row-action"
+              title="New query in this collection"
+              onClick={(e) => {
+                e.stopPropagation();
+                onNewQueryInCollection(node.collection.id);
+              }}
+            >
+              +
+            </button>
+            <button
+              className="row-action"
               title="Delete collection and everything in it"
               onClick={(e) => {
                 e.stopPropagation();
@@ -118,13 +146,24 @@ export function QueryTree({
           <>
             {node.children.map((child) => renderNode(child, depth + 1))}
             {node.queries.map((query) => renderQuery(query, depth + 1))}
+            {creatingHere && (
+              <RenameInput
+                initial=""
+                depth={depth + 1}
+                placeholder="Query name"
+                onCommit={onCommitCreate}
+                onCancel={onCancelCreate}
+              />
+            )}
           </>
         )}
       </div>
     );
   }
 
-  if (roots.length === 0 && looseQueries.length === 0) {
+  const creatingAtRoot = creating !== null && creating.parentId === null;
+
+  if (roots.length === 0 && looseQueries.length === 0 && !creatingAtRoot) {
     return <p className="tree-empty">No saved queries yet.</p>;
   }
 
@@ -132,36 +171,15 @@ export function QueryTree({
     <div className="query-tree">
       {roots.map((node) => renderNode(node, 0))}
       {looseQueries.map((query) => renderQuery(query, 0))}
+      {creatingAtRoot && (
+        <RenameInput
+          initial=""
+          depth={0}
+          placeholder={creating.kind === "collection" ? "Collection name" : "Query name"}
+          onCommit={onCommitCreate}
+          onCancel={onCancelCreate}
+        />
+      )}
     </div>
-  );
-}
-
-/** Inline rename field. Enter commits, Escape cancels, blur commits. */
-function RenameInput({
-  initial,
-  depth,
-  onCommit,
-  onCancel,
-}: {
-  initial: string;
-  depth: number;
-  onCommit: (name: string) => void;
-  onCancel: () => void;
-}) {
-  const [value, setValue] = useState(initial);
-
-  return (
-    <input
-      className="rename-input"
-      style={{ marginLeft: 8 + depth * 12 }}
-      value={value}
-      autoFocus
-      onChange={(e) => setValue(e.target.value)}
-      onBlur={() => (value.trim() ? onCommit(value) : onCancel())}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" && value.trim()) onCommit(value);
-        if (e.key === "Escape") onCancel();
-      }}
-    />
   );
 }

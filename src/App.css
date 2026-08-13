@@ -310,3 +310,51 @@ button:disabled {
   padding: 4px 10px;
   font-size: 12px;
 }
+
+.sidebar-header-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.saved-indicator {
+  margin-left: 8px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.confirm-dialog {
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.confirm-dialog p {
+  margin: 0 0 16px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.confirm-cancel {
+  background: var(--border);
+  color: var(--text);
+}

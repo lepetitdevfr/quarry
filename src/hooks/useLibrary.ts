@@ -112,6 +112,14 @@ export function useLibrary() {
       setTabs(await ipc.listTabs());
     },
 
+    /** Create a query and immediately open it in an active tab, so the
+     * user lands in the editor ready to type. */
+    createQuery: async (name: string, collectionId: string | null) => {
+      const created = await ipc.createQuery(name, "", collectionId);
+      setLibrary(await ipc.libraryTree());
+      setTabs(await ipc.openTab(created.id));
+    },
+
     renameQuery: async (id: string, name: string) =>
       setLibrary(await ipc.renameQuery(id, name)),
     deleteQuery: async (id: string) => {
