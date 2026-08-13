@@ -1,6 +1,7 @@
 pub mod conn;
 pub mod error;
 pub mod exec;
+pub mod secrets;
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
 #[tauri::command]
