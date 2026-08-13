@@ -72,20 +72,32 @@ pub fn delete_password(account: &str) -> Result<(), AppError> {
 mod tests {
     use super::*;
 
+    /// Deletes its Keychain entry when dropped, so a test that panics
+    /// mid-assertion still cleans up rather than leaving a real entry
+    /// behind. `expect`/`assert!` unwind past any ordinary cleanup code
+    /// written after them — a `Drop` impl is the one thing that still
+    /// runs during that unwind.
+    struct CleansUpOnDrop<'a>(&'a str);
+
+    impl Drop for CleansUpOnDrop<'_> {
+        fn drop(&mut self) {
+            let _ = delete_password(self.0);
+        }
+    }
+
     #[test]
     fn round_trips_a_password() {
         let account = format!("test-{}", std::process::id());
+        // Cleans up even if an assertion below panics; the explicit
+        // delete_password call further down still exercises deletion
+        // as part of the round trip itself.
+        let _guard = CleansUpOnDrop(&account);
 
-        let result = (|| {
-            save_password(&account, "hunter2").expect("save should work");
-            assert_eq!(load_password(&account).unwrap().as_deref(), Some("hunter2"));
-            Ok::<(), ()>(())
-        })();
+        save_password(&account, "hunter2").expect("save should work");
+        assert_eq!(load_password(&account).unwrap().as_deref(), Some("hunter2"));
 
         delete_password(&account).expect("delete should work");
         assert_eq!(load_password(&account).unwrap(), None);
-
-        result.expect("body should succeed");
     }
 
     #[test]

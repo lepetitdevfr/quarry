@@ -53,11 +53,24 @@ pub async fn connect(
         }
     }
 
-    state
+    // Reading a saved password back (`secrets::load_password`) belongs
+    // to Stage 2's saved-connections work, not here — this only ever
+    // writes. Left unused deliberately.
+
+    let previous = state
         .pools
         .lock()
         .expect("state lock poisoned")
         .insert(id.clone(), pool);
+
+    // Connecting again under an id already in use replaces its pool.
+    // Close the displaced one explicitly rather than letting it drop:
+    // `Pool` doesn't close its sockets on drop, so an un-closed pool
+    // leaves idle connections open until its last internal clone goes
+    // away.
+    if let Some(old_pool) = previous {
+        old_pool.close();
+    }
 
     Ok(ConnectionInfo {
         id,
@@ -93,5 +106,14 @@ pub async fn disconnect(
     if let Some(pool) = removed {
         pool.close();
     }
+
+    // `connect` may have written a Keychain entry for this connection
+    // (when `remember_password` was set); nothing else ever reads or
+    // removes it otherwise, so without this every remembered password
+    // outlives the connection it belonged to. A missing entry is not
+    // an error (see `secrets::delete_password`), so this is safe to
+    // call unconditionally.
+    secrets::delete_password(&connection_id)?;
+
     Ok(())
 }
