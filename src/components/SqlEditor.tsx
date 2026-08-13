@@ -3,6 +3,7 @@ import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { keymap } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { useMemo } from "react";
+import { quarryEditorExtensions } from "./editorTheme";
 
 interface Props {
   value: string;
@@ -17,6 +18,7 @@ export function SqlEditor({ value, onChange, onRun, busy }: Props) {
   // which stops CodeMirror from tearing down its state on every keystroke.
   const extensions = useMemo(
     () => [
+      ...quarryEditorExtensions,
       sql({ dialect: PostgreSQL }),
       Prec.highest(
         keymap.of([
@@ -35,9 +37,12 @@ export function SqlEditor({ value, onChange, onRun, busy }: Props) {
 
   return (
     <div className="sql-editor">
+      {/* theme="none" disables the wrapper's built-in light theme so
+          quarryEditorTheme is the only one applied. */}
       <CodeMirror
         value={value}
         height="200px"
+        theme="none"
         extensions={extensions}
         onChange={onChange}
       />
