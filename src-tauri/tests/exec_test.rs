@@ -206,6 +206,65 @@ async fn whole_second_timestamp_has_no_trailing_dot() {
 }
 
 #[tokio::test]
+async fn non_finite_float8_values_render_as_strings_not_null() {
+    let db = common::start().await;
+
+    let result = run_query(
+        &db.pool,
+        "SELECT 'NaN'::float8 as a, 'Infinity'::float8 as b, '-Infinity'::float8 as c",
+    )
+    .await
+    .expect("query should succeed");
+
+    assert_eq!(result.rows[0][0], json!("NaN"));
+    assert_eq!(result.rows[0][1], json!("Infinity"));
+    assert_eq!(result.rows[0][2], json!("-Infinity"));
+}
+
+#[tokio::test]
+async fn non_finite_float4_values_render_as_strings_not_null() {
+    let db = common::start().await;
+
+    let result = run_query(
+        &db.pool,
+        "SELECT 'NaN'::float4 as a, 'Infinity'::float4 as b, '-Infinity'::float4 as c",
+    )
+    .await
+    .expect("query should succeed");
+
+    assert_eq!(result.rows[0][0], json!("NaN"));
+    assert_eq!(result.rows[0][1], json!("Infinity"));
+    assert_eq!(result.rows[0][2], json!("-Infinity"));
+}
+
+#[tokio::test]
+async fn numeric_nan_renders_as_a_string_not_null() {
+    let db = common::start().await;
+
+    let result = run_query(&db.pool, "SELECT 'NaN'::numeric as n")
+        .await
+        .expect("query should succeed");
+
+    assert_eq!(result.rows[0][0], json!("NaN"));
+}
+
+#[tokio::test]
+async fn numeric_beyond_decimal_precision_survives_intact() {
+    let db = common::start().await;
+
+    // rust_decimal::Decimal is 96-bit (~28 significant digits), so a
+    // 40-digit value used to fail to decode and render as
+    // "<unreadable: ...>". Postgres NUMERIC is arbitrary precision and
+    // handles this natively.
+    let big = "1234567890123456789012345678901234567890";
+    let result = run_query(&db.pool, &format!("SELECT '{big}'::numeric as n"))
+        .await
+        .expect("query should succeed");
+
+    assert_eq!(result.rows[0][0], json!(big));
+}
+
+#[tokio::test]
 async fn a_wrong_password_reports_its_sqlstate() {
     let db = common::start().await;
 
