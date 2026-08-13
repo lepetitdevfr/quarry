@@ -181,6 +181,31 @@ async fn a_session_level_statement_timeout_override_does_not_leak_to_the_next_ch
 }
 
 #[tokio::test]
+async fn timestamp_retains_fractional_seconds() {
+    let db = common::start().await;
+
+    let result = run_query(
+        &db.pool,
+        "SELECT '2026-01-04 10:30:00.123456'::timestamp as ts",
+    )
+    .await
+    .expect("query should succeed");
+
+    assert_eq!(result.rows[0][0], json!("2026-01-04T10:30:00.123456"));
+}
+
+#[tokio::test]
+async fn whole_second_timestamp_has_no_trailing_dot() {
+    let db = common::start().await;
+
+    let result = run_query(&db.pool, "SELECT '2026-01-04 10:30:00'::timestamp as ts")
+        .await
+        .expect("query should succeed");
+
+    assert_eq!(result.rows[0][0], json!("2026-01-04T10:30:00"));
+}
+
+#[tokio::test]
 async fn a_wrong_password_reports_its_sqlstate() {
     let db = common::start().await;
 

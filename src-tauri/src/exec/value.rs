@@ -64,7 +64,7 @@ pub fn cell_to_json(row: &Row, idx: usize) -> Value {
         }
     } else if t == &Type::TIMESTAMP {
         match row.try_get::<_, Option<chrono::NaiveDateTime>>(idx) {
-            Ok(Some(d)) => Value::String(d.format("%Y-%m-%dT%H:%M:%S").to_string()),
+            Ok(Some(d)) => Value::String(d.format("%Y-%m-%dT%H:%M:%S%.f").to_string()),
             Ok(None) => Value::Null,
             Err(e) => unreadable(e),
         }
