@@ -5,7 +5,7 @@ use quarry_lib::exec::run_query;
 use serde_json::json;
 
 #[tokio::test]
-async fn converts_every_supported_type() {
+async fn converts_every_supported_type_and_pins_the_int_array_fallback() {
     let db = common::start().await;
 
     let sql = "SELECT
