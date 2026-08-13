@@ -256,3 +256,48 @@ fn deleting_a_query_closes_its_tab() {
 
     assert_eq!(s.tabs().unwrap().len(), 0, "a tab pointing at nothing would crash the UI");
 }
+
+#[test]
+fn saving_a_query_writes_its_mirror_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let mirror = dir.path().join("queries");
+    let s = Store::open_at_with_mirror(&dir.path().join("test.db"), &mirror).unwrap();
+
+    let c = s.create_collection("Billing", None).unwrap();
+    let q = s.create_query("mrr", "select 1", Some(&c.id)).unwrap();
+    s.save_query(&q.id, "select 2").unwrap();
+
+    let file = mirror.join("Billing").join("mrr.sql");
+    assert!(file.exists(), "expected {file:?}");
+    assert_eq!(std::fs::read_to_string(file).unwrap(), "select 2");
+}
+
+#[test]
+fn deleting_a_query_removes_its_mirror_file() {
+    let dir = tempfile::tempdir().unwrap();
+    let mirror = dir.path().join("queries");
+    let s = Store::open_at_with_mirror(&dir.path().join("test.db"), &mirror).unwrap();
+
+    let q = s.create_query("scratch", "select 1", None).unwrap();
+    s.save_query(&q.id, "select 1").unwrap();
+    assert!(mirror.join("scratch.sql").exists());
+
+    s.delete_query(&q.id).unwrap();
+    assert!(!mirror.join("scratch.sql").exists());
+}
+
+#[test]
+fn autosaving_a_draft_does_not_touch_the_mirror() {
+    let dir = tempfile::tempdir().unwrap();
+    let mirror = dir.path().join("queries");
+    let s = Store::open_at_with_mirror(&dir.path().join("test.db"), &mirror).unwrap();
+
+    let q = s.create_query("q", "select 1", None).unwrap();
+    s.save_query(&q.id, "select 1").unwrap();
+    s.save_draft(&q.id, "select 999").unwrap();
+
+    // Drafts fire on every keystroke; writing a file that often would
+    // thrash the disk and fill git with noise.
+    let content = std::fs::read_to_string(mirror.join("q.sql")).unwrap();
+    assert_eq!(content, "select 1", "only explicit saves reach the mirror");
+}

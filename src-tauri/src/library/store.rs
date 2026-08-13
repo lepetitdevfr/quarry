@@ -1,9 +1,10 @@
 use crate::error::AppError;
 use crate::library::db;
+use crate::library::mirror;
 use crate::library::model::{Collection, LibraryTree, Query, Tab, POSITION_GAP};
 use crate::library::paths;
 use rusqlite::{params, Connection, Row};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
 /// All library reads and writes go through here.
@@ -13,20 +14,32 @@ use std::sync::Mutex;
 /// calls are microseconds, so a single lock is not a bottleneck.
 pub struct Store {
     conn: Mutex<Connection>,
+    mirror_root: PathBuf,
 }
 
 impl Store {
     /// Open the real database in the app support directory.
     pub fn open() -> Result<Self, AppError> {
         paths::ensure_dirs()?;
-        Self::open_at(&paths::database_path()?)
+        Self::open_at_with_mirror(&paths::database_path()?, &paths::mirror_dir()?)
     }
 
-    /// Open a database at an explicit path. Tests use this with a temp
-    /// directory so they never touch the developer's real library.
+    /// Test helper: database only, mirror in a sibling temp directory.
     pub fn open_at(path: &Path) -> Result<Self, AppError> {
+        let mirror = path
+            .parent()
+            .unwrap_or_else(|| Path::new("."))
+            .join("queries");
+        Self::open_at_with_mirror(path, &mirror)
+    }
+
+    /// Open a database at an explicit path with an explicit mirror
+    /// root. Tests use this with a temp directory so they never touch
+    /// the developer's real library.
+    pub fn open_at_with_mirror(path: &Path, mirror_root: &Path) -> Result<Self, AppError> {
         Ok(Store {
             conn: Mutex::new(db::open(path)?),
+            mirror_root: mirror_root.to_path_buf(),
         })
     }
 
@@ -153,13 +166,54 @@ impl Store {
 
     /// Explicit save. Promotes the text to `sql` and clears the draft.
     pub fn save_query(&self, id: &str, sql: &str) -> Result<(), AppError> {
-        self.lock()
-            .execute(
-                "update queries set sql = ?2, draft_sql = null, updated_at = ?3 where id = ?1",
-                params![id, sql, now()],
+        let conn = self.lock();
+        conn.execute(
+            "update queries set sql = ?2, draft_sql = null, updated_at = ?3 where id = ?1",
+            params![id, sql, now()],
+        )
+        .map_err(sql_err)?;
+
+        let name: String = conn
+            .query_row("select name from queries where id = ?1", params![id], |r| r.get(0))
+            .map_err(sql_err)?;
+        let path = self.collection_path(&conn, id)?;
+        let refs: Vec<&str> = path.iter().map(String::as_str).collect();
+
+        // A mirror failure must not fail the save: the database already
+        // has the text, and the mirror is a convenience.
+        if let Err(e) = mirror::write_query(&self.mirror_root, &refs, &name, sql) {
+            eprintln!("warning: could not write mirror file: {e}");
+        }
+        Ok(())
+    }
+
+    /// Folder names from the root down to this query's collection.
+    /// Used only to place the mirror file.
+    fn collection_path(&self, conn: &Connection, query_id: &str) -> Result<Vec<String>, AppError> {
+        let mut current: Option<String> = conn
+            .query_row(
+                "select collection_id from queries where id = ?1",
+                params![query_id],
+                |r| r.get(0),
             )
             .map_err(sql_err)?;
-        Ok(())
+
+        let mut segments = Vec::new();
+        // Walk upward, then reverse — the loop naturally yields the
+        // deepest folder first.
+        while let Some(id) = current {
+            let (name, parent): (String, Option<String>) = conn
+                .query_row(
+                    "select name, parent_id from collections where id = ?1",
+                    params![id],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .map_err(sql_err)?;
+            segments.push(name);
+            current = parent;
+        }
+        segments.reverse();
+        Ok(segments)
     }
 
     pub fn move_query(&self, id: &str, collection_id: Option<&str>) -> Result<(), AppError> {
@@ -174,9 +228,24 @@ impl Store {
     }
 
     pub fn delete_query(&self, id: &str) -> Result<(), AppError> {
-        self.lock()
-            .execute("delete from queries where id = ?1", params![id])
+        let conn = self.lock();
+
+        // Read the location BEFORE deleting the row — afterwards the
+        // collection path is unrecoverable.
+        let name: Option<String> = conn
+            .query_row("select name from queries where id = ?1", params![id], |r| r.get(0))
+            .ok();
+        let path = self.collection_path(&conn, id).unwrap_or_default();
+
+        conn.execute("delete from queries where id = ?1", params![id])
             .map_err(sql_err)?;
+
+        if let Some(name) = name {
+            let refs: Vec<&str> = path.iter().map(String::as_str).collect();
+            if let Err(e) = mirror::remove_query(&self.mirror_root, &refs, &name) {
+                eprintln!("warning: could not remove mirror file: {e}");
+            }
+        }
         Ok(())
     }
 
