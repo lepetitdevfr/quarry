@@ -9,6 +9,7 @@ use testcontainers_modules::testcontainers::ContainerAsync;
 /// Hold onto `_container`: when it drops, Docker kills the database.
 pub struct TestDb {
     pub pool: Pool,
+    pub port: u16,
     _container: ContainerAsync<Postgres>,
 }
 
@@ -31,6 +32,7 @@ pub async fn start() -> TestDb {
 
     TestDb {
         pool,
+        port,
         _container: container,
     }
 }

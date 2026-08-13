@@ -81,3 +81,18 @@ impl From<tokio_postgres::Error> for AppError {
         }
     }
 }
+
+/// Convert a pool checkout failure into `AppError`, preserving the
+/// SQLSTATE when the pool's backend error is a real Postgres error
+/// (e.g. a wrong password, `28P01`, or a missing database, `3D000`).
+/// Without this, every checkout failure — including ones with a
+/// perfectly good SQLSTATE — collapsed into `AppError::Connection` with
+/// `code: None`, hiding the reason from the UI.
+impl From<deadpool_postgres::PoolError> for AppError {
+    fn from(e: deadpool_postgres::PoolError) -> Self {
+        match e {
+            deadpool_postgres::PoolError::Backend(e) => e.into(),
+            other => AppError::Connection(other.to_string()),
+        }
+    }
+}

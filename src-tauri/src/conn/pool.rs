@@ -4,6 +4,13 @@ use deadpool_postgres::{Config as PoolConfig, ManagerConfig, Pool, RecyclingMeth
 use tokio_postgres::NoTls;
 use tokio_postgres_rustls::MakeRustlsConnect;
 
+/// Ceiling on a single statement, in milliseconds. Set once per
+/// connection via `options` below (as `-c statement_timeout=...`)
+/// rather than per-query: a per-query `SET` both costs a round-trip on
+/// every query and, on a pool that resets session state, is redundant
+/// with the reset itself.
+const STATEMENT_TIMEOUT_MS: u64 = 30_000;
+
 /// Create a connection pool. This does not open a socket yet —
 /// `ping` below is what proves the database is reachable.
 pub fn build_pool(cfg: &ConnectionConfig) -> Result<Pool, AppError> {
@@ -13,8 +20,20 @@ pub fn build_pool(cfg: &ConnectionConfig) -> Result<Pool, AppError> {
     pc.user = Some(cfg.user.clone());
     pc.password = cfg.password.clone();
     pc.dbname = Some(cfg.dbname.clone());
+    // Applied via `startup_options`-style `-c` flags at connection time,
+    // so it survives for the life of the physical connection and every
+    // query on it, without a per-query round-trip.
+    pc.options = Some(format!("-c statement_timeout={STATEMENT_TIMEOUT_MS}"));
     pc.manager = Some(ManagerConfig {
-        recycling_method: RecyclingMethod::Fast,
+        // `Clean` runs `DISCARD ALL` when a connection is returned to
+        // the pool: it rolls back any open transaction, resets all
+        // session-level `SET` overrides (including a user's own
+        // `statement_timeout`), and drops temp tables/prepared
+        // statements. Without this, `RecyclingMethod::Fast` hands the
+        // next checkout whatever session state the previous caller
+        // left behind — including a still-open, possibly aborted,
+        // transaction.
+        recycling_method: RecyclingMethod::Clean,
     });
 
     let pool = match cfg.sslmode {
@@ -48,10 +67,7 @@ fn make_tls() -> MakeRustlsConnect {
 
 /// Prove the connection works and report the server version.
 pub async fn ping(pool: &Pool) -> Result<String, AppError> {
-    let client = pool
-        .get()
-        .await
-        .map_err(|e| AppError::Connection(e.to_string()))?;
+    let client = pool.get().await?;
     let row = client.query_one("SELECT version()", &[]).await?;
     Ok(row.get::<_, String>(0))
 }

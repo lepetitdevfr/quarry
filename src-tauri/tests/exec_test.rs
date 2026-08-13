@@ -1,5 +1,6 @@
 mod common;
 
+use quarry_lib::conn::{build_pool, ping, ConnectionConfig};
 use quarry_lib::exec::run_query;
 use serde_json::json;
 
@@ -132,6 +133,75 @@ async fn surfaces_postgres_errors_with_code_and_position() {
     assert!(
         msg.contains("table_that_does_not_exist"),
         "message should name the missing table, got: {msg}"
+    );
+}
+
+#[tokio::test]
+async fn an_aborted_transaction_does_not_leak_into_the_next_checkout() {
+    let db = common::start().await;
+
+    // Open a transaction, then abort it with a runtime error (division
+    // by zero) and abandon it: the client returns to the pool sitting
+    // inside a transaction block in the aborted state, without COMMIT
+    // or ROLLBACK ever being run.
+    run_query(&db.pool, "BEGIN")
+        .await
+        .expect("BEGIN should succeed");
+    run_query(&db.pool, "SELECT 1/0")
+        .await
+        .expect_err("division by zero should fail and abort the transaction");
+
+    // If the pool hands back that same stale, unreset connection, a
+    // perfectly ordinary next query fails with 25P02 "current
+    // transaction is aborted" — a bogus failure the user never caused.
+    let result = run_query(&db.pool, "SELECT 1 as n")
+        .await
+        .expect("query after an abandoned aborted transaction should succeed on a clean connection");
+    assert_eq!(result.rows[0][0], json!(1));
+}
+
+#[tokio::test]
+async fn a_session_level_statement_timeout_override_does_not_leak_to_the_next_checkout() {
+    let db = common::start().await;
+
+    // A user statement that disables the timeout for the rest of the
+    // session must not affect connections handed to later queries.
+    run_query(&db.pool, "SET statement_timeout = 0")
+        .await
+        .expect("SET should succeed");
+
+    let result = run_query(&db.pool, "SHOW statement_timeout")
+        .await
+        .expect("SHOW should succeed");
+    assert_ne!(
+        result.rows[0][0],
+        json!("0"),
+        "statement_timeout override from a prior session must not survive recycling"
+    );
+}
+
+#[tokio::test]
+async fn a_wrong_password_reports_its_sqlstate() {
+    let db = common::start().await;
+
+    // testcontainers' postgres image requires the correct password;
+    // deliberately get it wrong.
+    let url = format!(
+        "postgres://postgres:not-the-right-password@localhost:{}/postgres?sslmode=disable",
+        db.port
+    );
+    let cfg = ConnectionConfig::from_url(&url).expect("test URL should parse");
+    let pool = build_pool(&cfg).expect("pool should build");
+
+    let err = ping(&pool).await.expect_err("wrong password should fail");
+
+    // Serialize the way the UI receives it, so this asserts on the real
+    // IPC payload rather than the internal Rust shape.
+    let payload = serde_json::to_value(&err).expect("error should serialize");
+    println!("error payload: {payload}");
+    assert_eq!(
+        payload["code"], "28P01",
+        "SQLSTATE for invalid_password should survive to the UI"
     );
 }
 

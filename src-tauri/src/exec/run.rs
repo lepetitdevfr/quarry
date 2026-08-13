@@ -21,25 +21,18 @@ pub struct QueryResult {
     pub duration_ms: u64,
 }
 
-/// Default ceiling on a single statement, in milliseconds.
-const STATEMENT_TIMEOUT_MS: u64 = 30_000;
-
 /// Run one SQL statement and collect every row.
+///
+/// The server-side statement timeout is set once per physical
+/// connection (see `conn::pool::build_pool`), not per query here — a
+/// runaway query is still killed by Postgres even if the UI never sends
+/// a cancel.
 ///
 /// Stage 3 inserts the safety guard immediately above the `query` call.
 /// Stage 1 has no policy enforcement — do not connect this to a
 /// production database yet.
 pub async fn run_query(pool: &Pool, sql: &str) -> Result<QueryResult, AppError> {
-    let client = pool
-        .get()
-        .await
-        .map_err(|e| AppError::Connection(e.to_string()))?;
-
-    // Server-side ceiling: a runaway query is killed by Postgres even if
-    // the UI never sends a cancel.
-    client
-        .batch_execute(&format!("SET statement_timeout = {STATEMENT_TIMEOUT_MS}"))
-        .await?;
+    let client = pool.get().await?;
 
     let started = Instant::now();
     let rows = client.query(sql, &[]).await?;
