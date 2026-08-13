@@ -31,6 +31,50 @@ export interface ConnectionInfo {
   server_version: string;
 }
 
+/** Mirrors Rust `Collection`. */
+export interface Collection {
+  id: string;
+  parent_id: string | null;
+  name: string;
+  position: number;
+  created_at: string;
+}
+
+/** Mirrors Rust `Query`. `draft_sql` is the autosaved text. */
+export interface Query {
+  id: string;
+  collection_id: string | null;
+  name: string;
+  sql: string;
+  draft_sql: string | null;
+  position: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Mirrors Rust `Tab`. `query_id === null` means an untitled tab. */
+export interface Tab {
+  id: string;
+  query_id: string | null;
+  scratch_sql: string | null;
+  position: number;
+  is_active: boolean;
+  cursor_pos: number;
+}
+
+/** Mirrors Rust `LibraryTree`. */
+export interface LibraryTree {
+  collections: Collection[];
+  queries: Query[];
+}
+
+/** A collection with its children resolved, for rendering. */
+export interface TreeNode {
+  collection: Collection;
+  children: TreeNode[];
+  queries: Query[];
+}
+
 /** Mirrors Rust `ErrorPayload`. */
 export interface AppErrorPayload {
   kind:
