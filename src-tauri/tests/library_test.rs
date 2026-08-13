@@ -246,6 +246,79 @@ fn closing_a_tab_leaves_the_query_intact() {
 }
 
 #[test]
+fn closing_the_active_middle_tab_activates_its_left_neighbour() {
+    let (s, _dir) = store();
+
+    let a = s.create_query("a", "select 1", None).unwrap();
+    let b = s.create_query("b", "select 2", None).unwrap();
+    let c = s.create_query("c", "select 3", None).unwrap();
+
+    let ta = s.open_tab(Some(&a.id)).unwrap();
+    let tb = s.open_tab(Some(&b.id)).unwrap();
+    s.open_tab(Some(&c.id)).unwrap();
+    // Make b the active tab (the middle one).
+    s.activate_tab(&tb.id).unwrap();
+
+    s.close_tab(&tb.id).unwrap();
+
+    let remaining = s.tabs().unwrap();
+    assert_eq!(remaining.len(), 2);
+    let active: Vec<_> = remaining.iter().filter(|t| t.is_active).collect();
+    assert_eq!(active.len(), 1, "exactly one active tab remains");
+    assert_eq!(active[0].id, ta.id, "left neighbour becomes active");
+}
+
+#[test]
+fn closing_the_active_leftmost_tab_activates_the_new_leftmost() {
+    let (s, _dir) = store();
+
+    let a = s.create_query("a", "select 1", None).unwrap();
+    let b = s.create_query("b", "select 2", None).unwrap();
+
+    let ta = s.open_tab(Some(&a.id)).unwrap();
+    let tb = s.open_tab(Some(&b.id)).unwrap();
+    s.activate_tab(&ta.id).unwrap();
+
+    s.close_tab(&ta.id).unwrap();
+
+    let remaining = s.tabs().unwrap();
+    assert_eq!(remaining.len(), 1);
+    assert!(remaining[0].is_active, "the only remaining tab becomes active");
+    assert_eq!(remaining[0].id, tb.id);
+}
+
+#[test]
+fn closing_a_non_active_tab_does_not_change_which_tab_is_active() {
+    let (s, _dir) = store();
+
+    let a = s.create_query("a", "select 1", None).unwrap();
+    let b = s.create_query("b", "select 2", None).unwrap();
+
+    let ta = s.open_tab(Some(&a.id)).unwrap();
+    let tb = s.open_tab(Some(&b.id)).unwrap();
+    // tb is active (last opened).
+
+    s.close_tab(&ta.id).unwrap();
+
+    let remaining = s.tabs().unwrap();
+    assert_eq!(remaining.len(), 1);
+    assert_eq!(remaining[0].id, tb.id);
+    assert!(remaining[0].is_active);
+}
+
+#[test]
+fn closing_the_last_remaining_tab_leaves_no_tabs() {
+    let (s, _dir) = store();
+
+    let a = s.create_query("a", "select 1", None).unwrap();
+    let ta = s.open_tab(Some(&a.id)).unwrap();
+
+    s.close_tab(&ta.id).unwrap();
+
+    assert_eq!(s.tabs().unwrap().len(), 0);
+}
+
+#[test]
 fn deleting_a_query_closes_its_tab() {
     let (s, _dir) = store();
 

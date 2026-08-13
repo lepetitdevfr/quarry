@@ -397,10 +397,64 @@ impl Store {
         Ok(())
     }
 
+    /// Delete a tab. When the closed tab was active and other tabs
+    /// remain, activate a neighbour: the one immediately to its left by
+    /// `position`, or the leftmost tab if it had none. Runs in a single
+    /// transaction so a crash cannot leave zero active tabs while tabs
+    /// still exist.
     pub fn close_tab(&self, id: &str) -> Result<(), AppError> {
-        self.lock()
-            .execute("delete from tabs where id = ?1", params![id])
+        let mut conn = self.lock();
+        let tx = conn.transaction().map_err(sql_err)?;
+
+        let was_active: Option<i64> = tx
+            .query_row(
+                "select is_active from tabs where id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .ok();
+
+        let position: Option<i64> = tx
+            .query_row("select position from tabs where id = ?1", params![id], |r| {
+                r.get(0)
+            })
+            .ok();
+
+        tx.execute("delete from tabs where id = ?1", params![id])
             .map_err(sql_err)?;
+
+        if was_active == Some(1) {
+            let neighbour: Option<String> = if let Some(pos) = position {
+                tx.query_row(
+                    "select id from tabs where position < ?1 order by position desc limit 1",
+                    params![pos],
+                    |r| r.get(0),
+                )
+                .ok()
+            } else {
+                None
+            };
+
+            let target = match neighbour {
+                Some(id) => Some(id),
+                None => tx
+                    .query_row("select id from tabs order by position asc limit 1", [], |r| {
+                        r.get(0)
+                    })
+                    .ok(),
+            };
+
+            if let Some(target_id) = target {
+                tx.execute("update tabs set is_active = 0", []).map_err(sql_err)?;
+                tx.execute(
+                    "update tabs set is_active = 1 where id = ?1",
+                    params![target_id],
+                )
+                .map_err(sql_err)?;
+            }
+        }
+
+        tx.commit().map_err(sql_err)?;
         Ok(())
     }
 
