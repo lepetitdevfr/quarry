@@ -33,7 +33,7 @@ the app offers no protection against writing to a connection tagged `prod`.
 - A header dropdown listing saved connections, most-recently-used first
 - Switching: disconnect the current connection, connect the new one
 - Creating, editing, and deleting connections
-- Auto-reconnect on launch to the most recently used connection
+- A connection picker on launch — the app never auto-connects
 - Refactoring `AppState` from a pool map to a single active connection
 
 ### Out of scope
@@ -62,6 +62,13 @@ previous database must never sit on screen under a new connection's name.
 
 **A failed switch leaves you disconnected.** No silent fallback to the previous
 connection: believing you switched when you did not is the dangerous state.
+
+**The app never connects on its own.** Launch opens the picker and waits for a
+deliberate choice. Auto-reconnecting to the last used connection would be more
+convenient, but with no write-guard yet it means the app could boot straight
+into a production database with a query already in the editor from last
+session. One click is a cheap price for always knowing what you are attached
+to.
 
 **Tag and colour ship now**, even though nothing enforces them yet. Adding them
 later would mean a schema migration, and the tag is what the guard will read.
@@ -153,9 +160,17 @@ the existing convention.
 
 ### Startup
 
-On launch, auto-connect to the connection with the most recent `last_used_at`.
-If it fails — server down, credential gone — open the picker with the error
-shown. Never block startup on a reachable database.
+The app launches disconnected and shows the connection picker as a centred
+panel, the same place the URL form appears today. Connections are listed
+most-recently-used first, with the top one focused so Enter connects to it —
+fast for the common case, but still a deliberate act.
+
+Tabs and their text restore behind the picker, so the workspace is intact the
+moment a connection is chosen. Running anything requires a connection; the Run
+button stays disabled until then.
+
+There is no auto-connect, and no "remember and reconnect" setting to turn one
+on. If that changes later it belongs behind the write-guard, not before it.
 
 ## 6. Interface
 
@@ -184,8 +199,8 @@ port, user, database, and sslmode.
 **Manage connections** lists connections with edit and delete. Deleting asks for
 confirmation via the existing `ConfirmDialog` and removes the Keychain entry.
 
-**First run** has no connections, so the app opens on the new-connection form —
-what happens today, except the result is saved.
+**First run** has no connections, so the picker shows the new-connection form
+directly — what happens today, except the result is saved.
 
 While a switch is in flight the dropdown shows a spinner; the editor stays
 usable and results clear immediately.
@@ -207,8 +222,8 @@ usable and results clear immediately.
   a temp database
 - **Single-active invariant:** connecting to B while A is active closes A's pool
   and leaves exactly one active connection
-- **Startup:** auto-connect picks the most recently used; a failure leaves the
-  app usable with no active connection
+- **Startup:** the app starts with no active connection and opens the picker;
+  no command connects without an explicit `connect_saved` call
 - **TypeScript:** unit tests for the sort/filter helper behind the picker
 - **Regression:** all 102 existing tests pass after the `AppState` refactor —
   this is the main risk in the stage
