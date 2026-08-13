@@ -26,6 +26,9 @@ pub enum AppError {
 
     #[error("keychain error: {0}")]
     Keychain(String),
+
+    #[error("library error: {0}")]
+    Library(String),
 }
 
 /// The shape the UI receives. Tauri requires command errors to be
@@ -48,6 +51,7 @@ impl Serialize for AppError {
                 ("query", code.clone(), *position)
             }
             AppError::Keychain(_) => ("keychain", None, None),
+            AppError::Library(_) => ("library", None, None),
         };
         ErrorPayload {
             kind: kind.to_string(),

@@ -152,3 +152,209 @@ button:disabled {
 .error {
   color: var(--error);
 }
+
+.app.with-sidebar {
+  flex-direction: row;
+}
+
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  width: 240px;
+  min-width: 160px;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.sidebar-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--muted);
+  position: sticky;
+  top: 0;
+  background: var(--panel);
+}
+
+.sidebar-splitter {
+  height: 1px;
+  background: var(--border);
+}
+
+.main-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  cursor: default;
+  white-space: nowrap;
+}
+
+.tree-row:hover {
+  background: #22262e;
+}
+
+.tree-row.active {
+  background: #2a3446;
+}
+
+.tree-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.chevron {
+  width: 10px;
+  color: var(--muted);
+}
+
+.tree-empty {
+  padding: 6px 10px;
+  color: var(--muted);
+}
+
+.row-action,
+.tab-close,
+.tab-new {
+  background: none;
+  border: none;
+  color: var(--muted);
+  padding: 0 4px;
+  font-size: 13px;
+  opacity: 0;
+}
+
+.tree-row:hover .row-action,
+.tab:hover .tab-close,
+.sidebar-header .row-action,
+.tab-new {
+  opacity: 1;
+}
+
+.row-action:hover,
+.tab-close:hover {
+  color: var(--text);
+}
+
+.rename-input {
+  width: 80%;
+  padding: 2px 4px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+}
+
+.dirty-dot {
+  color: var(--accent);
+  font-size: 16px;
+  line-height: 1;
+}
+
+.tab-bar {
+  display: flex;
+  align-items: stretch;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  overflow-x: auto;
+}
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 6px 10px;
+  border-right: 1px solid var(--border);
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.tab.active {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: inset 0 -2px 0 var(--accent);
+}
+
+.tab-label {
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.save-button {
+  padding: 4px 10px;
+  font-size: 12px;
+}
+
+.sidebar-header-actions {
+  display: flex;
+  gap: 6px;
+}
+
+.saved-indicator {
+  margin-left: 8px;
+  color: var(--accent);
+  font-weight: 500;
+}
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.confirm-dialog {
+  width: 320px;
+  max-width: calc(100vw - 32px);
+  padding: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+}
+
+.confirm-dialog p {
+  margin: 0 0 16px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.confirm-cancel {
+  background: var(--border);
+  color: var(--text);
+}
