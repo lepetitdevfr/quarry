@@ -238,44 +238,46 @@ impl From<tokio_postgres::Error> for AppError {
 
 - [ ] **Step 3: Create empty module files**
 
-Create `src-tauri/src/conn/mod.rs`:
+Create `src-tauri/src/conn/mod.rs` — declaring ONLY `config`, because `pool.rs` does not exist until Task 4:
 
 ```rust
 pub mod config;
-pub mod pool;
 
 pub use config::{ConnectionConfig, SslMode};
-pub use pool::{build_pool, ping};
 ```
 
-Create `src-tauri/src/exec/mod.rs`:
-
-```rust
-pub mod run;
-pub mod value;
-
-pub use run::{run_query, ColumnMeta, QueryResult};
-```
+Do NOT create `src-tauri/src/exec/mod.rs` yet — Task 6 creates it.
 
 - [ ] **Step 4: Wire modules into the crate root**
+
+**The crate must compile after every task.** Each task adds its own module
+declaration; do not declare modules whose files do not exist yet, or every
+later task's `cargo test` fails to compile and the TDD loop breaks.
 
 Add to the top of `src-tauri/src/lib.rs`, above the existing content:
 
 ```rust
-pub mod commands;
 pub mod conn;
 pub mod error;
-pub mod exec;
-pub mod secrets;
 ```
 
-The build will fail until Tasks 3–8 create those files; that is expected. Verify only that `Cargo.toml` parses:
+Task 4 adds `pub mod pool;` to `conn/mod.rs`. Task 6 adds `pub mod exec;`
+to `lib.rs`. Task 7 adds `pub mod secrets;`. Task 8 adds `pub mod commands;`.
+
+`conn/config.rs` does not exist until Task 3, so create a placeholder now so
+the crate still compiles — Task 3 replaces its entire contents:
+
+```rust
+// Placeholder, replaced in Task 3.
+```
+
+Verify the crate compiles:
 
 ```bash
-cd /Users/lepetitdev/dev/quarry/src-tauri && cargo metadata --no-deps >/dev/null && echo "manifest OK"
+cd /Users/lepetitdev/dev/quarry/src-tauri && cargo check 2>&1 | tail -5
 ```
 
-Expected: `manifest OK`
+Expected: `Finished` with no errors. Warnings about unused code are fine.
 
 - [ ] **Step 5: Commit**
 
@@ -576,19 +578,29 @@ pub async fn ping(pool: &Pool) -> Result<String, AppError> {
 }
 ```
 
-- [ ] **Step 2: Verify it compiles**
+- [ ] **Step 2: Declare the module**
 
-```bash
-cd /Users/lepetitdev/dev/quarry/src-tauri && cargo check 2>&1 | grep -E "^(error|warning: unused)" | head -20
+Add to `src-tauri/src/conn/mod.rs`:
+
+```rust
+pub mod pool;
+
+pub use pool::{build_pool, ping};
 ```
 
-Expected: errors only about the not-yet-created `commands`, `exec::run`, `exec::value`, and `secrets` modules. If rustls' API differs from the code above, read the compiler message — it names the expected builder method — and adjust.
+- [ ] **Step 3: Verify it compiles**
 
-- [ ] **Step 3: Commit**
+```bash
+cd /Users/lepetitdev/dev/quarry/src-tauri && cargo check 2>&1 | tail -10
+```
+
+Expected: `Finished`, no errors. If rustls' API differs from the code above, read the compiler message — it names the expected builder method — and adjust.
+
+- [ ] **Step 4: Commit**
 
 ```bash
 cd /Users/lepetitdev/dev/quarry
-git add src-tauri/src/conn/pool.rs
+git add src-tauri/src/conn
 git commit -m "feat(conn): build connection pool with optional TLS"
 ```
 
@@ -806,7 +818,18 @@ cd /Users/lepetitdev/dev/quarry/src-tauri && cargo test --test exec_test 2>&1 | 
 
 Expected: compilation failure — `unresolved import quarry_lib::exec::run_query`.
 
-- [ ] **Step 3: Write the conversion module**
+- [ ] **Step 3: Create the module and declare it**
+
+Create `src-tauri/src/exec/mod.rs`:
+
+```rust
+pub mod run;
+pub mod value;
+
+pub use run::{run_query, ColumnMeta, QueryResult};
+```
+
+Add `pub mod exec;` to `src-tauri/src/lib.rs`.
 
 Create `src-tauri/src/exec/value.rs`:
 
@@ -1028,7 +1051,8 @@ git commit -m "feat(exec): run queries and convert postgres values to JSON"
 
 - [ ] **Step 1: Write the failing test**
 
-Create `src-tauri/src/secrets.rs` containing ONLY the test module:
+Add `pub mod secrets;` to `src-tauri/src/lib.rs`, then create
+`src-tauri/src/secrets.rs` containing ONLY the test module:
 
 ```rust
 #[cfg(test)]
@@ -1139,7 +1163,8 @@ Commands stay thin: validate, delegate, return. Logic lives in the modules alrea
 
 - [ ] **Step 1: Write the commands**
 
-Create `src-tauri/src/commands.rs`:
+Add `pub mod commands;` to `src-tauri/src/lib.rs`, then create
+`src-tauri/src/commands.rs`:
 
 ```rust
 use crate::conn::{build_pool, ping, ConnectionConfig};
