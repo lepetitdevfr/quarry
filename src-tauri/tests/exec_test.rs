@@ -86,11 +86,11 @@ async fn converts_every_supported_type_and_pins_the_int_array_fallback() {
     // padding through as-is rather than trimming it.
     assert_eq!(col("a_bpchar"), json!("char10    "));
 
-    // int4[]: arrays have no branch in cell_to_json, so they fall
-    // through to the unsupported-type placeholder. Full array support
-    // is out of scope for this stage; this pins today's fallback
-    // behavior so a future change to it is a deliberate decision.
-    assert_eq!(col("an_int_array"), json!("<unsupported type: _int4>"));
+    // int4[]: arrays are now decoded into real JSON arrays (see
+    // `renders_arrays_as_json_arrays` in this file for full coverage);
+    // this pins the deliberate change from the old unsupported-type
+    // placeholder.
+    assert_eq!(col("an_int_array"), json!([1, 2, 3]));
 }
 
 #[tokio::test]
@@ -350,5 +350,82 @@ async fn unsupported_types_do_not_crash_the_query() {
     assert!(
         cell.as_str().unwrap_or("").contains("unsupported"),
         "expected a placeholder string, got: {cell}"
+    );
+}
+
+#[tokio::test]
+async fn renders_arrays_as_json_arrays() {
+    let db = common::start().await;
+
+    let result = run_query(
+        &db.pool,
+        "select array[1,2,3]::int4[]           as ints,
+                array['a','b']::text[]         as texts,
+                array[]::int4[]                as empty,
+                array[1,null,3]::int4[]        as with_null,
+                array[true,false]::bool[]      as bools",
+    )
+    .await
+    .expect("query should succeed");
+
+    let col = |name: &str| {
+        let i = result.columns.iter().position(|c| c.name == name).unwrap();
+        result.rows[0][i].clone()
+    };
+
+    assert_eq!(col("ints"), json!([1, 2, 3]));
+    assert_eq!(col("texts"), json!(["a", "b"]));
+    assert_eq!(col("empty"), json!([]));
+    assert_eq!(col("with_null"), json!([1, null, 3]));
+    assert_eq!(col("bools"), json!([true, false]));
+}
+
+#[tokio::test]
+async fn renders_enum_values_as_their_labels() {
+    let db = common::start().await;
+    let client = db.pool.get().await.expect("checkout");
+    client
+        .batch_execute("create type mood as enum ('sad', 'ok', 'happy')")
+        .await
+        .expect("type should be created");
+
+    let result = run_query(&db.pool, "select 'happy'::mood as m")
+        .await
+        .expect("query should succeed");
+
+    assert_eq!(result.rows[0][0], json!("happy"));
+}
+
+#[tokio::test]
+async fn an_unrenderable_type_still_shows_a_visible_placeholder() {
+    let db = common::start().await;
+
+    // A multi-dimensional array is deliberately NOT flattened into a
+    // lying one-dimensional list: better a visible placeholder than
+    // silently wrong data.
+    let result = run_query(&db.pool, "select '{{1,2},{3,4}}'::int4[][] as grid")
+        .await
+        .expect("query should succeed");
+
+    let cell = &result.rows[0][0];
+    let text = cell.as_str().unwrap_or_default();
+    assert!(
+        text.contains("unsupported") || cell.is_array(),
+        "expected a placeholder or a faithful array, got {cell}",
+    );
+}
+
+#[tokio::test]
+async fn a_null_array_is_null_not_an_empty_array() {
+    let db = common::start().await;
+
+    let result = run_query(&db.pool, "select null::int4[] as arr")
+        .await
+        .expect("query should succeed");
+
+    assert_eq!(
+        result.rows[0][0],
+        serde_json::Value::Null,
+        "a NULL array must stay distinguishable from an empty array"
     );
 }

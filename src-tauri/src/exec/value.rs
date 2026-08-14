@@ -88,8 +88,118 @@ pub fn cell_to_json(row: &Row, idx: usize) -> Value {
             Ok(None) => Value::Null,
             Err(e) => unreadable(e),
         }
+    } else if let Some(array) = array_to_json(row, idx, t) {
+        array
+    } else if t.name() != "record" && !matches!(t.kind(), postgres_types::Kind::Array(_)) {
+        // Last resort: enums and other text-shaped types whose OID we do
+        // not know. Anything that is not valid UTF-8 falls through to the
+        // placeholder below rather than becoming a silent null.
+        //
+        // Array types are excluded here even when `array_to_json` above
+        // could not decode them (multi-dimensional arrays, or an array of
+        // an element type we do not otherwise render): their wire format
+        // is binary, not text, and low integer bytes like `{{1,2},{3,4}}`
+        // happen to be valid UTF-8, so AnyText would silently turn them
+        // into mojibake instead of falling through to the placeholder.
+        match row.try_get::<_, Option<AnyText>>(idx) {
+            Ok(Some(AnyText(s))) => Value::String(s),
+            Ok(None) => Value::Null,
+            Err(_) => Value::String(format!("<unsupported type: {}>", t.name())),
+        }
     } else {
         Value::String(format!("<unsupported type: {}>", t.name()))
+    }
+}
+
+/// Decode a one-dimensional array of `T` into a JSON array.
+///
+/// `Vec<Option<T>>` because array elements can individually be NULL —
+/// `{1,NULL,3}` is a perfectly ordinary Postgres value.
+fn convert_array<'a, T>(row: &'a Row, idx: usize) -> Option<Value>
+where
+    T: FromSql<'a> + Serialize,
+{
+    match row.try_get::<_, Option<Vec<Option<T>>>>(idx) {
+        Ok(Some(items)) => {
+            let json: Vec<Value> = items
+                .into_iter()
+                .map(|item| match item {
+                    Some(v) => serde_json::to_value(v).unwrap_or(Value::Null),
+                    None => Value::Null,
+                })
+                .collect();
+            Some(Value::Array(json))
+        }
+        Ok(None) => Some(Value::Null),
+        // A multi-dimensional array fails to decode as a flat Vec. Fall
+        // through to the placeholder rather than inventing a shape.
+        Err(_) => None,
+    }
+}
+
+/// Reads any type's bytes as UTF-8, whatever its OID.
+///
+/// This exists for enums: their wire representation is simply the label
+/// text, but `String`'s `FromSql` refuses unknown OIDs, so the normal
+/// path cannot read them. Used only as a last resort, after every known
+/// type has been tried.
+#[derive(Debug)]
+struct AnyText(String);
+
+impl<'a> FromSql<'a> for AnyText {
+    fn from_sql(
+        _ty: &Type,
+        raw: &'a [u8],
+    ) -> Result<Self, Box<dyn std::error::Error + Sync + Send>> {
+        Ok(AnyText(std::str::from_utf8(raw)?.to_string()))
+    }
+
+    fn accepts(_ty: &Type) -> bool {
+        true
+    }
+}
+
+/// Dispatch on element type for the array types we render.
+///
+/// Returns `None` for arrays we cannot decode — including
+/// multi-dimensional ones — so the caller falls back to a placeholder.
+fn array_to_json(row: &Row, idx: usize, t: &Type) -> Option<Value> {
+    if t == &Type::INT2_ARRAY {
+        convert_array::<i16>(row, idx)
+    } else if t == &Type::INT4_ARRAY {
+        convert_array::<i32>(row, idx)
+    } else if t == &Type::INT8_ARRAY {
+        convert_array::<i64>(row, idx)
+    } else if t == &Type::FLOAT4_ARRAY {
+        convert_array::<f32>(row, idx)
+    } else if t == &Type::FLOAT8_ARRAY {
+        convert_array::<f64>(row, idx)
+    } else if t == &Type::BOOL_ARRAY {
+        convert_array::<bool>(row, idx)
+    } else if t == &Type::TEXT_ARRAY
+        || t == &Type::VARCHAR_ARRAY
+        || t == &Type::NAME_ARRAY
+        || t == &Type::BPCHAR_ARRAY
+    {
+        convert_array::<String>(row, idx)
+    } else if t == &Type::UUID_ARRAY {
+        match row.try_get::<_, Option<Vec<Option<uuid::Uuid>>>>(idx) {
+            Ok(Some(items)) => Some(Value::Array(
+                items
+                    .into_iter()
+                    .map(|i| match i {
+                        Some(u) => Value::String(u.to_string()),
+                        None => Value::Null,
+                    })
+                    .collect(),
+            )),
+            Ok(None) => Some(Value::Null),
+            Err(_) => None,
+        }
+    } else if t == &Type::JSON_ARRAY || t == &Type::JSONB_ARRAY {
+        convert_array::<Value>(row, idx)
+    } else {
+        None
     }
 }
 
