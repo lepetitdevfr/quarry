@@ -33,7 +33,7 @@
   --radius: 6px;
   --radius-lg: 10px;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-  font-size: 13px;
+  font-size: var(--t-base);
 }
 
 body {
@@ -60,22 +60,6 @@ body {
   background: var(--panel);
 }
 
-.connection-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 460px;
-}
-
-.connection-form input {
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--panel);
-  color: var(--text);
-  font-family: ui-monospace, "SF Mono", monospace;
-}
-
 button {
   height: var(--h-control);
   padding: 0 var(--s-4);
@@ -94,7 +78,7 @@ button:disabled {
 .editor-toolbar {
   display: flex;
   justify-content: flex-end;
-  padding: 6px;
+  padding: var(--s-2);
   border-bottom: 1px solid var(--border);
 }
 
@@ -290,7 +274,7 @@ button:disabled {
 }
 
 .tree-empty {
-  padding: 6px 10px;
+  padding: var(--s-2) var(--s-3);
   color: var(--muted);
 }
 
@@ -299,9 +283,9 @@ button:disabled {
 .tab-new {
   background: none;
   border: none;
-  color: var(--muted);
-  padding: 0 4px;
-  font-size: 13px;
+  color: var(--faint);
+  padding: 0 var(--s-1);
+  font-size: var(--t-base);
   opacity: 0;
 }
 
@@ -324,7 +308,7 @@ button:disabled {
 
 .rename-input {
   width: 80%;
-  padding: 2px 4px;
+  padding: 0 var(--s-1);
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--accent);
@@ -369,8 +353,8 @@ button:disabled {
 }
 
 .save-button {
-  padding: 4px 10px;
-  font-size: 12px;
+  padding: 0 var(--s-3);
+  font-size: var(--t-base);
 }
 
 .sidebar-header-actions {
@@ -434,7 +418,8 @@ button:disabled {
 }
 
 .password-retry input {
-  padding: 6px 8px;
+  padding: 0 var(--s-2);
+  height: var(--h-control);
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
@@ -455,7 +440,7 @@ button:disabled {
   background: transparent;
   color: var(--text);
   font-weight: 600;
-  padding: 4px 8px;
+  padding: var(--s-1) var(--s-2);
 }
 
 .connection-trigger:hover {
@@ -488,7 +473,7 @@ button:disabled {
   left: 0;
   z-index: 20;
   min-width: 340px;
-  padding: 6px;
+  padding: var(--s-2);
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
@@ -768,9 +753,9 @@ button.secondary {
 }
 
 .tree-error {
-  margin: 6px 8px;
+  margin: var(--s-2);
   color: var(--error);
-  font-size: 12px;
+  font-size: var(--t-sm);
 }
 
 button.link {
