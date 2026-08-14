@@ -76,21 +76,35 @@ The data behind the lock is structurally valid either way, so recovering beats
 bricking. Not urgent; "unreachable in practice" is just the assumption that
 ages badly as the code grows.
 
-## Confirm no query data was lost
+## Confirm no query data was lost — RESOLVED
 
-**Open question:** 2026-08-14. During the Keychain debugging the workspace
-database showed `queries: 0` where a saved query named "Widgets" had existed
-earlier in the session, and the connection count dropped from two to one.
+**Raised:** 2026-08-14. **Closed:** 2026-08-15, no data loss.
 
-The user was recreating connections at the time and may well have deleted both
-themselves. Nothing in the v2→v3 migration touches `queries` — it adds two
-columns to `tabs` and deletes rows where `is_preview = 1`, and a test proves
-existing rows survive.
+During the Keychain debugging the workspace database showed `queries: 0` where
+a saved query named "Widgets" had existed earlier in the session, and the
+connection count dropped from two to one. The user has since confirmed they
+made those deletions themselves while recreating connections. Nothing in the
+v2→v3 migration touches `queries`, which matches. No investigation needed.
 
-Unresolved. If the user confirms they did not delete that query, this becomes a
-data-loss investigation and takes priority over any feature. A WAL-safe backup
-sits at `~/Library/Application Support/com.quarry.app/workspace-backup-20260814-182733.db`.
+The WAL-safe backup at
+`~/Library/Application Support/com.quarry.app/workspace-backup-20260814-182733.db`
+can be deleted whenever convenient.
 
-**Process note:** back up with `sqlite3 db ".backup out.db"`, never `cp`. A
-plain copy of a WAL database captures a file with no tables in it — which is
-exactly what happened on the first attempt tonight.
+**Process note, still standing:** back up with `sqlite3 db ".backup out.db"`,
+never `cp`. A plain copy of a WAL database captures a file with no tables in
+it — which is exactly what happened on the first attempt that night.
+
+## Table detail extras
+
+**Deferred:** 2026-08-15, while designing table detail tabs
+(`specs/2026-08-15-table-detail-tabs-design.md`). Each needs a new catalog
+query and a round-trip per table open, which the three shipped sections do
+not.
+
+- **Live table stats.** Estimated row count (`pg_class.reltuples`, which reads
+  `-1` on a never-analyzed table), on-disk size (`pg_total_relation_size`), and
+  table/column comments (`obj_description`/`col_description`).
+- **Triggers and dependent views.** `pg_trigger` rows, plus the views that
+  depend on this table via a `pg_depend` walk.
+- **Copy `CREATE TABLE` DDL** (see above) belongs in this view once the
+  assembly work is done.
