@@ -254,8 +254,19 @@ export default function App() {
         // wrong password so much as a missing one. Either way, offer
         // the password inline rather than making the user go and edit
         // the connection.
+        // A "keychain" error is included deliberately. It means the
+        // stored credential could not be READ — which happens routinely
+        // in development, because `tauri dev` re-signs the binary on
+        // every rebuild and macOS scopes Keychain items to the identity
+        // that created them. The error text still names that cause, but
+        // without the field the user has no way forward; typing the
+        // password re-saves it under the current identity and works.
         setPasswordFor(
-          err.kind === "password_required" || err.code === "28P01" ? id : null,
+          err.kind === "password_required" ||
+            err.kind === "keychain" ||
+            err.code === "28P01"
+            ? id
+            : null,
         );
       }
     },
