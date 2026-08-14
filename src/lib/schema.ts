@@ -21,6 +21,9 @@ export interface SchemaRow {
   /** Index rows only — drives the UNIQUE/PK badge. */
   isUniqueIndex?: boolean;
   isPrimaryIndex?: boolean;
+  /** Table rows only — identity for previewing. */
+  tableSchema?: string;
+  tableName?: string;
 }
 
 /** Case-insensitive substring match; an empty filter matches everything. */
@@ -91,6 +94,8 @@ export function flattenSchema(
         label: table.name,
         depth: 1,
         expandable: true,
+        tableSchema: table.schema,
+        tableName: table.name,
       });
 
       if (!tableOpen) continue;
@@ -183,4 +188,23 @@ export function buildCompletionSchema(
   }
 
   return built;
+}
+
+/** How many rows a table preview fetches. */
+export const PREVIEW_LIMIT = 500;
+
+/**
+ * Quote a Postgres identifier.
+ *
+ * Unquoted identifiers are folded to lower case, so a table created as
+ * "Order" would not be found, and a reserved word would not parse at
+ * all. A literal double quote inside a name is escaped by doubling it.
+ */
+function quoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+/** The SQL a table preview runs. */
+export function previewSql(schema: string, table: string): string {
+  return `select * from ${quoteIdent(schema)}.${quoteIdent(table)} limit ${PREVIEW_LIMIT}`;
 }
