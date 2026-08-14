@@ -338,10 +338,21 @@ pub async fn connect_saved(
         sslmode: record.sslmode,
     };
 
+    let attempted_without_password = password.is_none();
+
     // Build and verify BEFORE touching the active slot: a failed
     // connect must leave the user disconnected, never half-switched.
     let pool = build_pool(&cfg)?;
-    let server_version = ping(&pool).await?;
+    let server_version = match ping(&pool).await {
+        Ok(v) => v,
+        // A failure with no password is almost always the missing
+        // password rather than anything else the driver reports —
+        // tokio-postgres says "invalid configuration", which names
+        // neither the cause nor the fix. Send the UI something it can
+        // act on instead.
+        Err(_) if attempted_without_password => return Err(AppError::PasswordRequired),
+        Err(e) => return Err(e),
+    };
 
     let info = ConnectionInfo {
         id: id.clone(),

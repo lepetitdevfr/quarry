@@ -82,7 +82,8 @@ export interface AppErrorPayload {
     | "connection"
     | "unknown_connection"
     | "query"
-    | "keychain";
+    | "keychain"
+    | "password_required";
   message: string;
   code: string | null;
   position: number | null;

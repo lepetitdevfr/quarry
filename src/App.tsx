@@ -248,10 +248,15 @@ export default function App() {
         // you did not is the dangerous state.
         const err = asAppError(e);
         setConnectError(err);
-        // 28P01 is invalid_password. A missing Keychain entry produces
-        // the same failure, so offer the password inline rather than
-        // making the user go and edit the connection.
-        setPasswordFor(err.code === "28P01" ? id : null);
+        // 28P01 is invalid_password. A connect attempt made with no
+        // password at all comes back as "password_required" instead
+        // (see AppError::PasswordRequired) since it usually isn't a
+        // wrong password so much as a missing one. Either way, offer
+        // the password inline rather than making the user go and edit
+        // the connection.
+        setPasswordFor(
+          err.kind === "password_required" || err.code === "28P01" ? id : null,
+        );
       }
     },
     [connActions],
