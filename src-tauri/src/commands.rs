@@ -238,3 +238,121 @@ pub fn set_cursor(
 ) -> Result<(), AppError> {
     state.library.set_cursor(&id, pos)
 }
+
+// ---- connection commands ----------------------------------------------
+
+use crate::library::model::{Connection, ConnectionInput};
+
+#[tauri::command]
+pub fn list_connections(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<Connection>, AppError> {
+    state.library.connections()
+}
+
+#[tauri::command]
+pub fn create_connection(
+    state: tauri::State<'_, AppState>,
+    input: ConnectionInput,
+) -> Result<Vec<Connection>, AppError> {
+    let password = input.password.clone();
+    let created = state.library.create_connection(input)?;
+
+    if let Some(pw) = password.filter(|p| !p.is_empty()) {
+        state.library.save_connection_password(&created.id, &pw)?;
+    }
+
+    state.library.connections()
+}
+
+#[tauri::command]
+pub fn update_connection(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    input: ConnectionInput,
+) -> Result<Vec<Connection>, AppError> {
+    let password = input.password.clone();
+    state.library.update_connection(&id, input)?;
+
+    // An empty or absent password means "leave the stored one alone",
+    // so editing a host does not silently wipe the credential.
+    if let Some(pw) = password.filter(|p| !p.is_empty()) {
+        state.library.save_connection_password(&id, &pw)?;
+    }
+
+    state.library.connections()
+}
+
+#[tauri::command]
+pub fn delete_connection(
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<Vec<Connection>, AppError> {
+    // Disconnect first if this is the live one, otherwise the pool
+    // would outlive the record it came from.
+    let is_active = state
+        .active
+        .lock()
+        .expect("state lock poisoned")
+        .as_ref()
+        .is_some_and(|a| a.id == id);
+    if is_active {
+        state.set_active(None);
+    }
+
+    state.library.delete_connection(&id)?;
+    state.library.connections()
+}
+
+/// Connect to a saved connection, replacing any current one.
+///
+/// `password` is only for the case where the Keychain has no entry —
+/// normally it is omitted and the stored credential is used. A supplied
+/// password is saved on success, so the prompt happens at most once.
+#[tauri::command]
+pub async fn connect_saved(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    password: Option<String>,
+) -> Result<ConnectionInfo, AppError> {
+    let record = state.library.connection(&id)?;
+
+    let stored = crate::secrets::load_password(&id)?;
+    let password = password.filter(|p| !p.is_empty()).or(stored);
+
+    let cfg = ConnectionConfig {
+        host: record.host.clone(),
+        port: record.port,
+        user: record.user.clone(),
+        dbname: record.dbname.clone(),
+        password: password.clone(),
+        sslmode: record.sslmode,
+    };
+
+    // Build and verify BEFORE touching the active slot: a failed
+    // connect must leave the user disconnected, never half-switched.
+    let pool = build_pool(&cfg)?;
+    let server_version = ping(&pool).await?;
+
+    let info = ConnectionInfo {
+        id: id.clone(),
+        host: record.host,
+        port: record.port,
+        dbname: record.dbname,
+        user: record.user,
+        server_version,
+    };
+
+    state.set_active(Some(ActiveConnection {
+        id: id.clone(),
+        pool,
+        info: info.clone(),
+    }));
+
+    if let Some(pw) = password {
+        state.library.save_connection_password(&id, &pw)?;
+    }
+    state.library.touch_connection(&id)?;
+
+    Ok(info)
+}

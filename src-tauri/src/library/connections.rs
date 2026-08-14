@@ -158,6 +158,19 @@ impl Store {
             .map_err(sql_err)?;
         Ok(())
     }
+
+    /// Store a connection's password in the Keychain.
+    ///
+    /// Lives on `Store` so every credential write goes through the same
+    /// place as the record itself, rather than being scattered across
+    /// command handlers.
+    pub fn save_connection_password(
+        &self,
+        id: &str,
+        password: &str,
+    ) -> Result<(), AppError> {
+        crate::secrets::save_password(id, password)
+    }
 }
 
 fn read_connection(row: &Row) -> rusqlite::Result<Connection> {
