@@ -1,31 +1,60 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { ConnectionInfo, LibraryTree, Query, QueryResult, Tab } from "../types";
+import type {
+  Connection,
+  ConnectionInfo,
+  ConnectionInput,
+  LibraryTree,
+  Query,
+  QueryResult,
+  Tab,
+} from "../types";
 
 /**
  * The only module that talks to Tauri. Everything else imports these
  * functions, so the IPC surface stays visible in one place.
  */
 
-export async function connect(
-  id: string,
-  url: string,
-  rememberPassword: boolean,
-): Promise<ConnectionInfo> {
-  return invoke<ConnectionInfo>("connect", { id, url, rememberPassword });
+export async function execute(sql: string): Promise<QueryResult> {
+  return invoke<QueryResult>("execute", { sql });
 }
 
-export async function execute(
-  connectionId: string,
-  sql: string,
-): Promise<QueryResult> {
-  return invoke<QueryResult>("execute", { connectionId, sql });
-}
-
-export async function disconnect(connectionId: string): Promise<void> {
-  return invoke("disconnect", { connectionId });
+export async function disconnect(): Promise<void> {
+  return invoke("disconnect");
 }
 
 export { asAppError } from "./errors";
+
+export async function listConnections(): Promise<Connection[]> {
+  return invoke<Connection[]>("list_connections");
+}
+
+export async function createConnection(
+  input: ConnectionInput,
+): Promise<Connection[]> {
+  return invoke<Connection[]>("create_connection", { input });
+}
+
+export async function updateConnection(
+  id: string,
+  input: ConnectionInput,
+): Promise<Connection[]> {
+  return invoke<Connection[]>("update_connection", { id, input });
+}
+
+export async function deleteConnection(id: string): Promise<Connection[]> {
+  return invoke<Connection[]>("delete_connection", { id });
+}
+
+export async function connectSaved(
+  id: string,
+  password?: string,
+): Promise<ConnectionInfo> {
+  return invoke<ConnectionInfo>("connect_saved", { id, password });
+}
+
+export async function activeConnection(): Promise<ConnectionInfo | null> {
+  return invoke<ConnectionInfo | null>("active_connection");
+}
 
 export async function libraryTree(): Promise<LibraryTree> {
   return invoke<LibraryTree>("library_tree");
