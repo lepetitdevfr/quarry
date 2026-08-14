@@ -570,3 +570,99 @@ button.secondary {
   justify-content: center;
   background: rgb(0 0 0 / 50%);
 }
+
+.schema-toolbar {
+  display: flex;
+  gap: 4px;
+  align-items: center;
+  padding: 4px 6px;
+}
+
+.schema-filter {
+  flex: 1;
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+}
+
+.schema-toolbar .row-action {
+  opacity: 1;
+}
+
+.schema-rows {
+  flex: 1;
+  overflow: auto;
+  position: relative;
+}
+
+.tree-row.schema-column,
+.tree-row.schema-index,
+.tree-row.schema-constraint {
+  cursor: default;
+}
+
+.twisty {
+  display: inline-block;
+  width: 12px;
+  color: var(--muted);
+  flex: none;
+}
+
+.schema-label {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.schema-type {
+  margin-left: 8px;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}
+
+/* NOT NULL columns read stronger than nullable ones. */
+.schema-type.nullable {
+  opacity: 0.6;
+}
+
+.marker {
+  margin-left: 6px;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+}
+
+.marker.pk {
+  color: var(--accent);
+}
+
+.marker.fk {
+  color: var(--muted);
+}
+
+.schema-def {
+  margin-left: 8px;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tree-error {
+  margin: 6px 8px;
+  color: var(--error);
+  font-size: 12px;
+}
+
+button.link {
+  background: none;
+  border: none;
+  padding: 0 4px;
+  color: var(--accent);
+  text-decoration: underline;
+}
