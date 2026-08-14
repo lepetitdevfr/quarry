@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use std::path::Path;
 
 /// Bump this when the schema changes and add a migration step below.
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 
 /// Open the database, creating and migrating it if needed.
 ///
@@ -58,7 +58,9 @@ fn migrate(conn: &Connection) -> Result<(), AppError> {
             scratch_sql text,
             position    integer not null,
             is_active   integer not null default 0,
-            cursor_pos  integer not null default 0
+            cursor_pos  integer not null default 0,
+            is_preview  integer not null default 0,
+            title       text
         );
 
         create table if not exists connections (
@@ -83,10 +85,55 @@ fn migrate(conn: &Connection) -> Result<(), AppError> {
     )
     .map_err(|e| AppError::Library(e.to_string()))?;
 
+    // `create table if not exists` leaves an existing table alone, so a
+    // database created before version 3 still lacks these columns. SQLite
+    // has no `add column if not exists`, and re-adding one is an error
+    // rather than a no-op — so ask first.
+    add_column_if_missing(conn, "tabs", "is_preview", "integer not null default 0")?;
+    add_column_if_missing(conn, "tabs", "title", "text")?;
+
+    // Preview tabs are transient. Purging them here rather than filtering
+    // them on restore means a crash cannot leave one behind.
+    conn.execute("delete from tabs where is_preview = 1", [])
+        .map_err(|e| AppError::Library(e.to_string()))?;
+
     conn.execute(
         "insert into meta (key, value) values ('schema_version', ?1)
          on conflict(key) do update set value = excluded.value",
         [SCHEMA_VERSION.to_string()],
+    )
+    .map_err(|e| AppError::Library(e.to_string()))?;
+
+    Ok(())
+}
+
+/// Add a column unless the table already has it.
+///
+/// SQLite has no `add column if not exists`, and adding a duplicate is a
+/// hard error, so the column list has to be read first.
+fn add_column_if_missing(
+    conn: &Connection,
+    table: &str,
+    column: &str,
+    definition: &str,
+) -> Result<(), AppError> {
+    let mut stmt = conn
+        .prepare(&format!("pragma table_info({table})"))
+        .map_err(|e| AppError::Library(e.to_string()))?;
+
+    let existing: Vec<String> = stmt
+        .query_map([], |row| row.get::<_, String>(1))
+        .map_err(|e| AppError::Library(e.to_string()))?
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|e| AppError::Library(e.to_string()))?;
+
+    if existing.iter().any(|c| c == column) {
+        return Ok(());
+    }
+
+    conn.execute(
+        &format!("alter table {table} add column {column} {definition}"),
+        [],
     )
     .map_err(|e| AppError::Library(e.to_string()))?;
 
@@ -195,6 +242,75 @@ mod tests {
     }
 
     #[test]
+    fn adds_preview_columns_to_an_existing_tabs_table() {
+        // The user has a real database on disk with tabs in it. Adding a
+        // column to an existing table is exactly where a migration can
+        // cost someone their work, so this proves both halves: the new
+        // columns exist, and the old rows are still there.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("w.db");
+
+        {
+            let conn = open(&path).unwrap();
+            conn.execute(
+                "insert into tabs (id, query_id, scratch_sql, position, is_active, cursor_pos)
+                 values ('t1', null, 'select 1', 100, 1, 0)",
+                [],
+            )
+            .unwrap();
+        }
+
+        let conn = open(&path).unwrap();
+
+        let sql: String = conn
+            .query_row("select scratch_sql from tabs where id = 't1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(sql, "select 1", "an existing tab must survive the migration");
+
+        let is_preview: i64 = conn
+            .query_row("select is_preview from tabs where id = 't1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(is_preview, 0, "existing tabs default to not-preview");
+
+        let title: Option<String> = conn
+            .query_row("select title from tabs where id = 't1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(title, None);
+    }
+
+    #[test]
+    fn purges_preview_tabs_when_the_database_is_opened() {
+        // Previews are transient. Deleting them at open time is simpler
+        // and more robust than filtering them on restore: a crash cannot
+        // leave one behind.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("w.db");
+
+        {
+            let conn = open(&path).unwrap();
+            conn.execute(
+                "insert into tabs (id, query_id, scratch_sql, position, is_active, cursor_pos, is_preview, title)
+                 values ('keep', null, 'select 1', 100, 0, 0, 0, null),
+                        ('gone', null, 'select 2', 200, 1, 0, 1, 'users')",
+                [],
+            )
+            .unwrap();
+        }
+
+        let conn = open(&path).unwrap();
+
+        let remaining: Vec<String> = conn
+            .prepare("select id from tabs order by id")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+
+        assert_eq!(remaining, vec!["keep"], "the preview tab must be gone");
+    }
+
+    #[test]
     fn upgrading_a_v1_database_keeps_existing_rows() {
         // The developer has a real library on disk. Adding a table must
         // never cost them their saved queries.
@@ -227,6 +343,6 @@ mod tests {
                 r.get(0)
             })
             .unwrap();
-        assert_eq!(version, "2");
+        assert_eq!(version, "3");
     }
 }
