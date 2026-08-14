@@ -22,6 +22,12 @@ pub struct ActiveConnection {
 pub struct AppState {
     active: Mutex<Option<ActiveConnection>>,
     pub library: Store,
+    /// Introspected structure of the live database.
+    ///
+    /// Cleared by `set_active` on every connection change: a schema
+    /// outliving its connection would autocomplete tables from the
+    /// wrong database.
+    schema: Mutex<Option<crate::schema::Schema>>,
 }
 
 impl AppState {
@@ -31,6 +37,7 @@ impl AppState {
         Ok(AppState {
             active: Mutex::new(None),
             library: Store::open()?,
+            schema: Mutex::new(None),
         })
     }
 
@@ -59,6 +66,8 @@ impl AppState {
         if let Some(old) = previous {
             old.pool.close();
         }
+
+        *self.schema.lock().expect("state lock poisoned") = None;
     }
 }
 
@@ -355,4 +364,19 @@ pub async fn connect_saved(
     state.library.touch_connection(&id)?;
 
     Ok(info)
+}
+
+/// Re-read the database structure and replace the cache.
+///
+/// Also the initial load: the frontend calls this after connecting.
+#[tauri::command]
+pub async fn refresh_schema(
+    state: tauri::State<'_, AppState>,
+) -> Result<crate::schema::Schema, AppError> {
+    let pool = state.pool()?;
+    let fresh = crate::schema::introspect(&pool).await?;
+
+    *state.schema.lock().expect("state lock poisoned") = Some(fresh.clone());
+
+    Ok(fresh)
 }
