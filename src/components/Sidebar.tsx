@@ -1,5 +1,6 @@
 import { QueryTree, type Creating } from "./QueryTree";
-import type { LibraryTree } from "../types";
+import { SchemaTree } from "./SchemaTree";
+import type { LibraryTree, Schema } from "../types";
 
 interface Props {
   library: LibraryTree;
@@ -15,6 +16,11 @@ interface Props {
   creating: Creating | null;
   onCommitCreate: (name: string) => void;
   onCancelCreate: () => void;
+  schema: Schema | null;
+  schemaLoading: boolean;
+  schemaError: string | null;
+  connected: boolean;
+  onRefreshSchema: () => void;
 }
 
 export function Sidebar(props: Props) {
@@ -24,7 +30,13 @@ export function Sidebar(props: Props) {
         <header className="sidebar-header">
           <span>SCHEMA</span>
         </header>
-        <p className="tree-empty">Schema browsing arrives in Stage 4.</p>
+        <SchemaTree
+          schema={props.schema}
+          loading={props.schemaLoading}
+          error={props.schemaError}
+          connected={props.connected}
+          onRefresh={props.onRefreshSchema}
+        />
       </section>
 
       <div className="sidebar-splitter" />

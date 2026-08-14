@@ -3,6 +3,7 @@ pub mod conn;
 pub mod error;
 pub mod exec;
 pub mod library;
+pub mod schema;
 pub mod secrets;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -44,7 +45,8 @@ pub fn run() {
             commands::create_connection,
             commands::update_connection,
             commands::delete_connection,
-            commands::connect_saved
+            commands::connect_saved,
+            commands::refresh_schema
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

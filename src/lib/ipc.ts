@@ -6,6 +6,7 @@ import type {
   LibraryTree,
   Query,
   QueryResult,
+  Schema,
   Tab,
 } from "../types";
 
@@ -131,4 +132,10 @@ export async function saveScratch(id: string, sql: string): Promise<void> {
 
 export async function setCursor(id: string, pos: number): Promise<void> {
   return invoke("set_cursor", { id, pos });
+}
+
+/// Re-reads the database structure. Used for both the initial load
+/// after connecting and the manual refresh button.
+export async function refreshSchema(): Promise<Schema> {
+  return invoke<Schema>("refresh_schema");
 }

@@ -26,6 +26,9 @@ pub enum AppError {
 
     #[error("library error: {0}")]
     Library(String),
+
+    #[error("this connection needs a password")]
+    PasswordRequired,
 }
 
 /// The shape the UI receives. Tauri requires command errors to be
@@ -48,6 +51,7 @@ impl Serialize for AppError {
             }
             AppError::Keychain(_) => ("keychain", None, None),
             AppError::Library(_) => ("library", None, None),
+            AppError::PasswordRequired => ("password_required", None, None),
         };
         ErrorPayload {
             kind: kind.to_string(),

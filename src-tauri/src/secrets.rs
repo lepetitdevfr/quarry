@@ -26,14 +26,19 @@ const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
 /// caller cannot distinguish "no password saved" from "lookup broke"
 /// otherwise.
 ///
-/// Deliberately fail-open: this is a considered choice, not an
-/// oversight. Every failure from the Keychain lookup — item not found,
-/// but also a locked or otherwise inaccessible Keychain — collapses to
-/// `Ok(None)`. The consequence is that a locked/inaccessible Keychain
-/// looks identical to "no password was ever saved": the caller falls
-/// back to prompting for a password rather than surfacing a Keychain
-/// error. That's the right degrade for a read path, but it does mean
-/// this function cannot be used to detect "the Keychain is broken."
+/// This used to fail-open on every error, including a locked or
+/// otherwise unreadable Keychain, on the theory that degrading to a
+/// password prompt was safer than surfacing a Keychain error. In
+/// practice that swallowed real failures: `tauri dev` re-signs the
+/// binary on every rebuild, and macOS scopes Keychain items to the
+/// signing identity that created them, so a rebuilt dev binary can lose
+/// access to entries it saved moments earlier. Collapsing that to
+/// `Ok(None)` sent `connect_saved` down the no-password path even for
+/// connections that need one, and the resulting driver error ("invalid
+/// configuration") named neither the Keychain nor the fix. Now only
+/// `errSecItemNotFound` — genuinely no entry for this account — maps to
+/// `Ok(None)`; every other failure is a real, actionable condition and
+/// is surfaced as `Err`.
 pub fn load_password(account: &str) -> Result<Option<String>, AppError> {
     match get_generic_password(SERVICE, account) {
         Ok(bytes) => {
@@ -41,10 +46,13 @@ pub fn load_password(account: &str) -> Result<Option<String>, AppError> {
                 .map_err(|e| AppError::Keychain(e.to_string()))?;
             Ok(Some(s))
         }
-        // Any lookup failure is treated as absence. The Keychain error
-        // codes for "not found" vary by macOS version, and a false
-        // "not found" degrades to a password prompt rather than a crash.
-        Err(_) => Ok(None),
+        // errSecItemNotFound: nothing saved under this account, which
+        // is a normal state, not a failure.
+        Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(None),
+        // Any other error means the lookup itself broke (locked or
+        // inaccessible Keychain, wrong signing identity, etc.) — report
+        // it rather than pretending there's no password.
+        Err(e) => Err(AppError::Keychain(e.to_string())),
     }
 }
 

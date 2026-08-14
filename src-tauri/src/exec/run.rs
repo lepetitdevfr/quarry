@@ -53,7 +53,7 @@ pub async fn run_query(pool: &Pool, sql: &str) -> Result<QueryResult, AppError> 
         .iter()
         .map(|c| ColumnMeta {
             name: c.name().to_string(),
-            type_name: c.type_().name().to_string(),
+            type_name: friendly_type_name(c.type_()),
         })
         .collect();
 
@@ -90,4 +90,18 @@ pub async fn run_query(pool: &Pool, sql: &str) -> Result<QueryResult, AppError> 
         affected_rows: None,
         duration_ms,
     })
+}
+
+/// How a type should be spelled in a column header.
+///
+/// `Type::name()` returns Postgres's internal spelling, which for an
+/// array is the element type prefixed with an underscore: `_text`. No
+/// user writes that, and the schema tree already shows `text[]` via
+/// `format_type`, so the grid would otherwise disagree with the sidebar
+/// about the same column.
+pub fn friendly_type_name(t: &tokio_postgres::types::Type) -> String {
+    match t.kind() {
+        tokio_postgres::types::Kind::Array(inner) => format!("{}[]", inner.name()),
+        _ => t.name().to_string(),
+    }
 }

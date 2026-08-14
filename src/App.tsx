@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ConnectionEditor } from "./components/ConnectionEditor";
 import { ConnectionPicker } from "./components/ConnectionPicker";
@@ -11,7 +11,9 @@ import { StatusBar } from "./components/StatusBar";
 import { TabBar } from "./components/TabBar";
 import { useConnections } from "./hooks/useConnections";
 import { useLibrary } from "./hooks/useLibrary";
+import { useSchema } from "./hooks/useSchema";
 import { asAppError, execute } from "./lib/ipc";
+import { buildCompletionSchema } from "./lib/schema";
 import { effectiveSql } from "./lib/tree";
 import type { AppErrorPayload, Connection, ConnectionInput, LibraryTree, QueryResult } from "./types";
 import "./App.css";
@@ -65,6 +67,20 @@ export default function App() {
 
   const { library, tabs, activeTab, loaded, queryById, autosave, actions } =
     useLibrary();
+
+  const {
+    schema: dbSchema,
+    loading: schemaLoading,
+    error: schemaError,
+    refresh: refreshDbSchema,
+  } = useSchema(connection?.id ?? null);
+
+  // Rebuilt only when the schema changes, not on every keystroke —
+  // an unstable object here would tear down CodeMirror's state.
+  const completionSchema = useMemo(
+    () => buildCompletionSchema(dbSchema),
+    [dbSchema],
+  );
 
   // The editor's text is local while typing; autosave persists it.
   const [text, setText] = useState("");
@@ -232,10 +248,26 @@ export default function App() {
         // you did not is the dangerous state.
         const err = asAppError(e);
         setConnectError(err);
-        // 28P01 is invalid_password. A missing Keychain entry produces
-        // the same failure, so offer the password inline rather than
-        // making the user go and edit the connection.
-        setPasswordFor(err.code === "28P01" ? id : null);
+        // 28P01 is invalid_password. A connect attempt made with no
+        // password at all comes back as "password_required" instead
+        // (see AppError::PasswordRequired) since it usually isn't a
+        // wrong password so much as a missing one. Either way, offer
+        // the password inline rather than making the user go and edit
+        // the connection.
+        // A "keychain" error is included deliberately. It means the
+        // stored credential could not be READ — which happens routinely
+        // in development, because `tauri dev` re-signs the binary on
+        // every rebuild and macOS scopes Keychain items to the identity
+        // that created them. The error text still names that cause, but
+        // without the field the user has no way forward; typing the
+        // password re-saves it under the current identity and works.
+        setPasswordFor(
+          err.kind === "password_required" ||
+            err.kind === "keychain" ||
+            err.code === "28P01"
+            ? id
+            : null,
+        );
       }
     },
     [connActions],
@@ -345,6 +377,11 @@ export default function App() {
         creating={creating}
         onCommitCreate={commitCreate}
         onCancelCreate={() => setCreating(null)}
+        schema={dbSchema}
+        schemaLoading={schemaLoading}
+        schemaError={schemaError}
+        connected={connection !== null}
+        onRefreshSchema={() => void refreshDbSchema()}
       />
 
       <div className="main-pane">
@@ -418,7 +455,13 @@ export default function App() {
           onCancelName={() => setNamingTabId(null)}
         />
 
-        <SqlEditor value={text} onChange={onChange} onRun={run} busy={busy} />
+        <SqlEditor
+          value={text}
+          onChange={onChange}
+          onRun={run}
+          busy={busy}
+          completionSchema={completionSchema}
+        />
         {result && <ResultGrid result={result} />}
         <StatusBar result={result} error={error} saved={showSaved} />
       </div>
