@@ -358,3 +358,23 @@ button:disabled {
   background: var(--border);
   color: var(--text);
 }
+
+.password-retry {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 460px;
+  margin-top: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+}
+
+.password-retry input {
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
