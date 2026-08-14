@@ -564,48 +564,91 @@ button:disabled {
 .connection-editor {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  width: 460px;
-  padding: 16px;
+  width: 380px;
+  padding: var(--s-5);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--panel);
 }
 
 .connection-editor h2 {
-  margin: 0 0 8px;
-  font-size: 15px;
+  margin: 0 0 var(--s-4);
+  font-size: var(--t-lg);
+  font-weight: 600;
+}
+
+.connection-editor label {
+  display: block;
+  margin-bottom: var(--s-1);
+  font-size: var(--t-sm);
+  color: var(--muted);
 }
 
 .connection-editor input,
 .connection-editor select {
   width: 100%;
-  padding: 6px 8px;
+  height: var(--h-control);
+  padding: 0 var(--s-2);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--bg);
   color: var(--text);
+  font-size: var(--t-base);
+  box-sizing: border-box;
+}
+
+/* Label sits close to its field; fields sit further from each other. That
+   difference is what makes the form read as groups rather than a list. */
+.field + .field {
+  margin-top: var(--s-3);
+}
+
+.field-group {
+  margin-top: var(--s-5);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--border);
+}
+
+.group-title {
+  margin-bottom: var(--s-3);
+  font-size: var(--t-xs);
+  letter-spacing: 0.08em;
+  color: var(--faint);
 }
 
 .field-row {
   display: flex;
-  gap: 10px;
+  gap: var(--s-3);
 }
 
-.field-row > div {
+.field-row .grow {
   flex: 1;
+  min-width: 0;
+}
+
+/* A port is five characters. Giving it half the dialog made it look
+   stranded next to a full-width host. */
+.field-row .narrow {
+  width: 84px;
+  flex: none;
 }
 
 .hint {
-  color: var(--muted);
+  margin: var(--s-1) 0 0;
+  font-size: var(--t-sm);
+  color: var(--faint);
+}
+
+.hint-inline {
+  color: var(--faint);
   font-weight: 400;
 }
 
 .editor-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 12px;
+  gap: var(--s-2);
+  margin-top: var(--s-6);
 }
 
 button.secondary {
