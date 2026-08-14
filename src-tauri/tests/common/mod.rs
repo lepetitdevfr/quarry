@@ -15,6 +15,14 @@ pub struct TestDb {
 
 /// Start a throwaway Postgres. Requires Docker to be running.
 pub async fn start() -> TestDb {
+    // `rustls::ClientConfig::builder()` (in `make_tls`) panics if no
+    // process-level crypto provider is installed. In the real app this
+    // happens once in `lib.rs::run`; each integration test binary is its
+    // own process, so it needs the same setup. `install_default` errors
+    // if a provider is already installed (e.g. a prior test in this
+    // binary) — that's fine, we only care that one ends up installed.
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     let container = Postgres::default()
         .start()
         .await

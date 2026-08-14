@@ -66,3 +66,81 @@ pub struct LibraryTree {
 /// Gap between sibling positions, so inserting between two neighbours
 /// usually needs no renumbering.
 pub const POSITION_GAP: i64 = 100;
+
+use crate::conn::config::SslMode;
+
+/// What kind of environment a connection points at.
+///
+/// Nothing enforces this yet — the write-guard is a later stage. It
+/// exists now so the guard needs no schema migration, and so the UI can
+/// make production visually obvious today.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Tag {
+    Local,
+    Staging,
+    Prod,
+}
+
+impl Tag {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            Tag::Local => "local",
+            Tag::Staging => "staging",
+            Tag::Prod => "prod",
+        }
+    }
+
+    /// Unrecognised values become `Prod`. Erring toward the most
+    /// cautious tag means a corrupted row shows as dangerous rather
+    /// than looking safe.
+    pub fn from_stored(s: &str) -> Self {
+        match s {
+            "local" => Tag::Local,
+            "staging" => Tag::Staging,
+            _ => Tag::Prod,
+        }
+    }
+
+    /// Default colour when the user does not pick one.
+    pub fn default_colour(&self) -> &'static str {
+        match self {
+            Tag::Local => "#4ade80",
+            Tag::Staging => "#fbbf24",
+            Tag::Prod => "#f26d6d",
+        }
+    }
+}
+
+/// A saved connection. The password is NOT here — it lives in the
+/// Keychain under this record's id.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Connection {
+    pub id: String,
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub dbname: String,
+    pub sslmode: SslMode,
+    pub tag: Tag,
+    pub colour: String,
+    pub last_used_at: Option<String>,
+    pub created_at: String,
+}
+
+/// The fields the UI submits when creating or editing a connection.
+/// `password` is optional: absent means "leave the Keychain entry
+/// alone" on edit, and "no password" on create.
+#[derive(Debug, Clone, Deserialize)]
+pub struct ConnectionInput {
+    pub name: String,
+    pub host: String,
+    pub port: u16,
+    pub user: String,
+    pub dbname: String,
+    pub sslmode: SslMode,
+    pub tag: Tag,
+    pub colour: Option<String>,
+    pub password: Option<String>,
+}

@@ -3,6 +3,37 @@
 Deferred work that is not yet assigned to a stage plan. Anything here is a
 real commitment, not a maybe — it was consciously postponed, not dropped.
 
+## Visual design pass
+
+**Deferred:** 2026-08-14, during the saved-connections stage. The user wants
+fine-tuning done once, at the end, rather than piecemeal per stage.
+
+The UI was built to be correct and legible, not designed. Concrete problems
+observed in the connection editor, which the rest of the app shares:
+
+- **No vertical rhythm.** Labels sit hard against their inputs while unrelated
+  rows are widely spaced, so nothing reads as grouped. Needs a consistent
+  label→field gap and a larger gap between field groups.
+- **Inputs are oversized.** Full-bleed inputs at ~44px tall in a 460px dialog
+  look like a mobile form. Height, padding, and font size should match the
+  density of the rest of the app (13px base).
+- **Fields are not sized to their content.** Port and SSL mode get the same
+  width as Host and Database; a 5-character port field should be narrow.
+- **The dialog is too wide for its content**, which stretches every field.
+- **No visual hierarchy.** The pasted-URL shortcut, the identity fields
+  (name/host/port/user/database), the credential, and the classification
+  (environment/SSL) are four different kinds of thing rendered identically.
+  They want separating — a divider or grouped sections.
+- **Button weight is off.** Save and Cancel are nearly equal in visual weight,
+  and disabled Save is barely distinguishable from enabled.
+
+Worth doing as one deliberate pass across every surface — editor, picker,
+sidebar, tab bar, grid, status bar — so the app ends up with a single spacing
+scale and type scale rather than per-component guesses. Consider extracting
+spacing/size tokens into CSS custom properties alongside the existing colour
+tokens in `App.css`, since the colours are already tokenised and the geometry
+is not.
+
 ## Move a query between collections (UI only)
 
 **Deferred:** 2026-08-14, end of Stage 2. Not urgent, but not forgotten.

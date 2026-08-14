@@ -1,3 +1,4 @@
+pub mod connections;
 pub mod db;
 pub mod mirror;
 pub mod model;

@@ -87,3 +87,36 @@ export interface AppErrorPayload {
   code: string | null;
   position: number | null;
 }
+
+export type Tag = "local" | "staging" | "prod";
+
+export type SslMode = "disable" | "prefer" | "require" | "verify-full";
+
+/** Mirrors Rust `Connection`. The password is never sent to the UI. */
+export interface Connection {
+  id: string;
+  name: string;
+  host: string;
+  port: number;
+  user: string;
+  dbname: string;
+  sslmode: SslMode;
+  tag: Tag;
+  colour: string;
+  last_used_at: string | null;
+  created_at: string;
+}
+
+/** Mirrors Rust `ConnectionInput`. */
+export interface ConnectionInput {
+  name: string;
+  host: string;
+  port: number;
+  user: string;
+  dbname: string;
+  sslmode: SslMode;
+  tag: Tag;
+  colour: string | null;
+  /** Absent or empty means "leave the stored password alone". */
+  password: string | null;
+}
