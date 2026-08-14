@@ -1,16 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "./components/ConfirmDialog";
-import { ConnectionForm } from "./components/ConnectionForm";
+import { ConnectionEditor } from "./components/ConnectionEditor";
+import { ConnectionPicker } from "./components/ConnectionPicker";
+import { PasswordRetry } from "./components/PasswordRetry";
 import type { Creating } from "./components/QueryTree";
 import { ResultGrid } from "./components/ResultGrid";
 import { Sidebar } from "./components/Sidebar";
 import { SqlEditor } from "./components/SqlEditor";
 import { StatusBar } from "./components/StatusBar";
 import { TabBar } from "./components/TabBar";
+import { useConnections } from "./hooks/useConnections";
 import { useLibrary } from "./hooks/useLibrary";
 import { asAppError, execute } from "./lib/ipc";
 import { effectiveSql } from "./lib/tree";
-import type { AppErrorPayload, ConnectionInfo, LibraryTree, QueryResult } from "./types";
+import type { AppErrorPayload, Connection, ConnectionInput, LibraryTree, QueryResult } from "./types";
 import "./App.css";
 
 /** How long the "Saved" indicator stays visible after a save. */
@@ -41,7 +44,21 @@ interface ConfirmRequest {
 }
 
 export default function App() {
-  const [connection, setConnection] = useState<ConnectionInfo | null>(null);
+  const {
+    connections,
+    active: connection,
+    connecting,
+    loaded: connectionsLoaded,
+    actions: connActions,
+  } = useConnections();
+
+  const [pickerOpen, setPickerOpen] = useState(false);
+  const [editing, setEditing] = useState<Connection | "new" | null>(null);
+  const [connectError, setConnectError] = useState<AppErrorPayload | null>(null);
+  // Set when a connect failed for a credential reason, so the user can
+  // supply a password inline instead of having to edit the connection.
+  const [passwordFor, setPasswordFor] = useState<string | null>(null);
+
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<AppErrorPayload | null>(null);
   const [busy, setBusy] = useState(false);
@@ -109,7 +126,7 @@ export default function App() {
     setBusy(true);
     setError(null);
     try {
-      setResult(await execute(connection.id, text));
+      setResult(await execute(text));
     } catch (e) {
       setError(asAppError(e));
       setResult(null);
@@ -201,11 +218,111 @@ export default function App() {
     [library, actions],
   );
 
+  const switchTo = useCallback(
+    async (id: string, password?: string) => {
+      setConnectError(null);
+      try {
+        await connActions.connect(id, password);
+        setResult(null);
+        setError(null);
+        setPickerOpen(false);
+        setPasswordFor(null);
+      } catch (e) {
+        // Stay disconnected and say why: believing you switched when
+        // you did not is the dangerous state.
+        const err = asAppError(e);
+        setConnectError(err);
+        // 28P01 is invalid_password. A missing Keychain entry produces
+        // the same failure, so offer the password inline rather than
+        // making the user go and edit the connection.
+        setPasswordFor(err.code === "28P01" ? id : null);
+      }
+    },
+    [connActions],
+  );
+
+  const saveConnection = useCallback(
+    async (input: ConnectionInput) => {
+      if (editing && editing !== "new") await connActions.update(editing.id, input);
+      else await connActions.create(input);
+      setEditing(null);
+    },
+    [editing, connActions],
+  );
+
+  // Close the header dropdown when clicking anywhere outside it.
+  const connectionMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!pickerOpen) return;
+    function onPointerDown(e: MouseEvent) {
+      if (
+        connectionMenuRef.current &&
+        !connectionMenuRef.current.contains(e.target as Node)
+      ) {
+        setPickerOpen(false);
+      }
+    }
+    window.addEventListener("mousedown", onPointerDown);
+    return () => window.removeEventListener("mousedown", onPointerDown);
+  }, [pickerOpen]);
+
   if (!connection) {
     return (
       <main className="app centered">
         <h1>Quarry</h1>
-        <ConnectionForm onConnected={setConnection} />
+        {editing || (connectionsLoaded && connections.length === 0) ? (
+          <ConnectionEditor
+            existing={editing && editing !== "new" ? editing : undefined}
+            onSave={(input) => void saveConnection(input)}
+            onCancel={() => setEditing(null)}
+          />
+        ) : (
+          <>
+            <ConnectionPicker
+              standalone
+              connections={connections}
+              activeId={null}
+              connecting={connecting}
+              onPick={(id) => void switchTo(id)}
+              onNew={() => setEditing("new")}
+              onEdit={(id) =>
+                setEditing(connections.find((c) => c.id === id) ?? "new")
+              }
+              onDelete={(id) =>
+                setConfirmRequest({
+                  message: "Delete this connection and its saved password?",
+                  confirmLabel: "Delete",
+                  onConfirm: () => {
+                    void connActions.remove(id);
+                    setConfirmRequest(null);
+                  },
+                })
+              }
+            />
+            {connectError && (
+              <p className="error">
+                {connectError.code && (
+                  <span className="sqlstate">{connectError.code}</span>
+                )}
+                {connectError.message}
+              </p>
+            )}
+            {passwordFor && (
+              <PasswordRetry
+                onSubmit={(pw) => void switchTo(passwordFor, pw)}
+                onCancel={() => setPasswordFor(null)}
+              />
+            )}
+          </>
+        )}
+        {confirmRequest && (
+          <ConfirmDialog
+            message={confirmRequest.message}
+            confirmLabel={confirmRequest.confirmLabel}
+            onConfirm={confirmRequest.onConfirm}
+            onCancel={() => setConfirmRequest(null)}
+          />
+        )}
       </main>
     );
   }
@@ -232,10 +349,59 @@ export default function App() {
 
       <div className="main-pane">
         <header className="top-bar">
-          <strong>
-            {connection.user}@{connection.host}:{connection.port}/
-            {connection.dbname}
-          </strong>
+          <span
+            className="tag-stripe"
+            style={{
+              background:
+                connections.find((c) => c.id === connection.id)?.colour ?? "transparent",
+            }}
+          />
+          <div className="connection-menu" ref={connectionMenuRef}>
+            <button
+              className="connection-trigger"
+              onClick={() => setPickerOpen((open) => !open)}
+            >
+              <span
+                className="dot"
+                style={{
+                  background:
+                    connections.find((c) => c.id === connection.id)?.colour ?? "#888",
+                }}
+              />
+              {connections.find((c) => c.id === connection.id)?.name ?? connection.dbname}
+              <span className="caret">▾</span>
+            </button>
+            <span className="connection-target">
+              {connection.user}@{connection.host}:{connection.port}/{connection.dbname}
+            </span>
+
+            {pickerOpen && (
+              <ConnectionPicker
+                connections={connections}
+                activeId={connection.id}
+                connecting={connecting}
+                onPick={(id) => void switchTo(id)}
+                onNew={() => {
+                  setPickerOpen(false);
+                  setEditing("new");
+                }}
+                onEdit={(id) => {
+                  setPickerOpen(false);
+                  setEditing(connections.find((c) => c.id === id) ?? "new");
+                }}
+                onDelete={(id) =>
+                  setConfirmRequest({
+                    message: "Delete this connection and its saved password?",
+                    confirmLabel: "Delete",
+                    onConfirm: () => {
+                      void connActions.remove(id);
+                      setConfirmRequest(null);
+                    },
+                  })
+                }
+              />
+            )}
+          </div>
           <button className="save-button" onClick={() => void save()}>
             Save ⌘S
           </button>
@@ -264,6 +430,16 @@ export default function App() {
           onConfirm={confirmRequest.onConfirm}
           onCancel={() => setConfirmRequest(null)}
         />
+      )}
+
+      {editing && (
+        <div className="modal-backdrop">
+          <ConnectionEditor
+            existing={editing !== "new" ? editing : undefined}
+            onSave={(input) => void saveConnection(input)}
+            onCancel={() => setEditing(null)}
+          />
+        </div>
       )}
     </main>
   );

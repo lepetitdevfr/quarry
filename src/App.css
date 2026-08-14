@@ -200,6 +200,7 @@ button:disabled {
 }
 
 .top-bar {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -377,4 +378,190 @@ button:disabled {
   border-radius: 6px;
   background: var(--bg);
   color: var(--text);
+}
+
+.connection-menu {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.connection-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: transparent;
+  color: var(--text);
+  font-weight: 600;
+  padding: 4px 8px;
+}
+
+.connection-trigger:hover {
+  background: var(--border);
+}
+
+.connection-target {
+  color: var(--muted);
+  font-family: ui-monospace, "SF Mono", monospace;
+}
+
+.tag-stripe {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+}
+
+.connection-picker {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 20;
+  min-width: 340px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 40%);
+}
+
+.connection-picker.standalone {
+  position: static;
+  width: 460px;
+  box-shadow: none;
+}
+
+.picker-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.picker-list li {
+  display: flex;
+  align-items: center;
+}
+
+.picker-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  padding: 6px 8px;
+  background: transparent;
+  color: var(--text);
+  text-align: left;
+  border-radius: 6px;
+}
+
+.picker-row:hover,
+.picker-row:focus-visible {
+  background: var(--border);
+}
+
+.picker-row.active {
+  outline: 1px solid var(--accent);
+}
+
+.picker-name {
+  font-weight: 500;
+}
+
+.picker-tag {
+  color: var(--muted);
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+}
+
+.picker-target {
+  margin-left: auto;
+  color: var(--muted);
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}
+
+.picker-empty {
+  margin: 8px;
+  color: var(--muted);
+}
+
+.picker-new {
+  width: 100%;
+  margin-top: 6px;
+  background: transparent;
+  color: var(--accent);
+  text-align: left;
+}
+
+.connection-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 460px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.connection-editor h2 {
+  margin: 0 0 8px;
+  font-size: 15px;
+}
+
+.connection-editor input,
+.connection-editor select {
+  width: 100%;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--bg);
+  color: var(--text);
+}
+
+.field-row {
+  display: flex;
+  gap: 10px;
+}
+
+.field-row > div {
+  flex: 1;
+}
+
+.hint {
+  color: var(--muted);
+  font-weight: 400;
+}
+
+.editor-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+button.secondary {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgb(0 0 0 / 50%);
 }
