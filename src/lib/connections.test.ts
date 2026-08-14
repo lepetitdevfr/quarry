@@ -29,6 +29,16 @@ describe("parseConnectionUrl", () => {
     expect(parsed?.sslmode).toBe("require");
   });
 
+  it("maps sslmode=verify-full to verify-full", () => {
+    const parsed = parseConnectionUrl("postgres://localhost/db?sslmode=verify-full");
+    expect(parsed?.sslmode).toBe("verify-full");
+  });
+
+  it("maps sslmode=verify-ca to verify-full", () => {
+    const parsed = parseConnectionUrl("postgres://localhost/db?sslmode=verify-ca");
+    expect(parsed?.sslmode).toBe("verify-full");
+  });
+
   it("returns null for something that is not a postgres URL", () => {
     expect(parseConnectionUrl("mysql://localhost/db")).toBeNull();
     expect(parseConnectionUrl("not a url")).toBeNull();

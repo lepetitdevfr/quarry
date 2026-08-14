@@ -44,11 +44,11 @@ export function parseConnectionUrl(raw: string): ParsedUrl | null {
   const sslmode: SslMode =
     sslmodeParam === "disable"
       ? "disable"
-      : sslmodeParam === "require" ||
-          sslmodeParam === "verify-ca" ||
-          sslmodeParam === "verify-full"
+      : sslmodeParam === "require"
         ? "require"
-        : "prefer";
+        : sslmodeParam === "verify-ca" || sslmodeParam === "verify-full"
+          ? "verify-full"
+          : "prefer";
 
   return {
     // An empty hostname means the URL had none, e.g. postgres:///mydb.

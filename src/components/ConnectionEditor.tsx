@@ -10,7 +10,17 @@ interface Props {
 }
 
 const TAGS: Tag[] = ["local", "staging", "prod"];
-const SSL_MODES: SslMode[] = ["disable", "prefer", "require"];
+const SSL_MODES: SslMode[] = ["disable", "prefer", "require", "verify-full"];
+
+// `require` genuinely surprises people: it encrypts but does not check
+// the certificate. Spell that out rather than let the mode name alone
+// imply a guarantee it doesn't make.
+const SSL_MODE_LABELS: Record<SslMode, string> = {
+  disable: "disable — no encryption",
+  prefer: "prefer — encrypt if possible",
+  require: "require — encrypt, no certificate check",
+  "verify-full": "verify-full — encrypt and verify certificate",
+};
 
 export function ConnectionEditor({ existing, onSave, onCancel }: Props) {
   const [name, setName] = useState(existing?.name ?? "");
@@ -125,7 +135,7 @@ export function ConnectionEditor({ existing, onSave, onCancel }: Props) {
           >
             {SSL_MODES.map((m) => (
               <option key={m} value={m}>
-                {m}
+                {SSL_MODE_LABELS[m]}
               </option>
             ))}
           </select>

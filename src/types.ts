@@ -90,7 +90,7 @@ export interface AppErrorPayload {
 
 export type Tag = "local" | "staging" | "prod";
 
-export type SslMode = "disable" | "prefer" | "require";
+export type SslMode = "disable" | "prefer" | "require" | "verify-full";
 
 /** Mirrors Rust `Connection`. The password is never sent to the UI. */
 export interface Connection {
