@@ -3,14 +3,14 @@ use percent_encoding::percent_decode_str;
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-/// How to negotiate TLS. Mirrors libpq's `sslmode`, minus the modes we
-/// do not support in v1 (`verify-ca`, `verify-full` need a cert UI).
+/// How to negotiate TLS. Mirrors libpq's `sslmode`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum SslMode {
     Disable,
     Prefer,
     Require,
+    VerifyFull,
 }
 
 /// Everything needed to open a connection. No secrets are logged: the
@@ -78,7 +78,12 @@ impl ConnectionConfig {
             .find(|(k, _)| k == "sslmode")
             .map(|(_, v)| match v.as_ref() {
                 "disable" => SslMode::Disable,
-                "require" | "verify-ca" | "verify-full" => SslMode::Require,
+                "require" => SslMode::Require,
+                // `verify-ca` verifies the certificate chain but skips the
+                // hostname check; we don't implement that distinction, so
+                // we map it to the stricter `VerifyFull` rather than
+                // silently under-verifying.
+                "verify-ca" | "verify-full" => SslMode::VerifyFull,
                 _ => SslMode::Prefer,
             })
             .unwrap_or(SslMode::Prefer);
@@ -112,6 +117,7 @@ impl SslMode {
             SslMode::Disable => "disable",
             SslMode::Prefer => "prefer",
             SslMode::Require => "require",
+            SslMode::VerifyFull => "verify-full",
         }
     }
 
@@ -121,6 +127,7 @@ impl SslMode {
         match s {
             "disable" => SslMode::Disable,
             "require" => SslMode::Require,
+            "verify-ca" | "verify-full" => SslMode::VerifyFull,
             _ => SslMode::Prefer,
         }
     }
@@ -198,7 +205,12 @@ mod tests {
 
     #[test]
     fn sslmode_round_trips_through_its_stored_form() {
-        for mode in [SslMode::Disable, SslMode::Prefer, SslMode::Require] {
+        for mode in [
+            SslMode::Disable,
+            SslMode::Prefer,
+            SslMode::Require,
+            SslMode::VerifyFull,
+        ] {
             assert_eq!(SslMode::from_stored(mode.as_str()), mode);
         }
     }
@@ -206,5 +218,26 @@ mod tests {
     #[test]
     fn an_unknown_stored_sslmode_falls_back_to_prefer() {
         assert_eq!(SslMode::from_stored("nonsense"), SslMode::Prefer);
+    }
+
+    #[test]
+    fn verify_ca_and_verify_full_stored_forms_map_to_verify_full() {
+        assert_eq!(SslMode::from_stored("verify-ca"), SslMode::VerifyFull);
+        assert_eq!(SslMode::from_stored("verify-full"), SslMode::VerifyFull);
+    }
+
+    #[test]
+    fn from_url_maps_verify_ca_and_verify_full_to_verify_full() {
+        let c = ConnectionConfig::from_url(
+            "postgres://localhost/mydb?sslmode=verify-ca",
+        )
+        .unwrap();
+        assert_eq!(c.sslmode, SslMode::VerifyFull);
+
+        let c = ConnectionConfig::from_url(
+            "postgres://localhost/mydb?sslmode=verify-full",
+        )
+        .unwrap();
+        assert_eq!(c.sslmode, SslMode::VerifyFull);
     }
 }
