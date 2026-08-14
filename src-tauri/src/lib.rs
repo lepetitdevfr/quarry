@@ -41,6 +41,8 @@ pub fn run() {
             commands::close_tab,
             commands::save_scratch,
             commands::set_cursor,
+            commands::open_preview_tab,
+            commands::promote_tab,
             commands::list_connections,
             commands::create_connection,
             commands::update_connection,
