@@ -765,3 +765,18 @@ button.link {
   color: var(--accent);
   text-decoration: underline;
 }
+
+/* A preview tab is disposable until edited — italic marks it as such,
+   the same signal VS Code uses. */
+.tab.preview .tab-label {
+  font-style: italic;
+}
+
+/* Ordinal gutter: present but recessive — it is scaffolding, not data. */
+.result-grid .row-num {
+  width: 52px;
+  color: var(--faint);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}

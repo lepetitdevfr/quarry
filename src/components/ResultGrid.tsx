@@ -30,6 +30,9 @@ export function ResultGrid({ result }: Props) {
       <table>
         <thead>
           <tr>
+            {/* Ordinal gutter. Empty header: numbering the numbering
+                column would be noise. */}
+            <th className="row-num" aria-label="Row number" />
             {result.columns.map((c, i) => (
               // Column names can repeat (e.g. `SELECT 1 as n, 2 as n`), so
               // the index is used as the key instead of the name.
@@ -52,6 +55,7 @@ export function ResultGrid({ result }: Props) {
                   height: `${ROW_HEIGHT}px`,
                 }}
               >
+                <td className="row-num">{item.index + 1}</td>
                 {row.map((cell, i) => {
                   const { text, kind } = formatCell(cell);
                   return (

@@ -100,6 +100,9 @@ export function useLibrary() {
     newTab: async () => setTabs(await ipc.openTab(null)),
     activateTab: async (id: string) => setTabs(await ipc.activateTab(id)),
     closeTab: async (id: string) => setTabs(await ipc.closeTab(id)),
+    openPreview: async (title: string, sql: string) =>
+      setTabs(await ipc.openPreviewTab(title, sql)),
+    promoteTab: async (id: string) => setTabs(await ipc.promoteTab(id)),
 
     createCollection: async (name: string, parentId: string | null) =>
       setLibrary(await ipc.createCollection(name, parentId)),

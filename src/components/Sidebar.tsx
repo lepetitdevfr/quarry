@@ -21,6 +21,7 @@ interface Props {
   schemaError: string | null;
   connected: boolean;
   onRefreshSchema: () => void;
+  onPreviewTable: (schema: string, table: string) => void;
 }
 
 export function Sidebar(props: Props) {
@@ -36,6 +37,7 @@ export function Sidebar(props: Props) {
           error={props.schemaError}
           connected={props.connected}
           onRefresh={props.onRefreshSchema}
+          onPreviewTable={props.onPreviewTable}
         />
       </section>
 

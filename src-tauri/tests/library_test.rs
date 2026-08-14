@@ -374,3 +374,96 @@ fn autosaving_a_draft_does_not_touch_the_mirror() {
     let content = std::fs::read_to_string(mirror.join("q.sql")).unwrap();
     assert_eq!(content, "select 1", "only explicit saves reach the mirror");
 }
+
+#[test]
+fn opens_a_preview_tab() {
+    let (store, _dir) = store();
+
+    let tabs = store
+        .open_preview_tab("users", "select * from users limit 500")
+        .unwrap();
+
+    assert_eq!(tabs.len(), 1);
+    assert!(tabs[0].is_preview);
+    assert_eq!(tabs[0].title.as_deref(), Some("users"));
+    assert_eq!(tabs[0].scratch_sql.as_deref(), Some("select * from users limit 500"));
+    assert!(tabs[0].is_active, "a preview opens focused");
+}
+
+#[test]
+fn a_second_preview_reuses_the_same_slot() {
+    let (store, _dir) = store();
+
+    store.open_preview_tab("users", "select * from users limit 500").unwrap();
+    let tabs = store
+        .open_preview_tab("events", "select * from events limit 500")
+        .unwrap();
+
+    let previews: Vec<_> = tabs.iter().filter(|t| t.is_preview).collect();
+    assert_eq!(previews.len(), 1, "previews must not pile up");
+    assert_eq!(previews[0].title.as_deref(), Some("events"));
+    assert_eq!(
+        previews[0].scratch_sql.as_deref(),
+        Some("select * from events limit 500"),
+    );
+}
+
+#[test]
+fn a_preview_does_not_disturb_ordinary_tabs() {
+    let (store, _dir) = store();
+    let q = store.create_query("saved", "select 1", None).unwrap();
+    store.open_tab(Some(&q.id)).unwrap();
+
+    let tabs = store.open_preview_tab("users", "select * from users").unwrap();
+
+    assert_eq!(tabs.len(), 2);
+    assert_eq!(tabs.iter().filter(|t| !t.is_preview).count(), 1);
+}
+
+#[test]
+fn promoting_clears_the_preview_flag() {
+    let (store, _dir) = store();
+    let tabs = store.open_preview_tab("users", "select * from users").unwrap();
+    let id = tabs[0].id.clone();
+
+    store.promote_tab(&id).unwrap();
+
+    let after = store.tabs().unwrap();
+    assert!(!after[0].is_preview);
+    assert_eq!(
+        after[0].title.as_deref(),
+        Some("users"),
+        "the label stays — only its disposability changes",
+    );
+}
+
+#[test]
+fn a_promoted_tab_is_not_reused_by_the_next_preview() {
+    // The whole point of promotion: a tab you have started editing must
+    // never be destroyed by the next double-click.
+    let (store, _dir) = store();
+    let first = store.open_preview_tab("users", "select * from users").unwrap();
+    let id = first[0].id.clone();
+    store.promote_tab(&id).unwrap();
+
+    let tabs = store.open_preview_tab("events", "select * from events").unwrap();
+
+    assert_eq!(tabs.len(), 2, "the promoted tab survives");
+    assert!(tabs.iter().any(|t| t.id == id && !t.is_preview));
+    assert!(tabs.iter().any(|t| t.is_preview && t.title.as_deref() == Some("events")));
+}
+
+#[test]
+fn preview_tabs_do_not_survive_reopening() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("w.db");
+
+    {
+        let store = Store::open_at(&path).unwrap();
+        store.open_preview_tab("users", "select * from users").unwrap();
+        assert_eq!(store.tabs().unwrap().len(), 1);
+    }
+
+    let store = Store::open_at(&path).unwrap();
+    assert!(store.tabs().unwrap().is_empty(), "previews are transient");
+}

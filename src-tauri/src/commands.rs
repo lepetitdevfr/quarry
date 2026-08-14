@@ -248,6 +248,24 @@ pub fn set_cursor(
     state.library.set_cursor(&id, pos)
 }
 
+#[tauri::command]
+pub fn open_preview_tab(
+    state: tauri::State<'_, AppState>,
+    title: String,
+    sql: String,
+) -> Result<Vec<Tab>, AppError> {
+    state.library.open_preview_tab(&title, &sql)
+}
+
+#[tauri::command]
+pub fn promote_tab(
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<Vec<Tab>, AppError> {
+    state.library.promote_tab(&id)?;
+    state.library.tabs()
+}
+
 // ---- connection commands ----------------------------------------------
 
 use crate::library::model::{Connection, ConnectionInput};

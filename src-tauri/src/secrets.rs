@@ -7,9 +7,26 @@ use security_framework::passwords::{
 /// a user can find and revoke them in Keychain Access.
 const SERVICE: &str = "com.quarry.app";
 
-/// Store a password. Overwrites any existing entry for this account.
-/// `account` is the connection id, so each connection has one entry.
+/// Store a password. `account` is the connection id, so each connection
+/// has exactly one entry.
+///
+/// The existing entry is DELETED before writing rather than updated in
+/// place. That is not belt-and-braces — it is the only way the retry
+/// path can work. macOS grants Keychain access per code signature, and
+/// `tauri dev` re-signs the binary on every rebuild, so an entry written
+/// by the previous build is unreadable AND unwritable by this one: both
+/// `get` and `set` fail with `errSecAuthFailed`. Updating in place would
+/// mean a user whose entry became inaccessible could never fix it — the
+/// password prompt would reappear forever, failing identically each
+/// time. Deleting first replaces the dead entry with one this binary
+/// owns.
+///
+/// A delete failure is deliberately ignored: the common case is
+/// "nothing was there", and if the delete genuinely failed the `set`
+/// below reports it.
 pub fn save_password(account: &str, password: &str) -> Result<(), AppError> {
+    let _ = delete_generic_password(SERVICE, account);
+
     set_generic_password(SERVICE, account, password.as_bytes())
         .map_err(|e| AppError::Keychain(e.to_string()))
 }
@@ -21,6 +38,11 @@ pub fn save_password(account: &str, password: &str) -> Result<(), AppError> {
 /// it directly — hence the literal, with the name in a comment so it
 /// stays greppable.
 const ERR_SEC_ITEM_NOT_FOUND: i32 = -25300;
+
+/// `errSecAuthFailed`: the entry exists, but this process is not
+/// authorised to read it — typically because the binary's code
+/// signature changed since the entry was written.
+const ERR_SEC_AUTH_FAILED: i32 = -25293;
 
 /// Read a password. A missing entry is `Ok(None)`, not an error — the
 /// caller cannot distinguish "no password saved" from "lookup broke"
@@ -49,6 +71,20 @@ pub fn load_password(account: &str) -> Result<Option<String>, AppError> {
         // errSecItemNotFound: nothing saved under this account, which
         // is a normal state, not a failure.
         Err(e) if e.code() == ERR_SEC_ITEM_NOT_FOUND => Ok(None),
+        // errSecAuthFailed: the entry exists but this binary is not
+        // allowed to read it. macOS reports this as "The user name or
+        // passphrase you entered is not correct", which sounds like a
+        // database credential problem and sends people looking in
+        // entirely the wrong place. Say what it actually is, and what
+        // fixes it — re-entering the password replaces the entry with
+        // one this binary owns (see `save_password`).
+        Err(e) if e.code() == ERR_SEC_AUTH_FAILED => Err(AppError::Keychain(
+            "macOS denied access to the saved password. This happens after \
+             the app is rebuilt or updated, because Keychain entries are \
+             tied to the signature that created them. Enter the password \
+             again to re-save it."
+                .to_string(),
+        )),
         // Any other error means the lookup itself broke (locked or
         // inaccessible Keychain, wrong signing identity, etc.) — report
         // it rather than pretending there's no password.
@@ -118,5 +154,19 @@ mod tests {
     fn deleting_an_absent_password_is_not_an_error() {
         let account = format!("never-existed-{}", std::process::id());
         assert!(delete_password(&account).is_ok());
+    }
+    /// `save_password` must overwrite an existing entry rather than
+    /// erroring or leaving the old value. This is the path the inline
+    /// password retry depends on: without delete-then-write, a user
+    /// whose entry became inaccessible could never replace it.
+    #[test]
+    fn saving_twice_replaces_the_stored_password() {
+        let account = format!("replace-{}", std::process::id());
+        let _guard = CleansUpOnDrop(&account);
+
+        save_password(&account, "first").expect("first save");
+        save_password(&account, "second").expect("second save must replace");
+
+        assert_eq!(load_password(&account).unwrap().as_deref(), Some("second"));
     }
 }

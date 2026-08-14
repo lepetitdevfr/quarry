@@ -10,6 +10,7 @@ interface Props {
   error: string | null;
   connected: boolean;
   onRefresh: () => void;
+  onPreviewTable: (schema: string, table: string) => void;
 }
 
 /** Must match --h-row in App.css: the virtualizer positions rows by this
@@ -45,6 +46,7 @@ export function SchemaTree({
   error,
   connected,
   onRefresh,
+  onPreviewTable,
 }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
@@ -129,6 +131,11 @@ export function SchemaTree({
                   paddingLeft: 8 + row.depth * 12,
                 }}
                 onClick={() => row.expandable && toggle(row.id)}
+                onDoubleClick={() => {
+                  if (row.kind === "table" && row.tableSchema && row.tableName) {
+                    onPreviewTable(row.tableSchema, row.tableName);
+                  }
+                }}
                 title={row.referencesLabel ?? row.detail}
               >
                 {/* Always rendered, even when empty: leaf rows without a

@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { buildCompletionSchema, flattenSchema, matchesFilter } from "./schema";
+import {
+  buildCompletionSchema,
+  flattenSchema,
+  matchesFilter,
+  previewSql,
+} from "./schema";
 import type { Schema } from "../types";
 
 const SCHEMA: Schema = {
@@ -139,6 +144,13 @@ describe("flattenSchema", () => {
     const tableRow = rows.find((r) => r.label === "users")!;
     expect(tableRow.depth).toBeGreaterThan(schemaRow.depth);
   });
+
+  it("carries table identity on table rows", () => {
+    const rows = flattenSchema(SCHEMA, new Set(["schema:public"]), "");
+    const users = rows.find((r) => r.label === "users")!;
+    expect(users.tableSchema).toBe("public");
+    expect(users.tableName).toBe("users");
+  });
 });
 
 describe("matchesFilter", () => {
@@ -164,5 +176,28 @@ describe("matchesFilter", () => {
 
   it("treats an empty filter as matching everything", () => {
     expect(matchesFilter("anything", "")).toBe(true);
+  });
+});
+
+describe("previewSql", () => {
+  it("qualifies and quotes the table", () => {
+    expect(previewSql("public", "users")).toBe(
+      'select * from "public"."users" limit 500',
+    );
+  });
+
+  it("survives a name that needs quoting", () => {
+    // An unquoted mixed-case or reserved-word name silently resolves to
+    // something else, or fails outright.
+    expect(previewSql("public", "Order")).toBe(
+      'select * from "public"."Order" limit 500',
+    );
+  });
+
+  it("escapes an embedded double quote", () => {
+    // Legal in Postgres, and the only way this builds broken SQL.
+    expect(previewSql("public", 'we"ird')).toBe(
+      'select * from "public"."we""ird" limit 500',
+    );
   });
 });

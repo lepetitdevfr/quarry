@@ -28,14 +28,14 @@ export function TabBar({
     <div className="tab-bar">
       {tabs.map((tab) => {
         const query = queryById(tab.query_id);
-        const label = query?.name ?? "untitled";
+        const label = query?.name ?? tab.title ?? "untitled";
         const dirty = query ? isDirty(query) : (tab.scratch_sql ?? "") !== "";
         const naming = tab.id === namingTabId;
 
         return (
           <div
             key={tab.id}
-            className={`tab${tab.is_active ? " active" : ""}`}
+            className={`tab${tab.is_active ? " active" : ""}${tab.is_preview ? " preview" : ""}`}
             onClick={() => onActivate(tab.id)}
             title={label}
           >

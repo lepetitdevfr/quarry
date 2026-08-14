@@ -134,6 +134,14 @@ export async function setCursor(id: string, pos: number): Promise<void> {
   return invoke("set_cursor", { id, pos });
 }
 
+export async function openPreviewTab(title: string, sql: string): Promise<Tab[]> {
+  return invoke<Tab[]>("open_preview_tab", { title, sql });
+}
+
+export async function promoteTab(id: string): Promise<Tab[]> {
+  return invoke<Tab[]>("promote_tab", { id });
+}
+
 /// Re-reads the database structure. Used for both the initial load
 /// after connecting and the manual refresh button.
 export async function refreshSchema(): Promise<Schema> {

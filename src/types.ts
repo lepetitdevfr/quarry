@@ -60,6 +60,8 @@ export interface Tab {
   position: number;
   is_active: boolean;
   cursor_pos: number;
+  is_preview: boolean;
+  title: string | null;
 }
 
 /** Mirrors Rust `LibraryTree`. */
