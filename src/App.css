@@ -6,8 +6,34 @@
   --muted: #8b93a1;
   --accent: #4f8ef7;
   --error: #f26d6d;
+
+  /* Tertiary text: twisties, badges, section headers. Splitting this out
+     of --muted is what gives the UI hierarchy — one grey for six roles
+     meant nothing separated visually. */
+  --faint: #6b7280;
+
+  /* spacing — 4px base */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+
+  /* control heights */
+  --h-row: 26px;      /* tree rows, tabs */
+  --h-control: 28px;  /* inputs, selects, buttons */
+
+  /* type scale */
+  --t-xs: 10px;       /* section headers, badges */
+  --t-sm: 11px;       /* column types, definitions, hints */
+  --t-base: 13px;     /* body */
+  --t-lg: 15px;       /* dialog titles */
+
+  --radius: 6px;
+  --radius-lg: 10px;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
-  font-size: 13px;
+  font-size: var(--t-base);
 }
 
 body {
@@ -29,33 +55,19 @@ body {
 }
 
 .top-bar {
-  padding: 8px 12px;
+  padding: var(--s-2) var(--s-3);
   border-bottom: 1px solid var(--border);
   background: var(--panel);
 }
 
-.connection-form {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 460px;
-}
-
-.connection-form input {
-  padding: 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--panel);
-  color: var(--text);
-  font-family: ui-monospace, "SF Mono", monospace;
-}
-
 button {
-  padding: 6px 14px;
+  height: var(--h-control);
+  padding: 0 var(--s-4);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--accent);
   color: white;
+  font-size: var(--t-base);
   font-weight: 500;
 }
 
@@ -66,7 +78,7 @@ button:disabled {
 .editor-toolbar {
   display: flex;
   justify-content: flex-end;
-  padding: 6px;
+  padding: var(--s-2);
   border-bottom: 1px solid var(--border);
 }
 
@@ -97,16 +109,17 @@ button:disabled {
   top: 0;
   z-index: 1;
   text-align: left;
-  padding: 6px 10px;
+  padding: var(--s-1) var(--s-3);
   background: var(--panel);
   border-bottom: 1px solid var(--border);
   white-space: nowrap;
 }
 
 .col-type {
-  margin-left: 6px;
+  margin-left: var(--s-2);
   color: var(--muted);
   font-weight: 400;
+  font-size: var(--t-sm);
 }
 
 .result-grid tbody {
@@ -115,7 +128,7 @@ button:disabled {
 }
 
 .result-grid td {
-  padding: 4px 10px;
+  padding: var(--s-1) var(--s-3);
   border-bottom: 1px solid var(--border);
   font-family: ui-monospace, "SF Mono", monospace;
   white-space: nowrap;
@@ -134,7 +147,7 @@ button:disabled {
 }
 
 .status-bar {
-  padding: 6px 12px;
+  padding: var(--s-2) var(--s-3);
   border-top: 1px solid var(--border);
   background: var(--panel);
   color: var(--muted);
@@ -157,14 +170,39 @@ button:disabled {
   flex-direction: row;
 }
 
+.sidebar-shell {
+  display: flex;
+  flex: none;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .sidebar {
+  /* width now comes from .sidebar-shell's inline style */
   display: flex;
   flex-direction: column;
-  width: 260px;
-  min-width: 160px;
+  flex: 1;
+  min-width: 0;
   border-right: 1px solid var(--border);
   background: var(--panel);
   overflow: hidden;
+}
+
+.sidebar-resizer {
+  flex: none;
+  width: 6px;
+  margin-left: -3px;
+  cursor: col-resize;
+  background: transparent;
+  /* Sits above the panes so the pointer always lands on the handle
+     rather than on whatever is underneath it. */
+  position: relative;
+  z-index: 5;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer:active {
+  background: var(--accent);
 }
 
 .sidebar-section {
@@ -178,10 +216,10 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 10px;
-  font-size: 11px;
+  padding: var(--s-2) var(--s-3);
+  font-size: var(--t-xs);
   letter-spacing: 0.06em;
-  color: var(--muted);
+  color: var(--faint);
   position: sticky;
   top: 0;
   background: var(--panel);
@@ -209,8 +247,9 @@ button:disabled {
 .tree-row {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 3px 8px;
+  gap: var(--s-1);
+  height: var(--h-row);
+  padding: 0 var(--s-2);
   cursor: default;
   white-space: nowrap;
 }
@@ -235,7 +274,7 @@ button:disabled {
 }
 
 .tree-empty {
-  padding: 6px 10px;
+  padding: var(--s-2) var(--s-3);
   color: var(--muted);
 }
 
@@ -244,9 +283,9 @@ button:disabled {
 .tab-new {
   background: none;
   border: none;
-  color: var(--muted);
-  padding: 0 4px;
-  font-size: 13px;
+  color: var(--faint);
+  padding: 0 var(--s-1);
+  font-size: var(--t-base);
   opacity: 0;
 }
 
@@ -269,7 +308,7 @@ button:disabled {
 
 .rename-input {
   width: 80%;
-  padding: 2px 4px;
+  padding: 0 var(--s-1);
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--accent);
@@ -293,8 +332,9 @@ button:disabled {
 .tab {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 10px;
+  gap: var(--s-1);
+  height: var(--h-row);
+  padding: 0 var(--s-3);
   border-right: 1px solid var(--border);
   color: var(--muted);
   white-space: nowrap;
@@ -313,8 +353,8 @@ button:disabled {
 }
 
 .save-button {
-  padding: 4px 10px;
-  font-size: 12px;
+  padding: 0 var(--s-3);
+  font-size: var(--t-base);
 }
 
 .sidebar-header-actions {
@@ -341,10 +381,10 @@ button:disabled {
 .confirm-dialog {
   width: 320px;
   max-width: calc(100vw - 32px);
-  padding: 16px;
+  padding: var(--s-4);
   background: var(--panel);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
 }
 
@@ -368,17 +408,18 @@ button:disabled {
 .password-retry {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--s-2);
   width: 460px;
   margin-top: 8px;
-  padding: 12px;
+  padding: var(--s-3);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   background: var(--panel);
 }
 
 .password-retry input {
-  padding: 6px 8px;
+  padding: 0 var(--s-2);
+  height: var(--h-control);
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--bg);
@@ -399,7 +440,7 @@ button:disabled {
   background: transparent;
   color: var(--text);
   font-weight: 600;
-  padding: 4px 8px;
+  padding: var(--s-1) var(--s-2);
 }
 
 .connection-trigger:hover {
@@ -432,7 +473,7 @@ button:disabled {
   left: 0;
   z-index: 20;
   min-width: 340px;
-  padding: 6px;
+  padding: var(--s-2);
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--panel);
@@ -459,13 +500,14 @@ button:disabled {
 .picker-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s-2);
   flex: 1;
-  padding: 6px 8px;
+  height: var(--h-row);
+  padding: 0 var(--s-2);
   background: transparent;
   color: var(--text);
   text-align: left;
-  border-radius: 6px;
+  border-radius: var(--radius);
 }
 
 .picker-row:hover,
@@ -482,9 +524,9 @@ button:disabled {
 }
 
 .picker-tag {
-  color: var(--muted);
+  color: var(--faint);
   text-transform: uppercase;
-  font-size: 10px;
+  font-size: var(--t-xs);
   letter-spacing: 0.06em;
 }
 
@@ -492,7 +534,7 @@ button:disabled {
   margin-left: auto;
   color: var(--muted);
   font-family: ui-monospace, monospace;
-  font-size: 11px;
+  font-size: var(--t-sm);
 }
 
 .picker-empty {
@@ -511,48 +553,91 @@ button:disabled {
 .connection-editor {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  width: 460px;
-  padding: 16px;
+  width: 380px;
+  padding: var(--s-5);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-lg);
   background: var(--panel);
 }
 
 .connection-editor h2 {
-  margin: 0 0 8px;
-  font-size: 15px;
+  margin: 0 0 var(--s-4);
+  font-size: var(--t-lg);
+  font-weight: 600;
+}
+
+.connection-editor label {
+  display: block;
+  margin-bottom: var(--s-1);
+  font-size: var(--t-sm);
+  color: var(--muted);
 }
 
 .connection-editor input,
 .connection-editor select {
   width: 100%;
-  padding: 6px 8px;
+  height: var(--h-control);
+  padding: 0 var(--s-2);
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   background: var(--bg);
   color: var(--text);
+  font-size: var(--t-base);
+  box-sizing: border-box;
+}
+
+/* Label sits close to its field; fields sit further from each other. That
+   difference is what makes the form read as groups rather than a list. */
+.field + .field {
+  margin-top: var(--s-3);
+}
+
+.field-group {
+  margin-top: var(--s-5);
+  padding-top: var(--s-4);
+  border-top: 1px solid var(--border);
+}
+
+.group-title {
+  margin-bottom: var(--s-3);
+  font-size: var(--t-xs);
+  letter-spacing: 0.08em;
+  color: var(--faint);
 }
 
 .field-row {
   display: flex;
-  gap: 10px;
+  gap: var(--s-3);
 }
 
-.field-row > div {
+.field-row .grow {
   flex: 1;
+  min-width: 0;
+}
+
+/* A port is five characters. Giving it half the dialog made it look
+   stranded next to a full-width host. */
+.field-row .narrow {
+  width: 84px;
+  flex: none;
 }
 
 .hint {
-  color: var(--muted);
+  margin: var(--s-1) 0 0;
+  font-size: var(--t-sm);
+  color: var(--faint);
+}
+
+.hint-inline {
+  color: var(--faint);
   font-weight: 400;
 }
 
 .editor-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 12px;
+  gap: var(--s-2);
+  margin-top: var(--s-6);
 }
 
 button.secondary {
@@ -573,19 +658,20 @@ button.secondary {
 
 .schema-toolbar {
   display: flex;
-  gap: 4px;
+  gap: var(--s-1);
   align-items: center;
-  padding: 4px 6px;
+  padding: var(--s-1) var(--s-2);
 }
 
 .schema-filter {
   flex: 1;
-  padding: 3px 6px;
+  height: var(--h-control);
+  padding: 0 var(--s-2);
   border: 1px solid var(--border);
-  border-radius: 5px;
+  border-radius: var(--radius);
   background: var(--bg);
   color: var(--text);
-  font-size: 12px;
+  font-size: var(--t-base);
 }
 
 .schema-toolbar .row-action {
@@ -607,7 +693,7 @@ button.secondary {
 .twisty {
   display: inline-block;
   width: 12px;
-  color: var(--muted);
+  color: var(--faint);
   flex: none;
   text-align: center;
 }
@@ -632,7 +718,7 @@ button.secondary {
   margin-left: 8px;
   color: var(--muted);
   font-family: ui-monospace, monospace;
-  font-size: 11px;
+  font-size: var(--t-sm);
 }
 
 /* NOT NULL columns read stronger than nullable ones. */
@@ -642,7 +728,7 @@ button.secondary {
 
 .marker {
   margin-left: 6px;
-  font-size: 9px;
+  font-size: var(--t-xs);
   letter-spacing: 0.04em;
 }
 
@@ -660,16 +746,16 @@ button.secondary {
 .schema-badge {
   margin-left: auto;
   padding-left: 8px;
-  color: var(--muted);
-  font-size: 9px;
+  color: var(--faint);
+  font-size: var(--t-xs);
   letter-spacing: 0.04em;
   flex: none;
 }
 
 .tree-error {
-  margin: 6px 8px;
+  margin: var(--s-2);
   color: var(--error);
-  font-size: 12px;
+  font-size: var(--t-sm);
 }
 
 button.link {

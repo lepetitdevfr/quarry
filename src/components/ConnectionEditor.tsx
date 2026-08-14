@@ -70,75 +70,91 @@ export function ConnectionEditor({ existing, onSave, onCancel }: Props) {
     <form className="connection-editor" onSubmit={submit}>
       <h2>{existing ? "Edit connection" : "New connection"}</h2>
 
-      <label htmlFor="url">Paste a connection URL</label>
-      <input
-        id="url"
-        type="text"
-        placeholder="postgres://user:password@localhost:5432/dbname"
-        spellCheck={false}
-        onChange={(e) => applyUrl(e.target.value)}
-      />
-      {urlError && <p className="error">{urlError}</p>}
+      <div className="field">
+        <label htmlFor="url">Paste a connection URL</label>
+        <input
+          id="url"
+          type="text"
+          placeholder="postgres://user:password@host:5432/db"
+          spellCheck={false}
+          onChange={(e) => applyUrl(e.target.value)}
+        />
+        <p className="hint">Fills in everything below.</p>
+        {urlError && <p className="error">{urlError}</p>}
+      </div>
 
-      <label htmlFor="name">Name</label>
-      <input id="name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+      <div className="field-group">
+        <div className="group-title">CONNECTION</div>
 
-      <div className="field-row">
-        <div>
-          <label htmlFor="host">Host</label>
-          <input id="host" value={host} onChange={(e) => setHost(e.target.value)} />
+        <div className="field">
+          <label htmlFor="name">Name</label>
+          <input id="name" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
         </div>
-        <div>
-          <label htmlFor="port">Port</label>
-          <input id="port" value={port} onChange={(e) => setPort(e.target.value)} />
+
+        <div className="field field-row">
+          <div className="grow">
+            <label htmlFor="host">Host</label>
+            <input id="host" value={host} onChange={(e) => setHost(e.target.value)} />
+          </div>
+          <div className="narrow">
+            <label htmlFor="port">Port</label>
+            <input id="port" value={port} onChange={(e) => setPort(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="field field-row">
+          <div className="grow">
+            <label htmlFor="user">User</label>
+            <input id="user" value={user} onChange={(e) => setUser(e.target.value)} />
+          </div>
+          <div className="grow">
+            <label htmlFor="dbname">Database</label>
+            <input id="dbname" value={dbname} onChange={(e) => setDbname(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="field">
+          <label htmlFor="password">
+            Password{" "}
+            {existing && <span className="hint-inline">(blank keeps the saved one)</span>}
+          </label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+          />
         </div>
       </div>
 
-      <div className="field-row">
-        <div>
-          <label htmlFor="user">User</label>
-          <input id="user" value={user} onChange={(e) => setUser(e.target.value)} />
-        </div>
-        <div>
-          <label htmlFor="dbname">Database</label>
-          <input id="dbname" value={dbname} onChange={(e) => setDbname(e.target.value)} />
-        </div>
-      </div>
+      <div className="field-group">
+        <div className="group-title">ENVIRONMENT</div>
 
-      <label htmlFor="password">
-        Password {existing && <span className="hint">(blank keeps the saved one)</span>}
-      </label>
-      <input
-        id="password"
-        type="password"
-        value={password}
-        onChange={(e) => setPassword(e.target.value)}
-      />
-
-      <div className="field-row">
-        <div>
-          <label htmlFor="tag">Environment</label>
-          <select id="tag" value={tag} onChange={(e) => setTag(e.target.value as Tag)}>
-            {TAGS.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="sslmode">SSL mode</label>
-          <select
-            id="sslmode"
-            value={sslmode}
-            onChange={(e) => setSslmode(e.target.value as SslMode)}
-          >
-            {SSL_MODES.map((m) => (
-              <option key={m} value={m}>
-                {SSL_MODE_LABELS[m]}
-              </option>
-            ))}
-          </select>
+        <div className="field field-row">
+          <div className="grow">
+            <label htmlFor="tag">Tag</label>
+            <select id="tag" value={tag} onChange={(e) => setTag(e.target.value as Tag)}>
+              {TAGS.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="grow">
+            <label htmlFor="sslmode">SSL mode</label>
+            <select
+              id="sslmode"
+              value={sslmode}
+              onChange={(e) => setSslmode(e.target.value as SslMode)}
+            >
+              {SSL_MODES.map((m) => (
+                <option key={m} value={m}>
+                  {SSL_MODE_LABELS[m]}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
