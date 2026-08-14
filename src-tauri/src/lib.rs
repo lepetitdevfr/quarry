@@ -3,6 +3,7 @@ pub mod conn;
 pub mod error;
 pub mod exec;
 pub mod library;
+pub mod schema;
 pub mod secrets;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
