@@ -3,37 +3,6 @@
 Deferred work that is not yet assigned to a stage plan. Anything here is a
 real commitment, not a maybe — it was consciously postponed, not dropped.
 
-## Visual design pass
-
-**Deferred:** 2026-08-14, during the saved-connections stage. The user wants
-fine-tuning done once, at the end, rather than piecemeal per stage.
-
-The UI was built to be correct and legible, not designed. Concrete problems
-observed in the connection editor, which the rest of the app shares:
-
-- **No vertical rhythm.** Labels sit hard against their inputs while unrelated
-  rows are widely spaced, so nothing reads as grouped. Needs a consistent
-  label→field gap and a larger gap between field groups.
-- **Inputs are oversized.** Full-bleed inputs at ~44px tall in a 460px dialog
-  look like a mobile form. Height, padding, and font size should match the
-  density of the rest of the app (13px base).
-- **Fields are not sized to their content.** Port and SSL mode get the same
-  width as Host and Database; a 5-character port field should be narrow.
-- **The dialog is too wide for its content**, which stretches every field.
-- **No visual hierarchy.** The pasted-URL shortcut, the identity fields
-  (name/host/port/user/database), the credential, and the classification
-  (environment/SSL) are four different kinds of thing rendered identically.
-  They want separating — a divider or grouped sections.
-- **Button weight is off.** Save and Cancel are nearly equal in visual weight,
-  and disabled Save is barely distinguishable from enabled.
-
-Worth doing as one deliberate pass across every surface — editor, picker,
-sidebar, tab bar, grid, status bar — so the app ends up with a single spacing
-scale and type scale rather than per-component guesses. Consider extracting
-spacing/size tokens into CSS custom properties alongside the existing colour
-tokens in `App.css`, since the colours are already tokenised and the geometry
-is not.
-
 ## Schema tree extras
 
 **Deferred:** 2026-08-14, while designing the schema tree. Each was consciously
@@ -42,9 +11,6 @@ cut to keep that stage tight; none is hard once the tree exists.
 - **Views and materialised views in the tree.** Excluded on purpose, but it
   means a view can be queried and never seen. The fix is one character in the
   `relkind` filter in `schema/introspect.rs` plus a marker in the UI.
-- **Double-click a table to preview it** — opens a tab running
-  `select * from schema.table limit 500`. The original design spec promised
-  this; it is the fastest way to see what is in a table.
 - **Insert a qualified name at the cursor** from a tree row.
 - **Copy `CREATE TABLE` DDL.** Postgres has no built-in DDL function, so this
   means assembling columns, defaults, keys, and indexes from the catalog —
@@ -82,3 +48,49 @@ work covered moving because it belonged there; the UI task was never written.
 
 Do (1) first; do (2) together with the `position` work rather than rushing
 both.
+
+## Recover from a poisoned mutex instead of panicking
+
+**Deferred:** 2026-08-14, raised while reading the Rust code.
+
+Production code has ten `expect` calls. Three are startup fail-fast in
+`lib.rs` and are correct as they are. The other seven are
+`.expect("state lock poisoned")` on `Mutex` guards in `commands.rs` and
+`store.rs`.
+
+A mutex poisons only if a thread panics while holding it. These critical
+sections are a `HashMap` insert or an `Option` swap, so it is unreachable in
+practice — but if it ever happened, every later `connect`, `execute`, and
+`disconnect` would panic too, leaving the app permanently dead with no error
+shown.
+
+The fix is one helper and seven call sites:
+
+```rust
+fn lock(&self) -> MutexGuard<'_, T> {
+    self.inner.lock().unwrap_or_else(|e| e.into_inner())
+}
+```
+
+The data behind the lock is structurally valid either way, so recovering beats
+bricking. Not urgent; "unreachable in practice" is just the assumption that
+ages badly as the code grows.
+
+## Confirm no query data was lost
+
+**Open question:** 2026-08-14. During the Keychain debugging the workspace
+database showed `queries: 0` where a saved query named "Widgets" had existed
+earlier in the session, and the connection count dropped from two to one.
+
+The user was recreating connections at the time and may well have deleted both
+themselves. Nothing in the v2→v3 migration touches `queries` — it adds two
+columns to `tabs` and deletes rows where `is_preview = 1`, and a test proves
+existing rows survive.
+
+Unresolved. If the user confirms they did not delete that query, this becomes a
+data-loss investigation and takes priority over any feature. A WAL-safe backup
+sits at `~/Library/Application Support/com.quarry.app/workspace-backup-20260814-182733.db`.
+
+**Process note:** back up with `sqlite3 db ".backup out.db"`, never `cp`. A
+plain copy of a WAL database captures a file with no tables in it — which is
+exactly what happened on the first attempt tonight.
