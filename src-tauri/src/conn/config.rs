@@ -105,6 +105,27 @@ fn decode(s: &str) -> String {
     percent_decode_str(s).decode_utf8_lossy().to_string()
 }
 
+impl SslMode {
+    /// Stored form. Kept in sync with `from_str` below.
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            SslMode::Disable => "disable",
+            SslMode::Prefer => "prefer",
+            SslMode::Require => "require",
+        }
+    }
+
+    /// Parse the stored form. Anything unrecognised becomes `Prefer`,
+    /// matching what `from_url` does with an unknown sslmode.
+    pub fn from_stored(s: &str) -> Self {
+        match s {
+            "disable" => SslMode::Disable,
+            "require" => SslMode::Require,
+            _ => SslMode::Prefer,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -173,5 +194,17 @@ mod tests {
     #[test]
     fn rejects_garbage() {
         assert!(ConnectionConfig::from_url("not a url").is_err());
+    }
+
+    #[test]
+    fn sslmode_round_trips_through_its_stored_form() {
+        for mode in [SslMode::Disable, SslMode::Prefer, SslMode::Require] {
+            assert_eq!(SslMode::from_stored(mode.as_str()), mode);
+        }
+    }
+
+    #[test]
+    fn an_unknown_stored_sslmode_falls_back_to_prefer() {
+        assert_eq!(SslMode::from_stored("nonsense"), SslMode::Prefer);
     }
 }
