@@ -365,8 +365,47 @@ async fn reports_constraints_with_their_definitions() {
         .iter()
         .find(|c| c.name == \"email_has_at\")
         .expect(\"check constraint\");
+
     assert_eq!(check.kind, \"c\");
-    assert!(check.definition.to_lowercase().contains(\"like\"));
+
+    // Postgres deparses the definition rather than echoing the source:
+    // `LIKE` comes back as the `~~` operator, so asserting on the word
+    // \"like\" would fail forever. What matters is that a real, complete
+    // definition arrives — it starts with CHECK and names the column.
+    let definition = check.definition.to_lowercase();
+    assert!(
+        definition.starts_with(\"check\"),
+        \"expected a CHECK definition, got: {}\",
+        check.definition,
+    );
+    assert!(
+        definition.contains(\"email\"),
+        \"the definition should name the column it constrains, got: {}\",
+        check.definition,
+    );
+
+    assert!(
+        users.constraints.iter().any(|c| c.kind == \"p\"),
+        \"primary key should appear as a constraint\",
+    );
+}
+
+#[tokio::test]
+async fn reports_a_foreign_key_constraint_on_the_referencing_table() {
+    let (schema, _db) = fixture_schema().await;
+    let events = table(&schema, \"analytics\", \"events\");
+
+    let fk = events
+        .constraints
+        .iter()
+        .find(|c| c.kind == \"f\")
+        .expect(\"events references users\");
+
+    assert!(
+        fk.definition.to_lowercase().contains(\"references\"),
+        \"got: {}\",
+        fk.definition,
+    );
 }
 
 #[tokio::test]
@@ -621,7 +660,7 @@ Docker must be running.
 cd /Users/lepetitdev/dev/quarry/src-tauri && cargo test --test schema_test 2>&1 | tail -20
 ```
 
-Expected: `test result: ok. 10 passed; 0 failed`.
+Expected: `test result: ok. 11 passed; 0 failed`.
 
 If a test fails on the exact spelling of a type or definition, check what
 Postgres actually returned before changing anything — the test asserts real
@@ -1968,7 +2007,7 @@ cd /Users/lepetitdev/dev/quarry && git tag stage-4-schema-tree
 - Refresh picks up DDL changes; the schema clears on disconnect
 - Autocomplete offers tables after `FROM` and alias-resolved columns after `.`
 - Arrays and enums render as values, not placeholders
-- All tests pass: 115 Rust (102 existing + 10 introspection + 3 value), 41 TS
+- All tests pass: 116 Rust (102 existing + 11 introspection + 3 value), 41 TS
 
 ## Deliberately not in this stage
 
