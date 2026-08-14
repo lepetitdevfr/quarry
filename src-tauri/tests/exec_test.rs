@@ -429,3 +429,19 @@ async fn a_null_array_is_null_not_an_empty_array() {
         "a NULL array must stay distinguishable from an empty array"
     );
 }
+
+#[tokio::test]
+async fn column_headers_spell_array_types_the_way_users_write_them() {
+    let db = common::start().await;
+
+    // Postgres's internal name for a text array is `_text`. The schema
+    // tree shows `text[]` (via format_type), so the grid must agree —
+    // the same column reading `_text` in one pane and `text[]` in the
+    // other is just confusing.
+    let result = run_query(&db.pool, "select array['a']::text[] as tags, 1::int4 as n")
+        .await
+        .expect("query should succeed");
+
+    assert_eq!(result.columns[0].type_name, "text[]");
+    assert_eq!(result.columns[1].type_name, "int4", "scalars are unchanged");
+}

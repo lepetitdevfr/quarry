@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { flattenSchema } from "../lib/schema";
+import type { SchemaRow } from "../lib/schema";
 import type { Schema } from "../types";
 
 interface Props {
@@ -12,6 +13,29 @@ interface Props {
 }
 
 const ROW_HEIGHT = 22;
+
+/**
+ * A short marker for an index or constraint row.
+ *
+ * The full definition is far too long for a sidebar, so the row shows
+ * its name plus a couple of characters saying what kind of thing it is,
+ * and puts the definition in the tooltip.
+ */
+function indexBadge(row: SchemaRow): string {
+  if (row.kind === "constraint") {
+    const kinds: Record<string, string> = {
+      p: "PK",
+      f: "FK",
+      u: "UNIQUE",
+      c: "CHECK",
+      x: "EXCL",
+    };
+    return kinds[row.constraintKind ?? ""] ?? "";
+  }
+
+  if (row.isPrimaryIndex) return "PK";
+  return row.isUniqueIndex ? "UNIQUE" : "";
+}
 
 export function SchemaTree({
   schema,
@@ -105,9 +129,12 @@ export function SchemaTree({
                 onClick={() => row.expandable && toggle(row.id)}
                 title={row.referencesLabel ?? row.detail}
               >
-                {row.expandable && (
-                  <span className="twisty">{open ? "▾" : "▸"}</span>
-                )}
+                {/* Always rendered, even when empty: leaf rows without a
+                    twisty would otherwise sit 12px left of their own
+                    parent, inverting the indentation. */}
+                <span className="twisty">
+                  {row.expandable ? (open ? "▾" : "▸") : ""}
+                </span>
                 <span className="schema-label">{row.label}</span>
                 {row.kind === "column" && (
                   <>
@@ -120,8 +147,12 @@ export function SchemaTree({
                     {row.referencesLabel && <span className="marker fk">↗</span>}
                   </>
                 )}
+                {/* The definition is deliberately NOT rendered inline: at
+                    sidebar width it truncates the name it belongs to down
+                    to "us…" while showing an equally useless fragment of
+                    itself. It lives in the row's tooltip instead. */}
                 {(row.kind === "index" || row.kind === "constraint") && (
-                  <span className="schema-def">{row.detail}</span>
+                  <span className="schema-badge">{indexBadge(row)}</span>
                 )}
               </div>
             );

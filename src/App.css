@@ -160,7 +160,7 @@ button:disabled {
 .sidebar {
   display: flex;
   flex-direction: column;
-  width: 240px;
+  width: 260px;
   min-width: 160px;
   border-right: 1px solid var(--border);
   background: var(--panel);
@@ -609,10 +609,21 @@ button.secondary {
   width: 12px;
   color: var(--muted);
   flex: none;
+  text-align: center;
 }
 
 .schema-label {
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  /* Names are the point of the tree: let the type shrink first. */
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.schema-type {
+  flex: 0 1 auto;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -643,14 +654,16 @@ button.secondary {
   color: var(--muted);
 }
 
-.schema-def {
-  margin-left: 8px;
+/* A short kind marker (PK / UNIQUE / CHECK) rather than the full
+   definition, which is far too long for a sidebar. The definition is in
+   the row's tooltip. */
+.schema-badge {
+  margin-left: auto;
+  padding-left: 8px;
   color: var(--muted);
-  font-family: ui-monospace, monospace;
-  font-size: 11px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  flex: none;
 }
 
 .tree-error {

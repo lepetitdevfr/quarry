@@ -16,6 +16,11 @@ export interface SchemaRow {
   nullable?: boolean;
   /** Tooltip text for a foreign key marker. */
   referencesLabel?: string;
+  /** `pg_constraint.contype`, on constraint rows only. */
+  constraintKind?: string;
+  /** Index rows only — drives the UNIQUE/PK badge. */
+  isUniqueIndex?: boolean;
+  isPrimaryIndex?: boolean;
 }
 
 /** Case-insensitive substring match; an empty filter matches everything. */
@@ -122,6 +127,8 @@ export function flattenSchema(
               label: index.name,
               depth: 3,
               detail: index.definition,
+              isUniqueIndex: index.is_unique,
+              isPrimaryIndex: index.is_primary,
             });
           }
         }
@@ -144,6 +151,7 @@ export function flattenSchema(
               label: constraint.name,
               depth: 3,
               detail: constraint.definition,
+              constraintKind: constraint.kind,
             });
           }
         }
