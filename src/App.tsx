@@ -15,7 +15,7 @@ import { useLibrary } from "./hooks/useLibrary";
 import { useSchema } from "./hooks/useSchema";
 import { asAppError, execute } from "./lib/ipc";
 import { DEFAULT_SIDEBAR_WIDTH } from "./lib/layout";
-import { buildCompletionSchema } from "./lib/schema";
+import { buildCompletionSchema, previewSql } from "./lib/schema";
 import { effectiveSql } from "./lib/tree";
 import type { AppErrorPayload, Connection, ConnectionInput, LibraryTree, QueryResult } from "./types";
 import "./App.css";
@@ -138,24 +138,46 @@ export default function App() {
   const onChange = useCallback(
     (value: string) => {
       setText(value);
-      if (activeTab) autosave(activeTab, value);
+      if (!activeTab) return;
+      // The first edit promotes a preview to an ordinary tab, so the next
+      // double-click cannot overwrite work in progress.
+      if (activeTab.is_preview) void actions.promoteTab(activeTab.id);
+      autosave(activeTab, value);
     },
-    [activeTab, autosave],
+    [activeTab, autosave, actions],
   );
 
-  const run = useCallback(async () => {
-    if (!connection) return;
-    setBusy(true);
-    setError(null);
-    try {
-      setResult(await execute(text));
-    } catch (e) {
-      setError(asAppError(e));
-      setResult(null);
-    } finally {
-      setBusy(false);
-    }
-  }, [connection, text]);
+  const runSql = useCallback(
+    async (sql: string) => {
+      if (!connection) return;
+      setBusy(true);
+      setError(null);
+      try {
+        setResult(await execute(sql));
+      } catch (e) {
+        setError(asAppError(e));
+        setResult(null);
+      } finally {
+        setBusy(false);
+      }
+    },
+    [connection],
+  );
+
+  const run = useCallback(() => void runSql(text), [runSql, text]);
+
+  const previewTable = useCallback(
+    async (schemaName: string, tableName: string) => {
+      const sql = previewSql(schemaName, tableName);
+      // Open the tab first: the effect keyed on the active tab id loads
+      // its text into the editor, so creating the tab before running
+      // keeps the editor and the results showing the same query.
+      await actions.openPreview(tableName, sql);
+      setText(sql);
+      await runSql(sql);
+    },
+    [actions, runSql],
+  );
 
   // Cmd+S saves the active tab. If it is untitled, this opens the
   // inline naming field in the tab bar instead of saving immediately —
@@ -389,6 +411,7 @@ export default function App() {
           schemaError={schemaError}
           connected={connection !== null}
           onRefreshSchema={() => void refreshDbSchema()}
+          onPreviewTable={(s, t) => void previewTable(s, t)}
         />
       </div>
       <SidebarResizer onResize={setSidebarWidth} />

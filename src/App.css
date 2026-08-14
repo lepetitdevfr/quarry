@@ -765,3 +765,9 @@ button.link {
   color: var(--accent);
   text-decoration: underline;
 }
+
+/* A preview tab is disposable until edited — italic marks it as such,
+   the same signal VS Code uses. */
+.tab.preview .tab-label {
+  font-style: italic;
+}
