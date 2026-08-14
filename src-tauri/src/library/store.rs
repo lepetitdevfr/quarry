@@ -458,28 +458,28 @@ impl Store {
         Ok(())
     }
 
-    fn lock(&self) -> std::sync::MutexGuard<'_, Connection> {
+    pub(crate) fn lock(&self) -> std::sync::MutexGuard<'_, Connection> {
         self.conn.lock().expect("library lock poisoned")
     }
 }
 
 // ---- helpers ---------------------------------------------------------
 
-fn new_id() -> String {
+pub(crate) fn new_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
 
-fn now() -> String {
+pub(crate) fn now() -> String {
     chrono::Utc::now().to_rfc3339()
 }
 
-fn sql_err(e: rusqlite::Error) -> AppError {
+pub(crate) fn sql_err(e: rusqlite::Error) -> AppError {
     AppError::Library(e.to_string())
 }
 
 /// Names are trimmed and must not be empty — an unnamed row is
 /// invisible in the sidebar and effectively lost.
-fn validate_name(name: &str) -> Result<String, AppError> {
+pub(crate) fn validate_name(name: &str) -> Result<String, AppError> {
     let trimmed = name.trim();
     if trimmed.is_empty() {
         return Err(AppError::Library("name cannot be empty".into()));
