@@ -6,6 +6,32 @@
   --muted: #8b93a1;
   --accent: #4f8ef7;
   --error: #f26d6d;
+
+  /* Tertiary text: twisties, badges, section headers. Splitting this out
+     of --muted is what gives the UI hierarchy — one grey for six roles
+     meant nothing separated visually. */
+  --faint: #6b7280;
+
+  /* spacing — 4px base */
+  --s-1: 4px;
+  --s-2: 8px;
+  --s-3: 12px;
+  --s-4: 16px;
+  --s-5: 20px;
+  --s-6: 24px;
+
+  /* control heights */
+  --h-row: 26px;      /* tree rows, tabs */
+  --h-control: 28px;  /* inputs, selects, buttons */
+
+  /* type scale */
+  --t-xs: 10px;       /* section headers, badges */
+  --t-sm: 11px;       /* column types, definitions, hints */
+  --t-base: 13px;     /* body */
+  --t-lg: 15px;       /* dialog titles */
+
+  --radius: 6px;
+  --radius-lg: 10px;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   font-size: 13px;
 }
