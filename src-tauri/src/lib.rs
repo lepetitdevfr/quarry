@@ -21,9 +21,9 @@ pub fn run() {
             commands::AppState::new().expect("could not open the query library database"),
         )
         .invoke_handler(tauri::generate_handler![
-            commands::connect,
             commands::execute,
             commands::disconnect,
+            commands::active_connection,
             commands::library_tree,
             commands::create_collection,
             commands::rename_collection,

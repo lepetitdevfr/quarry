@@ -12,9 +12,6 @@ pub enum AppError {
     #[error("connection failed: {0}")]
     Connection(String),
 
-    #[error("no such connection: {0}")]
-    UnknownConnection(String),
-
     #[error("query failed: {message}")]
     Query {
         message: String,
@@ -46,7 +43,6 @@ impl Serialize for AppError {
         let (kind, code, position) = match self {
             AppError::InvalidUrl(_) => ("invalid_url", None, None),
             AppError::Connection(_) => ("connection", None, None),
-            AppError::UnknownConnection(_) => ("unknown_connection", None, None),
             AppError::Query { code, position, .. } => {
                 ("query", code.clone(), *position)
             }

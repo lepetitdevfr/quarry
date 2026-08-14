@@ -3,17 +3,24 @@ use crate::error::AppError;
 use crate::exec::{run_query, QueryResult};
 use crate::library::model::{LibraryTree, Query, Tab};
 use crate::library::store::Store;
-use crate::secrets;
 use deadpool_postgres::Pool;
 use serde::Serialize;
-use std::collections::HashMap;
 use std::sync::Mutex;
 
-/// Live connections, keyed by id. `Mutex` because Tauri calls commands
-/// from multiple threads; the lock is held only long enough to clone a
-/// pool handle (cloning a Pool is cheap and shares the same sockets).
+/// The one live database connection, if any.
+///
+/// Quarry connects to a single database at a time: switching closes the
+/// previous pool. That is why this is an `Option<ActiveConnection>` and
+/// not a map — a map would imply several live connections and invite
+/// callers to pass the wrong id.
+pub struct ActiveConnection {
+    pub id: String,
+    pub pool: Pool,
+    pub info: ConnectionInfo,
+}
+
 pub struct AppState {
-    pools: Mutex<HashMap<String, Pool>>,
+    active: Mutex<Option<ActiveConnection>>,
     pub library: Store,
 }
 
@@ -22,22 +29,41 @@ impl AppState {
     /// unrecoverable — the app has nowhere to store anything.
     pub fn new() -> Result<Self, AppError> {
         Ok(AppState {
-            pools: Mutex::new(HashMap::new()),
+            active: Mutex::new(None),
             library: Store::open()?,
         })
     }
 
-    fn get(&self, id: &str) -> Result<Pool, AppError> {
-        let pools = self.pools.lock().expect("state lock poisoned");
-        pools
-            .get(id)
-            .cloned()
-            .ok_or_else(|| AppError::UnknownConnection(id.to_string()))
+    /// Clone the live pool, or report that nothing is connected.
+    ///
+    /// The guard is dropped before returning, so no lock is ever held
+    /// across an `.await` in the async command handlers.
+    fn pool(&self) -> Result<Pool, AppError> {
+        let active = self.active.lock().expect("state lock poisoned");
+        active
+            .as_ref()
+            .map(|a| a.pool.clone())
+            .ok_or_else(|| AppError::Connection("not connected to a database".into()))
+    }
+
+    /// Install a new active connection, closing whatever it replaces.
+    fn set_active(&self, next: Option<ActiveConnection>) {
+        let previous = std::mem::replace(
+            &mut *self.active.lock().expect("state lock poisoned"),
+            next,
+        );
+
+        // `Pool` does not close its sockets when dropped, so an
+        // un-closed pool leaves idle connections open on the server
+        // until its last internal clone goes away.
+        if let Some(old) = previous {
+            old.pool.close();
+        }
     }
 }
 
 /// What the UI gets back after a successful connect.
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 pub struct ConnectionInfo {
     pub id: String,
     pub host: String,
@@ -48,85 +74,26 @@ pub struct ConnectionInfo {
 }
 
 #[tauri::command]
-pub async fn connect(
-    state: tauri::State<'_, AppState>,
-    id: String,
-    url: String,
-    remember_password: bool,
-) -> Result<ConnectionInfo, AppError> {
-    let cfg = ConnectionConfig::from_url(&url)?;
-    let pool = build_pool(&cfg)?;
-    let server_version = ping(&pool).await?;
-
-    if remember_password {
-        if let Some(pw) = &cfg.password {
-            secrets::save_password(&id, pw)?;
-        }
-    }
-
-    // Reading a saved password back (`secrets::load_password`) belongs
-    // to Stage 2's saved-connections work, not here — this only ever
-    // writes. Left unused deliberately.
-
-    let previous = state
-        .pools
-        .lock()
-        .expect("state lock poisoned")
-        .insert(id.clone(), pool);
-
-    // Connecting again under an id already in use replaces its pool.
-    // Close the displaced one explicitly rather than letting it drop:
-    // `Pool` doesn't close its sockets on drop, so an un-closed pool
-    // leaves idle connections open until its last internal clone goes
-    // away.
-    if let Some(old_pool) = previous {
-        old_pool.close();
-    }
-
-    Ok(ConnectionInfo {
-        id,
-        host: cfg.host,
-        port: cfg.port,
-        dbname: cfg.dbname,
-        user: cfg.user,
-        server_version,
-    })
-}
-
-#[tauri::command]
 pub async fn execute(
     state: tauri::State<'_, AppState>,
-    connection_id: String,
     sql: String,
 ) -> Result<QueryResult, AppError> {
-    let pool = state.get(&connection_id)?;
+    let pool = state.pool()?;
     run_query(&pool, &sql).await
 }
 
 #[tauri::command]
-pub async fn disconnect(
-    state: tauri::State<'_, AppState>,
-    connection_id: String,
-) -> Result<(), AppError> {
-    let removed = state
-        .pools
-        .lock()
-        .expect("state lock poisoned")
-        .remove(&connection_id);
-
-    if let Some(pool) = removed {
-        pool.close();
-    }
-
-    // `connect` may have written a Keychain entry for this connection
-    // (when `remember_password` was set); nothing else ever reads or
-    // removes it otherwise, so without this every remembered password
-    // outlives the connection it belonged to. A missing entry is not
-    // an error (see `secrets::delete_password`), so this is safe to
-    // call unconditionally.
-    secrets::delete_password(&connection_id)?;
-
+pub fn disconnect(state: tauri::State<'_, AppState>) -> Result<(), AppError> {
+    state.set_active(None);
     Ok(())
+}
+
+#[tauri::command]
+pub fn active_connection(
+    state: tauri::State<'_, AppState>,
+) -> Result<Option<ConnectionInfo>, AppError> {
+    let active = state.active.lock().expect("state lock poisoned");
+    Ok(active.as_ref().map(|a| a.info.clone()))
 }
 
 // ---- library commands ------------------------------------------------
