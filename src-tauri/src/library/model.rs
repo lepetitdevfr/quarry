@@ -53,6 +53,13 @@ pub struct Tab {
     pub position: i64,
     pub is_active: bool,
     pub cursor_pos: i64,
+    /// A transient tab opened by previewing a table. Reused by the next
+    /// preview, and cleared by the first edit.
+    pub is_preview: bool,
+    /// Label for a tab with no saved query behind it — the table name
+    /// for a preview. `None` for ordinary tabs, which take their label
+    /// from their query.
+    pub title: Option<String>,
 }
 
 /// The whole sidebar in one payload — cheaper than the UI walking the

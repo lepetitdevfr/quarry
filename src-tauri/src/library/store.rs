@@ -352,7 +352,8 @@ impl Store {
         let conn = self.lock();
         let mut stmt = conn
             .prepare(
-                "select id, query_id, scratch_sql, position, is_active, cursor_pos
+                "select id, query_id, scratch_sql, position, is_active, cursor_pos,
+                        is_preview, title
                  from tabs order by position",
             )
             .map_err(sql_err)?;
@@ -366,6 +367,8 @@ impl Store {
                     position: row.get(3)?,
                     is_active: row.get::<_, i64>(4)? != 0,
                     cursor_pos: row.get(5)?,
+                    is_preview: row.get::<_, i64>(6)? != 0,
+                    title: row.get(7)?,
                 })
             })
             .map_err(sql_err)?
@@ -373,6 +376,67 @@ impl Store {
             .map_err(sql_err)?;
 
         Ok(tabs)
+    }
+
+    /// Open a table preview, reusing the existing preview slot if there
+    /// is one.
+    ///
+    /// This is why previews do not pile up: double-clicking ten tables
+    /// leaves one tab, not ten. A preview that has been promoted (the
+    /// user edited it) is an ordinary tab and is never reused here.
+    pub fn open_preview_tab(&self, title: &str, sql: &str) -> Result<Vec<Tab>, AppError> {
+        let conn = self.lock();
+
+        let existing: Option<String> = conn
+            .query_row("select id from tabs where is_preview = 1 limit 1", [], |r| {
+                r.get(0)
+            })
+            .ok();
+
+        let id = match existing {
+            Some(id) => {
+                conn.execute(
+                    "update tabs set title = ?2, scratch_sql = ?3, cursor_pos = 0
+                     where id = ?1",
+                    params![id, title, sql],
+                )
+                .map_err(sql_err)?;
+                id
+            }
+            None => {
+                let id = new_id();
+                let position: i64 = conn
+                    .query_row("select coalesce(max(position), 0) + 100 from tabs", [], |r| {
+                        r.get(0)
+                    })
+                    .map_err(sql_err)?;
+
+                conn.execute(
+                    "insert into tabs
+                       (id, query_id, scratch_sql, position, is_active, cursor_pos,
+                        is_preview, title)
+                     values (?1, null, ?2, ?3, 0, 0, 1, ?4)",
+                    params![id, sql, position, title],
+                )
+                .map_err(sql_err)?;
+                id
+            }
+        };
+
+        activate(&conn, &id)?;
+        drop(conn);
+        self.tabs()
+    }
+
+    /// Turn a preview into an ordinary tab.
+    ///
+    /// Called on the first edit: once there is work in a tab, the next
+    /// preview must open elsewhere rather than overwriting it.
+    pub fn promote_tab(&self, id: &str) -> Result<(), AppError> {
+        self.lock()
+            .execute("update tabs set is_preview = 0 where id = ?1", params![id])
+            .map_err(sql_err)?;
+        Ok(())
     }
 
     pub fn activate_tab(&self, id: &str) -> Result<(), AppError> {
@@ -531,7 +595,8 @@ fn activate(conn: &Connection, id: &str) -> Result<(), AppError> {
 
 fn read_tab(conn: &Connection, id: &str) -> Result<Tab, AppError> {
     conn.query_row(
-        "select id, query_id, scratch_sql, position, is_active, cursor_pos
+        "select id, query_id, scratch_sql, position, is_active, cursor_pos,
+                is_preview, title
          from tabs where id = ?1",
         params![id],
         |row| {
@@ -542,6 +607,8 @@ fn read_tab(conn: &Connection, id: &str) -> Result<Tab, AppError> {
                 position: row.get(3)?,
                 is_active: row.get::<_, i64>(4)? != 0,
                 cursor_pos: row.get(5)?,
+                is_preview: row.get::<_, i64>(6)? != 0,
+                title: row.get(7)?,
             })
         },
     )
