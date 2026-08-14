@@ -771,3 +771,12 @@ button.link {
 .tab.preview .tab-label {
   font-style: italic;
 }
+
+/* Ordinal gutter: present but recessive — it is scaffolding, not data. */
+.result-grid .row-num {
+  width: 52px;
+  color: var(--faint);
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  user-select: none;
+}
