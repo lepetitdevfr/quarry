@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ConnectionEditor } from "./components/ConnectionEditor";
 import { ConnectionPicker } from "./components/ConnectionPicker";
@@ -11,7 +11,9 @@ import { StatusBar } from "./components/StatusBar";
 import { TabBar } from "./components/TabBar";
 import { useConnections } from "./hooks/useConnections";
 import { useLibrary } from "./hooks/useLibrary";
+import { useSchema } from "./hooks/useSchema";
 import { asAppError, execute } from "./lib/ipc";
+import { buildCompletionSchema } from "./lib/schema";
 import { effectiveSql } from "./lib/tree";
 import type { AppErrorPayload, Connection, ConnectionInput, LibraryTree, QueryResult } from "./types";
 import "./App.css";
@@ -65,6 +67,20 @@ export default function App() {
 
   const { library, tabs, activeTab, loaded, queryById, autosave, actions } =
     useLibrary();
+
+  const {
+    schema: dbSchema,
+    loading: schemaLoading,
+    error: schemaError,
+    refresh: refreshDbSchema,
+  } = useSchema(connection?.id ?? null);
+
+  // Rebuilt only when the schema changes, not on every keystroke —
+  // an unstable object here would tear down CodeMirror's state.
+  const completionSchema = useMemo(
+    () => buildCompletionSchema(dbSchema),
+    [dbSchema],
+  );
 
   // The editor's text is local while typing; autosave persists it.
   const [text, setText] = useState("");
@@ -345,6 +361,11 @@ export default function App() {
         creating={creating}
         onCommitCreate={commitCreate}
         onCancelCreate={() => setCreating(null)}
+        schema={dbSchema}
+        schemaLoading={schemaLoading}
+        schemaError={schemaError}
+        connected={connection !== null}
+        onRefreshSchema={() => void refreshDbSchema()}
       />
 
       <div className="main-pane">
@@ -418,7 +439,13 @@ export default function App() {
           onCancelName={() => setNamingTabId(null)}
         />
 
-        <SqlEditor value={text} onChange={onChange} onRun={run} busy={busy} />
+        <SqlEditor
+          value={text}
+          onChange={onChange}
+          onRun={run}
+          busy={busy}
+          completionSchema={completionSchema}
+        />
         {result && <ResultGrid result={result} />}
         <StatusBar result={result} error={error} saved={showSaved} />
       </div>

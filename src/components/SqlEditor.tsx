@@ -10,16 +10,31 @@ interface Props {
   onChange: (value: string) => void;
   onRun: () => void;
   busy: boolean;
+  /** Table name → column names, from `buildCompletionSchema`. */
+  completionSchema: Record<string, string[]>;
 }
 
-export function SqlEditor({ value, onChange, onRun, busy }: Props) {
+export function SqlEditor({
+  value,
+  onChange,
+  onRun,
+  busy,
+  completionSchema,
+}: Props) {
   // Prec.highest ensures Cmd+Enter reaches us before CodeMirror's own
   // bindings. useMemo keeps the extension array stable across renders,
   // which stops CodeMirror from tearing down its state on every keystroke.
   const extensions = useMemo(
     () => [
       ...quarryEditorExtensions,
-      sql({ dialect: PostgreSQL }),
+      sql({
+        dialect: PostgreSQL,
+        schema: completionSchema,
+        // `public` is on the default search path, so unqualified names
+        // should resolve there.
+        defaultSchema: "public",
+        upperCaseKeywords: false,
+      }),
       Prec.highest(
         keymap.of([
           {
@@ -32,7 +47,7 @@ export function SqlEditor({ value, onChange, onRun, busy }: Props) {
         ]),
       ),
     ],
-    [onRun],
+    [onRun, completionSchema],
   );
 
   return (
