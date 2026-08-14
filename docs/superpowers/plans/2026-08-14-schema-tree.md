@@ -37,7 +37,7 @@ cd /Users/lepetitdev/dev/quarry && git checkout -b stage-4-schema
 | `src/schema/model.rs` | `Schema`, `SchemaNode`, `Table`, `Column`, `ForeignKey`, `Index`, `Constraint` — plain data |
 | `src/schema/introspect.rs` | The three catalog queries and their assembly |
 | `src/exec/value.rs` | *(modify)* array and enum rendering |
-| `src/commands.rs` | *(modify)* schema cache, `schema` and `refresh_schema` commands |
+| `src/commands.rs` | *(modify)* schema cache and the `refresh_schema` command |
 | `src/lib.rs` | *(modify)* declare `schema`, register commands |
 | `tests/schema_test.rs` | Introspection against a fixture database |
 
@@ -46,7 +46,7 @@ cd /Users/lepetitdev/dev/quarry && git checkout -b stage-4-schema
 | File | Responsibility |
 |---|---|
 | `src/types.ts` | *(modify)* schema types mirroring the Rust structs |
-| `src/lib/ipc.ts` | *(modify)* `schema` / `refreshSchema` wrappers |
+| `src/lib/ipc.ts` | *(modify)* `refreshSchema` wrapper |
 | `src/lib/schema.ts` | Flatten + filter the tree; build the CodeMirror schema object |
 | `src/lib/schema.test.ts` | Vitest for both pure functions |
 | `src/hooks/useSchema.ts` | Fetch on connect, refresh, loading and error state |
