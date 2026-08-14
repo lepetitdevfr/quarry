@@ -12,7 +12,9 @@ interface Props {
   onRefresh: () => void;
 }
 
-const ROW_HEIGHT = 22;
+/** Must match --h-row in App.css: the virtualizer positions rows by this
+    number, so a mismatch overlaps or gaps every row. */
+const ROW_HEIGHT = 26;
 
 /**
  * A short marker for an index or constraint row.
