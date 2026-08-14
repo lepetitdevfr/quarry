@@ -33,7 +33,7 @@ and unchangeable.
 - Applying tokens across every component
 - 26px rows in the schema tree, query tree, and tab bar
 - The connection editor rebuilt to the approved mockup
-- A draggable sidebar edge, clamped and persisted
+- A draggable sidebar edge, clamped
 
 ### Out of scope
 
@@ -51,11 +51,11 @@ and unchangeable.
 **26px rows.** Chosen from three mockups (22 / 26 / 32). Readable without
 sacrificing much of what fits on screen.
 
-**Sidebar width in `localStorage`, not SQLite.** One integer of pure UI state
-with no relationship to the user's data, written on every drag. Routing it
-through IPC to SQLite would mean a round-trip per frame for no benefit. Tabs and
-queries stay in the database because losing those would cost real work; losing a
-sidebar width costs one drag.
+**The width is not persisted.** It lives in React state and returns to its
+default on restart. Persisting it — in `localStorage` or the workspace database
+— was considered and cut: it is one integer of pure UI state, and restoring it
+costs a drag. Tabs and queries stay in the database because losing those would
+cost real work.
 
 **Pointer events with capture, not mouse events.** Dragging across the
 CodeMirror editor loses a plain `mousemove` listener; pointer capture does not.
@@ -111,10 +111,7 @@ accent colour on hover and while dragging.
 
 - **Clamp:** 180px minimum, 480px maximum. Below 180 the tree is unusable; above
   480 it starves the result grid.
-- **Persistence:** `localStorage` key `quarry.sidebarWidth`, read on mount. A
-  missing or unparseable value falls back to 260px; a stored value outside the
-  clamp is clamped rather than rejected, so a bad value can never leave the
-  sidebar unusable.
+- **Default:** 260px on every launch. The width is deliberately not persisted.
 - **Mechanics:** `pointerdown` on the handle calls `setPointerCapture`, so
   `pointermove` keeps firing over the editor and the result grid.
 - **Text selection:** disabled on the body while dragging, otherwise the drag
@@ -139,8 +136,8 @@ Sidebar default width moves from 240px to 260px, then becomes user-controlled.
 
 ## 7. Testing
 
-- **Unit (vitest):** the clamp function — below minimum, above maximum, within
-  range, and a non-numeric stored value falling back to the default.
+- **Unit (vitest):** the clamp function — below minimum, above maximum, and
+  within range.
 - **Visual:** verified by the user in the running app. Automated screenshot
   testing is not worth its setup and maintenance for a solo project.
 - **Regression:** all 119 Rust and 41 TS tests stay green. Nothing in this change
@@ -153,7 +150,6 @@ The things a user can actually see, to be checked in the app:
 
 - Sidebar drags smoothly, including when the pointer crosses the editor
 - It stops at 180px and 480px
-- The width survives a restart
 - Tree rows are 26px and children indent past their parents
 - The connection editor matches the mockup
 - Nothing overlaps or clips at the minimum sidebar width
