@@ -183,14 +183,39 @@ button:disabled {
   flex-direction: row;
 }
 
+.sidebar-shell {
+  display: flex;
+  flex: none;
+  min-width: 0;
+  overflow: hidden;
+}
+
 .sidebar {
+  /* width now comes from .sidebar-shell's inline style */
   display: flex;
   flex-direction: column;
-  width: 260px;
-  min-width: 160px;
+  flex: 1;
+  min-width: 0;
   border-right: 1px solid var(--border);
   background: var(--panel);
   overflow: hidden;
+}
+
+.sidebar-resizer {
+  flex: none;
+  width: 6px;
+  margin-left: -3px;
+  cursor: col-resize;
+  background: transparent;
+  /* Sits above the panes so the pointer always lands on the handle
+     rather than on whatever is underneath it. */
+  position: relative;
+  z-index: 5;
+}
+
+.sidebar-resizer:hover,
+.sidebar-resizer:active {
+  background: var(--accent);
 }
 
 .sidebar-section {

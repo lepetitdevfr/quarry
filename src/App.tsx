@@ -6,6 +6,7 @@ import { PasswordRetry } from "./components/PasswordRetry";
 import type { Creating } from "./components/QueryTree";
 import { ResultGrid } from "./components/ResultGrid";
 import { Sidebar } from "./components/Sidebar";
+import { SidebarResizer } from "./components/SidebarResizer";
 import { SqlEditor } from "./components/SqlEditor";
 import { StatusBar } from "./components/StatusBar";
 import { TabBar } from "./components/TabBar";
@@ -13,6 +14,7 @@ import { useConnections } from "./hooks/useConnections";
 import { useLibrary } from "./hooks/useLibrary";
 import { useSchema } from "./hooks/useSchema";
 import { asAppError, execute } from "./lib/ipc";
+import { DEFAULT_SIDEBAR_WIDTH } from "./lib/layout";
 import { buildCompletionSchema } from "./lib/schema";
 import { effectiveSql } from "./lib/tree";
 import type { AppErrorPayload, Connection, ConnectionInput, LibraryTree, QueryResult } from "./types";
@@ -64,6 +66,10 @@ export default function App() {
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<AppErrorPayload | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Deliberately not persisted: one integer of UI state, restored by a
+  // single drag.
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
 
   const { library, tabs, activeTab, loaded, queryById, autosave, actions } =
     useLibrary();
@@ -361,28 +367,31 @@ export default function App() {
 
   return (
     <main className="app with-sidebar">
-      <Sidebar
-        library={library}
-        activeQueryId={activeTab?.query_id ?? null}
-        onOpen={(id) => void actions.openQuery(id)}
-        onNewQuery={() => setCreating({ kind: "query", parentId: null })}
-        onNewCollection={() => setCreating({ kind: "collection", parentId: null })}
-        onNewQueryInCollection={(collectionId) =>
-          setCreating({ kind: "query", parentId: collectionId })
-        }
-        onRenameQuery={(id, name) => void actions.renameQuery(id, name)}
-        onDeleteQuery={requestDeleteQuery}
-        onRenameCollection={(id, name) => void actions.renameCollection(id, name)}
-        onDeleteCollection={requestDeleteCollection}
-        creating={creating}
-        onCommitCreate={commitCreate}
-        onCancelCreate={() => setCreating(null)}
-        schema={dbSchema}
-        schemaLoading={schemaLoading}
-        schemaError={schemaError}
-        connected={connection !== null}
-        onRefreshSchema={() => void refreshDbSchema()}
-      />
+      <div className="sidebar-shell" style={{ width: sidebarWidth }}>
+        <Sidebar
+          library={library}
+          activeQueryId={activeTab?.query_id ?? null}
+          onOpen={(id) => void actions.openQuery(id)}
+          onNewQuery={() => setCreating({ kind: "query", parentId: null })}
+          onNewCollection={() => setCreating({ kind: "collection", parentId: null })}
+          onNewQueryInCollection={(collectionId) =>
+            setCreating({ kind: "query", parentId: collectionId })
+          }
+          onRenameQuery={(id, name) => void actions.renameQuery(id, name)}
+          onDeleteQuery={requestDeleteQuery}
+          onRenameCollection={(id, name) => void actions.renameCollection(id, name)}
+          onDeleteCollection={requestDeleteCollection}
+          creating={creating}
+          onCommitCreate={commitCreate}
+          onCancelCreate={() => setCreating(null)}
+          schema={dbSchema}
+          schemaLoading={schemaLoading}
+          schemaError={schemaError}
+          connected={connection !== null}
+          onRefreshSchema={() => void refreshDbSchema()}
+        />
+      </div>
+      <SidebarResizer onResize={setSidebarWidth} />
 
       <div className="main-pane">
         <header className="top-bar">
