@@ -120,3 +120,55 @@ export interface ConnectionInput {
   /** Absent or empty means "leave the stored password alone". */
   password: string | null;
 }
+
+/** Mirrors Rust `ForeignKey`. */
+export interface ForeignKey {
+  schema: string;
+  table: string;
+  column: string;
+}
+
+/** Mirrors Rust `Column`. */
+export interface SchemaColumn {
+  name: string;
+  type_name: string;
+  nullable: boolean;
+  default: string | null;
+  is_primary_key: boolean;
+  references: ForeignKey | null;
+}
+
+/** Mirrors Rust `Index`. */
+export interface SchemaIndex {
+  name: string;
+  definition: string;
+  is_unique: boolean;
+  is_primary: boolean;
+}
+
+/** Mirrors Rust `Constraint`. */
+export interface SchemaConstraint {
+  name: string;
+  kind: string;
+  definition: string;
+}
+
+/** Mirrors Rust `Table`. */
+export interface SchemaTable {
+  schema: string;
+  name: string;
+  columns: SchemaColumn[];
+  indexes: SchemaIndex[];
+  constraints: SchemaConstraint[];
+}
+
+/** Mirrors Rust `SchemaNode`. */
+export interface SchemaNode {
+  name: string;
+  tables: SchemaTable[];
+}
+
+/** Mirrors Rust `Schema`. */
+export interface Schema {
+  schemas: SchemaNode[];
+}
