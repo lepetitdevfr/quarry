@@ -253,6 +253,11 @@ button:disabled {
 .tree-row:hover .row-action,
 .tab:hover .tab-close,
 .sidebar-header .row-action,
+/* Connection rows reveal their edit/delete buttons on hover too. Without
+   this the buttons render at opacity 0 forever, since a picker row is a
+   `.picker-list li` rather than a `.tree-row`. */
+.picker-list li:hover .row-action,
+.picker-list li:focus-within .row-action,
 .tab-new {
   opacity: 1;
 }
