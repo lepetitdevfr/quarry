@@ -12,6 +12,20 @@
 
 ---
 
+## Session state — resume here
+
+**As of 2026-08-15, on branch `stage-7-table-detail-tabs`, 24 commits in, working tree clean.**
+
+**Done and reviewed:** Tasks 1-9. Storage, store methods, Tauri commands, frontend IPC and types, the `tableDetail` view model, and the `TableView` component. Rust is 141 passed / 0 failed / 6 ignored. TypeScript is 57 passed, `tsc` clean.
+
+**Not started:** Tasks 10, 11, 12 — the wiring. `TableView` exists but nothing renders it, so the feature does **not** work in the app yet. Nothing has been smoke tested, and the app has not been launched this session.
+
+**Then:** Task 13 (verification), including the `sqlite3 .backup` of the real workspace database, which has **not** been done. The first launch after this branch runs will migrate that database to v4. Back it up first.
+
+Three corrections were made to this plan during execution, so it is ahead of what was originally written: the v4 migration test now builds a real v3 table (the original passed with the migration deleted), Task 8's `groupConstraints` now aggregates unknown constraint kinds (the original produced duplicate React keys), and Task 13 no longer expects `cargo clippy`/`cargo fmt` to be clean, because neither passes at baseline. See `docs/BACKLOG.md`.
+
+---
+
 ## Before you start
 
 The migration touches the developer's real workspace database the first time the app runs. Back it up first — **`cp` is not acceptable**, it misses the WAL and can capture a file with no tables in it:
