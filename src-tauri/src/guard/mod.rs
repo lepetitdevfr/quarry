@@ -1,6 +1,8 @@
+use crate::library::model::Tag;
 use sqlparser::ast::{Query, SetExpr, Statement};
 use sqlparser::dialect::PostgreSqlDialect;
 use sqlparser::parser::Parser;
+use std::time::Instant;
 
 /// What a statement does to the database.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -118,5 +120,63 @@ fn classify_set_expr(body: &SetExpr) -> Access {
         // `SetExpr::Insert` and `SetExpr::Update` land here, as does
         // anything a later version adds.
         _ => Access::Write,
+    }
+}
+
+/// What a connection is allowed to do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Policy {
+    /// Everything runs. Local and staging.
+    Free,
+    /// Writes rejected until unlocked. Production.
+    ReadOnly,
+}
+
+impl Policy {
+    /// Derived from the tag rather than stored, so there is no column
+    /// that could disagree with the tag the user sees. `Tag::from_stored`
+    /// already resolves anything unrecognised to `Prod`, so a corrupted
+    /// row lands locked rather than open.
+    pub fn for_tag(tag: Tag) -> Self {
+        match tag {
+            Tag::Prod => Policy::ReadOnly,
+            Tag::Local | Tag::Staging => Policy::Free,
+        }
+    }
+}
+
+/// The guard's verdict for one buffer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Decision {
+    Allow {
+        /// Whether execution should wrap the statement in
+        /// `BEGIN READ WRITE`, opting out of the session's read-only
+        /// default. False for reads even on an unlocked connection, so
+        /// the second layer stays armed for anything that does not
+        /// actually need to write.
+        read_write: bool,
+    },
+    Deny,
+}
+
+/// Decide whether a buffer may run.
+///
+/// `now` is passed in rather than read here so the decision stays a pure
+/// function of its inputs and the expiry can be tested without sleeping.
+pub fn decide(policy: Policy, unlocked_until: Option<Instant>, now: Instant, sql: &str) -> Decision {
+    if policy == Policy::Free {
+        return Decision::Allow { read_write: true };
+    }
+
+    if classify(sql) == Access::Read {
+        return Decision::Allow { read_write: false };
+    }
+
+    // A write on a locked connection: allowed only inside a live unlock
+    // window. The deadline is checked against the clock every time, so a
+    // stale banner in the UI cannot extend it.
+    match unlocked_until {
+        Some(deadline) if deadline > now => Decision::Allow { read_write: true },
+        _ => Decision::Deny,
     }
 }

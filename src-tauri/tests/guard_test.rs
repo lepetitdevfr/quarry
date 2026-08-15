@@ -96,3 +96,75 @@ fn a_buffer_is_a_write_if_any_statement_writes() {
     assert_eq!(classify("select 1; delete from users"), Access::Write);
     assert_eq!(classify("delete from users; select 1"), Access::Write);
 }
+
+use quarry_lib::guard::{decide, Decision, Policy};
+use quarry_lib::library::model::Tag;
+use std::time::{Duration, Instant};
+
+#[test]
+fn policy_comes_from_the_tag() {
+    assert_eq!(Policy::for_tag(Tag::Local), Policy::Free);
+    assert_eq!(Policy::for_tag(Tag::Staging), Policy::Free);
+    assert_eq!(Policy::for_tag(Tag::Prod), Policy::ReadOnly);
+}
+
+#[test]
+fn a_free_connection_allows_everything() {
+    let now = Instant::now();
+    assert_eq!(
+        decide(Policy::Free, None, now, "delete from users"),
+        Decision::Allow { read_write: true },
+    );
+}
+
+#[test]
+fn a_locked_connection_allows_reads_and_denies_writes() {
+    let now = Instant::now();
+
+    assert_eq!(
+        decide(Policy::ReadOnly, None, now, "select 1"),
+        Decision::Allow { read_write: false },
+    );
+    assert_eq!(
+        decide(Policy::ReadOnly, None, now, "delete from users"),
+        Decision::Deny,
+    );
+}
+
+#[test]
+fn an_unlocked_connection_allows_writes_until_the_deadline() {
+    let now = Instant::now();
+    let deadline = now + Duration::from_secs(60);
+
+    assert_eq!(
+        decide(Policy::ReadOnly, Some(deadline), now, "delete from users"),
+        Decision::Allow { read_write: true },
+    );
+}
+
+#[test]
+fn an_expired_unlock_denies_again() {
+    // The deadline is checked against the clock on every statement, so
+    // an unlock cannot outlive its window just because the UI still
+    // shows a banner.
+    let now = Instant::now();
+    let expired = now - Duration::from_secs(1);
+
+    assert_eq!(
+        decide(Policy::ReadOnly, Some(expired), now, "delete from users"),
+        Decision::Deny,
+    );
+}
+
+#[test]
+fn a_read_on_a_locked_connection_never_opts_out_of_read_only() {
+    // `read_write: false` is what keeps the BEGIN READ WRITE wrapper off
+    // a statement that does not need it — the second layer stays armed.
+    let now = Instant::now();
+    let deadline = now + Duration::from_secs(60);
+
+    assert_eq!(
+        decide(Policy::ReadOnly, Some(deadline), now, "select 1"),
+        Decision::Allow { read_write: false },
+    );
+}
