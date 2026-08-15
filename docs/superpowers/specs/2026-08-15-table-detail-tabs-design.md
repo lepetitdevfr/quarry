@@ -124,6 +124,17 @@ while navigating. This mirrors the promote-on-edit rule that preview
 query tabs already use; a table tab has no editor, so the trigger
 differs but the intent is the same.
 
+There is one preview slot for the whole app, shared with query previews:
+opening a table preview over a query preview reuses that row, which
+means the reuse path must clear whichever fields the previous kind of
+preview set. `migrate` already deletes every `is_preview = 1` row at
+open, so persistence across restart means **promoted** table tabs, on
+the same terms as every other preview in the app.
+
+A table tab stores no SQL. Data mode derives its `SELECT` from the
+target through the existing `previewSql` helper, so `scratch_sql` stays
+NULL and there is one definition of what a preview query is.
+
 ## 5. Frontend
 
 ### `TableView.tsx`
