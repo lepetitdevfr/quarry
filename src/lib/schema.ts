@@ -129,7 +129,29 @@ function quoteIdent(name: string): string {
   return `"${name.replace(/"/g, '""')}"`;
 }
 
-/** The SQL a table preview runs. */
-export function previewSql(schema: string, table: string): string {
-  return `select * from ${quoteIdent(schema)}.${quoteIdent(table)} limit ${PREVIEW_LIMIT}`;
+/** Which column a preview is ordered by, when it is ordered at all. */
+export interface PreviewOrder {
+  column: string;
+  direction: "asc" | "desc";
+}
+
+/**
+ * The SQL a table preview runs.
+ *
+ * `order` is what makes sorting a Data tab honest. The tab shows at
+ * most `PREVIEW_LIMIT` rows, so sorting those in memory would order a
+ * page rather than the table. Because this statement is ours — nothing
+ * is parsed or wrapped — the ordering can simply be generated in the
+ * right place, before the limit.
+ */
+export function previewSql(
+  schema: string,
+  table: string,
+  order?: PreviewOrder,
+): string {
+  const target = `${quoteIdent(schema)}.${quoteIdent(table)}`;
+  const ordering = order
+    ? ` order by ${quoteIdent(order.column)} ${order.direction}`
+    : "";
+  return `select * from ${target}${ordering} limit ${PREVIEW_LIMIT}`;
 }

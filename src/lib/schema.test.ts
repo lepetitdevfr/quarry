@@ -217,4 +217,34 @@ describe("previewSql", () => {
       'select * from "public"."we""ird" limit 500',
     );
   });
+
+  it("selects a capped page with no ordering by default", () => {
+    expect(previewSql("public", "users")).toBe(
+      'select * from "public"."users" limit 500',
+    );
+  });
+
+  it("appends an ORDER BY before the limit", () => {
+    // Order must precede limit, or the database sorts the page rather
+    // than the table — which is the entire point of re-running.
+    expect(
+      previewSql("public", "users", { column: "created_at", direction: "asc" }),
+    ).toBe(
+      'select * from "public"."users" order by "created_at" asc limit 500',
+    );
+  });
+
+  it("sorts descending", () => {
+    expect(
+      previewSql("public", "users", { column: "id", direction: "desc" }),
+    ).toBe('select * from "public"."users" order by "id" desc limit 500');
+  });
+
+  it("quotes a column name that needs it", () => {
+    // A mixed-case or reserved-word column is unreachable unquoted, and
+    // an embedded quote must be doubled or the statement is malformed.
+    expect(
+      previewSql("public", "users", { column: 'we"ird', direction: "asc" }),
+    ).toBe('select * from "public"."users" order by "we""ird" asc limit 500');
+  });
 });
