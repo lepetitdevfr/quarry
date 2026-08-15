@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+// Aliased: this module already has a `save` callback for Cmd+S.
+import { save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ConnectionEditor } from "./components/ConnectionEditor";
 import { ConnectionPicker } from "./components/ConnectionPicker";
+import { GridToolbar } from "./components/GridToolbar";
+import type { ExportFormat } from "./components/GridToolbar";
 import { PasswordRetry } from "./components/PasswordRetry";
 import type { Creating } from "./components/QueryTree";
 import { ResultGrid } from "./components/ResultGrid";
@@ -14,9 +18,11 @@ import { TableView } from "./components/TableView";
 import { useConnections } from "./hooks/useConnections";
 import { useLibrary } from "./hooks/useLibrary";
 import { useSchema } from "./hooks/useSchema";
-import { asAppError, execute } from "./lib/ipc";
+import { asAppError, execute, writeTextFile } from "./lib/ipc";
 import { DEFAULT_SIDEBAR_WIDTH } from "./lib/layout";
 import type { SortState } from "./lib/gridSort";
+import { sortedIndices } from "./lib/gridSort";
+import { toCsv, toJson, toSqlInsert } from "./lib/exportRows";
 import { buildCompletionSchema, previewSql } from "./lib/schema";
 import { tableDetail } from "./lib/tableDetail";
 import { effectiveSql } from "./lib/tree";
@@ -250,6 +256,56 @@ export default function App() {
       );
     },
     [tableTarget, activeTab?.mode, result, runSql],
+  );
+
+  // Whether the rows already arrived in database order.
+  const serverSorted = tableTarget !== null && activeTab?.mode === "data";
+
+  const [exporting, setExporting] = useState(false);
+
+  const exportResult = useCallback(
+    async (format: ExportFormat) => {
+      if (!result) return;
+
+      const base = tableTarget?.table ?? activeTab?.title ?? "result";
+      const extension = format === "sql" ? "sql" : format;
+
+      const path = await saveFileDialog({
+        defaultPath: `${base}.${extension}`,
+        filters: [{ name: format.toUpperCase(), extensions: [extension] }],
+      });
+
+      // `save` returns null when the user cancels. That is not a
+      // failure and must not be reported as one.
+      if (path === null) return;
+
+      // Display order, so a sorted grid exports sorted.
+      const rows = sortedIndices(result.rows, serverSorted ? null : sort).map(
+        (i) => result.rows[i],
+      );
+
+      let contents: string;
+      if (format === "csv") contents = toCsv(result.columns, rows);
+      else if (format === "json") contents = toJson(result.columns, rows);
+      else if (tableTarget) {
+        contents = toSqlInsert(
+          tableTarget.schema,
+          tableTarget.table,
+          result.columns,
+          rows,
+        );
+      } else return;
+
+      setExporting(true);
+      try {
+        await writeTextFile(path, contents);
+      } catch (e) {
+        setError(asAppError(e));
+      } finally {
+        setExporting(false);
+      }
+    },
+    [result, tableTarget, activeTab?.title, sort, serverSorted],
   );
 
   // Cmd+S saves the active tab. If it is untitled, this opens the
@@ -571,13 +627,20 @@ export default function App() {
             onRefreshSchema={() => void refreshDbSchema()}
           >
             {result && (
-              <ResultGrid
-                result={result}
-                sql={ranSql}
-                sort={sort}
-                onSortChange={(next) => void changeSort(next)}
-                serverSorted={tableTarget !== null && activeTab?.mode === "data"}
-              />
+              <>
+                <GridToolbar
+                  canExportSql={tableTarget !== null}
+                  busy={exporting}
+                  onExport={(f) => void exportResult(f)}
+                />
+                <ResultGrid
+                  result={result}
+                  sql={ranSql}
+                  sort={sort}
+                  onSortChange={(next) => void changeSort(next)}
+                  serverSorted={serverSorted}
+                />
+              </>
             )}
           </TableView>
         ) : (
@@ -590,13 +653,20 @@ export default function App() {
               completionSchema={completionSchema}
             />
             {result && (
-              <ResultGrid
-                result={result}
-                sql={ranSql}
-                sort={sort}
-                onSortChange={(next) => void changeSort(next)}
-                serverSorted={tableTarget !== null && activeTab?.mode === "data"}
-              />
+              <>
+                <GridToolbar
+                  canExportSql={tableTarget !== null}
+                  busy={exporting}
+                  onExport={(f) => void exportResult(f)}
+                />
+                <ResultGrid
+                  result={result}
+                  sql={ranSql}
+                  sort={sort}
+                  onSortChange={(next) => void changeSort(next)}
+                  serverSorted={serverSorted}
+                />
+              </>
             )}
           </>
         )}
