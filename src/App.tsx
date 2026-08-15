@@ -15,10 +15,12 @@ import { SqlEditor } from "./components/SqlEditor";
 import { StatusBar } from "./components/StatusBar";
 import { TabBar } from "./components/TabBar";
 import { TableView } from "./components/TableView";
+import { UnlockDialog } from "./components/UnlockDialog";
 import { useConnections } from "./hooks/useConnections";
 import { useLibrary } from "./hooks/useLibrary";
 import { useSchema } from "./hooks/useSchema";
-import { asAppError, execute, writeTextFile } from "./lib/ipc";
+import { asAppError, execute, guardStatus, relock, unlock, writeTextFile } from "./lib/ipc";
+import { formatCountdown } from "./lib/guard";
 import { DEFAULT_SIDEBAR_WIDTH } from "./lib/layout";
 import type { SortState } from "./lib/gridSort";
 import { sortedIndices } from "./lib/gridSort";
@@ -26,7 +28,14 @@ import { toCsv, toJson, toSqlInsert } from "./lib/exportRows";
 import { buildCompletionSchema, previewSql } from "./lib/schema";
 import { tableDetail } from "./lib/tableDetail";
 import { effectiveSql } from "./lib/tree";
-import type { AppErrorPayload, Connection, ConnectionInput, LibraryTree, QueryResult } from "./types";
+import type {
+  AppErrorPayload,
+  Connection,
+  ConnectionInput,
+  GuardStatus,
+  LibraryTree,
+  QueryResult,
+} from "./types";
 import type { TableMode } from "./types";
 import "./App.css";
 
@@ -126,6 +135,51 @@ export default function App() {
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
   // Id of the untitled tab currently being named as part of a save.
   const [namingTabId, setNamingTabId] = useState<string | null>(null);
+
+  const [guard, setGuard] = useState<GuardStatus | null>(null);
+  const [unlockOpen, setUnlockOpen] = useState(false);
+
+  // Polled once a second while connected: the countdown has to tick, and
+  // the server is the only authority on whether the unlock is still
+  // live. A local timer alone would keep showing time remaining after an
+  // expiry the server had already enforced.
+  useEffect(() => {
+    if (!connection) {
+      setGuard(null);
+      return;
+    }
+    let cancelled = false;
+    async function poll() {
+      try {
+        const status = await guardStatus();
+        if (!cancelled) setGuard(status);
+      } catch {
+        // A failed poll is not worth an error banner; the next one
+        // will either succeed or the connection is gone anyway.
+      }
+    }
+    void poll();
+    const handle = window.setInterval(() => void poll(), 1000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(handle);
+    };
+  }, [connection]);
+
+  const locked =
+    guard?.policy === "read_only" && guard.unlocked_seconds_remaining === null;
+  const unlocked =
+    guard?.policy === "read_only" && guard.unlocked_seconds_remaining !== null;
+
+  const doUnlock = useCallback(async (typedName: string) => {
+    try {
+      await unlock(typedName);
+      setUnlockOpen(false);
+      setGuard(await guardStatus());
+    } catch (e) {
+      setError(asAppError(e));
+    }
+  }, []);
 
   // Brief "Saved" confirmation in the status bar after a successful save.
   const [showSaved, setShowSaved] = useState(false);
@@ -517,7 +571,7 @@ export default function App() {
   }
 
   return (
-    <main className="app with-sidebar">
+    <main className={`app with-sidebar${unlocked ? " unlocked" : ""}`}>
       <div className="sidebar-shell" style={{ width: sidebarWidth }}>
         <Sidebar
           library={library}
@@ -547,6 +601,21 @@ export default function App() {
       <SidebarResizer onResize={setSidebarWidth} />
 
       <div className="main-pane">
+        {unlocked && (
+          <div className="unlock-banner">
+            <span>
+              Unlocked for writes ·{" "}
+              {formatCountdown(guard?.unlocked_seconds_remaining ?? 0)}
+            </span>
+            <button
+              onClick={() => {
+                void relock().then(async () => setGuard(await guardStatus()));
+              }}
+            >
+              Relock
+            </button>
+          </div>
+        )}
         <header className="top-bar">
           <span
             className="tag-stripe"
@@ -670,6 +739,12 @@ export default function App() {
             )}
           </>
         )}
+        {error?.kind === "write_blocked" && locked && (
+          <div className="guard-denial">
+            <span>{error.message}</span>
+            <button onClick={() => setUnlockOpen(true)}>Unlock…</button>
+          </div>
+        )}
         <StatusBar result={result} error={error} saved={showSaved} />
       </div>
 
@@ -690,6 +765,16 @@ export default function App() {
             onCancel={() => setEditing(null)}
           />
         </div>
+      )}
+
+      {unlockOpen && connection && (
+        <UnlockDialog
+          connectionName={
+            connections.find((c) => c.id === connection.id)?.name ?? ""
+          }
+          onConfirm={(name) => void doUnlock(name)}
+          onCancel={() => setUnlockOpen(false)}
+        />
       )}
     </main>
   );
