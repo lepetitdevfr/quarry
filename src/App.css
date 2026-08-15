@@ -926,6 +926,17 @@ button.link {
 
 /* ---- grid selection and export --------------------------------- */
 
+/* The grid has its own cell selection, so the browser's text selection
+   is not just redundant here — shift-click drives both at once, and you
+   get two overlapping highlights that disagree about what is selected.
+   Cmd+C reads the cell selection, so nothing is lost by turning the
+   native one off. */
+.result-grid thead,
+.result-grid tbody {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .result-grid td.selected {
   /* Tinted rather than filled: the value must stay readable, since
      selecting is how you check what you are about to copy. */
