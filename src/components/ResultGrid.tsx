@@ -79,41 +79,67 @@ export function ResultGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shape]);
 
+  // Display order of the rows. Computed before the empty-result early
+  // return because the copy effect below closes over it, and a hook may
+  // not sit after a conditional return.
+  const order = serverSorted
+    ? result.rows.map((_, i) => i)
+    : sortedIndices(result.rows, sort);
+
   const range =
     selectedAll ??
     (anchor && focus ? selectionRange(anchor, focus) : null);
 
-  // Cmd+C copies the selection as TSV; Cmd+A selects everything. Both
-  // are on the grid container rather than the window so they do not
-  // steal the shortcuts while the user is typing in the editor.
-  function onKeyDown(e: React.KeyboardEvent) {
-    const meta = e.metaKey || e.ctrlKey;
-    if (!meta) return;
+  // Cmd+C copies the selection as TSV; Cmd+A selects everything.
+  //
+  // Listening on the document rather than on the grid container: the
+  // container would only receive keys while it held focus, and clicking
+  // a cell does not reliably focus it in WebKit — so copying silently
+  // did nothing. Scoping to "there is a selection" instead of "we have
+  // focus" is both more robust and closer to what the user means.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey)) return;
 
-    if (e.key === "a") {
-      e.preventDefault();
-      setSelectedAll(selectAll(result.rows.length, result.columns.length));
-      return;
+      // Never steal the shortcut from a text field — the SQL editor's
+      // own copy must keep working.
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.closest(
+          "input, textarea, [contenteditable='true'], .cm-editor",
+        )
+      ) {
+        return;
+      }
+
+      if (e.key === "a") {
+        e.preventDefault();
+        setSelectedAll(selectAll(result.rows.length, result.columns.length));
+        return;
+      }
+
+      if (e.key === "c") {
+        // Only claim the copy when the grid actually has something
+        // selected; otherwise leave it to the rest of the page.
+        if (range === null) return;
+        e.preventDefault();
+
+        const copied = result.columns.slice(range.left, range.right + 1);
+        const rows = order
+          .slice(range.top, range.bottom + 1)
+          .map((r) => result.rows[r].slice(range.left, range.right + 1));
+        // Headers only when whole columns are covered — a header above a
+        // three-row fragment is noise.
+        const wholeColumns =
+          range.top === 0 && range.bottom === result.rows.length - 1;
+
+        void navigator.clipboard.writeText(toTsv(copied, rows, wholeColumns));
+      }
     }
 
-    if (e.key === "c") {
-      e.preventDefault();
-      const copied = range
-        ? result.columns.slice(range.left, range.right + 1)
-        : result.columns;
-      const rows = range
-        ? order
-            .slice(range.top, range.bottom + 1)
-            .map((r) => result.rows[r].slice(range.left, range.right + 1))
-        : order.map((r) => result.rows[r]);
-      // Headers only when whole columns are covered — a header above a
-      // three-row fragment is noise.
-      const wholeColumns =
-        range === null ||
-        (range.top === 0 && range.bottom === result.rows.length - 1);
-      void navigator.clipboard.writeText(toTsv(copied, rows, wholeColumns));
-    }
-  }
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, [range, order, result]);
 
   // Drag state lives in a ref, not state: it changes on every
   // pointermove and re-rendering a virtualized grid at that rate is
@@ -150,16 +176,12 @@ export function ResultGrid({
     return <div className="grid-empty">Statement returned no columns.</div>;
   }
 
-  const order = serverSorted
-    ? result.rows.map((_, i) => i)
-    : sortedIndices(result.rows, sort);
-
   // Only a locally sorted page can mislead: a Data tab's ordering was
   // done by the database over the whole table.
   const partial = !serverSorted && sort !== null && isTruncated(result.rows.length, sql);
 
   return (
-    <div className="result-grid" ref={scrollRef} onKeyDown={onKeyDown} tabIndex={0}>
+    <div className="result-grid" ref={scrollRef}>
       <table>
         <thead>
           <tr>
