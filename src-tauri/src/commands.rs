@@ -461,3 +461,24 @@ pub async fn refresh_schema(
 
     Ok(fresh)
 }
+
+// ---- export -----------------------------------------------------------
+
+/// Write a string to a path the user chose in the Save panel.
+///
+/// This exists instead of `tauri-plugin-fs` on purpose. That plugin
+/// grants the webview a general filesystem write capability; this
+/// feature needs to write exactly one file that the user just named in
+/// a native dialog. One narrow command is a much smaller door.
+///
+/// Split from the `#[tauri::command]` wrapper so it can be tested
+/// without a Tauri app handle.
+pub fn write_text(path: &str, contents: &str) -> Result<(), AppError> {
+    std::fs::write(path, contents)
+        .map_err(|e| AppError::Export(format!("{path}: {e}")))
+}
+
+#[tauri::command]
+pub fn write_text_file(path: String, contents: String) -> Result<(), AppError> {
+    write_text(&path, &contents)
+}

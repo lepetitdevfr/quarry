@@ -45,6 +45,7 @@ pub fn run() {
             commands::promote_tab,
             commands::open_table_tab,
             commands::set_tab_mode,
+            commands::write_text_file,
             commands::list_connections,
             commands::create_connection,
             commands::update_connection,

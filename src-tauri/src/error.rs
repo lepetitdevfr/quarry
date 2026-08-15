@@ -29,6 +29,9 @@ pub enum AppError {
 
     #[error("this connection needs a password")]
     PasswordRequired,
+
+    #[error("could not write the file: {0}")]
+    Export(String),
 }
 
 /// The shape the UI receives. Tauri requires command errors to be
@@ -52,6 +55,7 @@ impl Serialize for AppError {
             AppError::Keychain(_) => ("keychain", None, None),
             AppError::Library(_) => ("library", None, None),
             AppError::PasswordRequired => ("password_required", None, None),
+            AppError::Export(_) => ("export", None, None),
         };
         ErrorPayload {
             kind: kind.to_string(),
