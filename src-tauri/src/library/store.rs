@@ -329,12 +329,7 @@ impl Store {
         // scopes the max to rows sharing a parent, which for tabs would
         // mean "other tabs with a NULL query_id" and would hand the same
         // position to every saved-query tab.
-        let position: i64 = conn
-            .query_row("select coalesce(max(position), 0) from tabs", [], |r| {
-                r.get::<_, i64>(0)
-            })
-            .map_err(sql_err)?
-            + POSITION_GAP;
+        let position = next_tab_position(&conn)?;
         let id = new_id();
 
         conn.execute(
@@ -372,13 +367,7 @@ impl Store {
     pub fn open_preview_tab(&self, title: &str, sql: &str) -> Result<Vec<Tab>, AppError> {
         let conn = self.lock();
 
-        let existing: Option<String> = conn
-            .query_row("select id from tabs where is_preview = 1 limit 1", [], |r| {
-                r.get(0)
-            })
-            .ok();
-
-        let id = match existing {
+        let id = match preview_slot(&conn) {
             Some(id) => {
                 conn.execute(
                     "update tabs
@@ -392,11 +381,7 @@ impl Store {
             }
             None => {
                 let id = new_id();
-                let position: i64 = conn
-                    .query_row("select coalesce(max(position), 0) + 100 from tabs", [], |r| {
-                        r.get(0)
-                    })
-                    .map_err(sql_err)?;
+                let position = next_tab_position(&conn)?;
 
                 conn.execute(
                     "insert into tabs
@@ -432,15 +417,9 @@ impl Store {
     ) -> Result<Vec<Tab>, AppError> {
         let conn = self.lock();
 
-        let existing: Option<String> = conn
-            .query_row("select id from tabs where is_preview = 1 limit 1", [], |r| {
-                r.get(0)
-            })
-            .ok();
-
         let is_preview = if pin { 0 } else { 1 };
 
-        let id = match existing {
+        let id = match preview_slot(&conn) {
             Some(id) => {
                 conn.execute(
                     "update tabs
@@ -455,11 +434,7 @@ impl Store {
             }
             None => {
                 let id = new_id();
-                let position: i64 = conn
-                    .query_row("select coalesce(max(position), 0) + 100 from tabs", [], |r| {
-                        r.get(0)
-                    })
-                    .map_err(sql_err)?;
+                let position = next_tab_position(&conn)?;
 
                 conn.execute(
                     "insert into tabs
@@ -634,6 +609,21 @@ fn next_position(
     );
     let max: i64 = conn
         .query_row(&sql, params![parent_id], |r| r.get(0))
+        .map_err(sql_err)?;
+    Ok(max + POSITION_GAP)
+}
+
+/// The one preview slot, if a tab currently holds it.
+fn preview_slot(conn: &Connection) -> Option<String> {
+    conn.query_row("select id from tabs where is_preview = 1 limit 1", [], |r| r.get(0))
+        .ok()
+}
+
+/// One gap past the rightmost tab. Tabs have no parent column, so this
+/// is simpler than `next_position`.
+fn next_tab_position(conn: &Connection) -> Result<i64, AppError> {
+    let max: i64 = conn
+        .query_row("select coalesce(max(position), 0) from tabs", [], |r| r.get(0))
         .map_err(sql_err)?;
     Ok(max + POSITION_GAP)
 }
