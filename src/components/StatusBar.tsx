@@ -46,6 +46,13 @@ export function StatusBar({ result, error, saved }: Props) {
     <div className="status-bar">
       {result.row_count} {result.row_count === 1 ? "row" : "rows"} ·{" "}
       {result.duration_ms} ms
+      {/* "Why can't I edit this?" must always be answerable without
+          having to hunt for it. */}
+      {!result.edit.editable && result.edit.reason && (
+        <span className="status-readonly" title={result.edit.reason}>
+          {" · "}read-only · {result.edit.reason}
+        </span>
+      )}
       {savedBadge}
     </div>
   );

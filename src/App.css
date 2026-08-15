@@ -1098,3 +1098,40 @@ button.link {
   outline: 1px solid var(--accent);
   outline-offset: -1px;
 }
+
+.edit-bar {
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.edit-bar-row {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+}
+
+.edit-count {
+  margin-right: auto;
+  font-weight: 600;
+  color: var(--pending);
+}
+
+.edit-sql {
+  max-height: 30vh;
+  overflow: auto;
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--border);
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: var(--t-sm);
+  white-space: pre-wrap;
+}
+
+.edit-sql pre {
+  margin: 0 0 var(--s-2);
+  white-space: pre-wrap;
+}
+
+.status-readonly {
+  color: var(--muted);
+}

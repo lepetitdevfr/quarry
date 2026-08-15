@@ -4,6 +4,7 @@ import { save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ConnectionEditor } from "./components/ConnectionEditor";
 import { ConnectionPicker } from "./components/ConnectionPicker";
+import { EditBar } from "./components/EditBar";
 import { GridToolbar } from "./components/GridToolbar";
 import type { ExportFormat } from "./components/GridToolbar";
 import { PasswordRetry } from "./components/PasswordRetry";
@@ -19,7 +20,24 @@ import { UnlockDialog } from "./components/UnlockDialog";
 import { useConnections } from "./hooks/useConnections";
 import { useLibrary } from "./hooks/useLibrary";
 import { useSchema } from "./hooks/useSchema";
-import { asAppError, execute, guardStatus, relock, unlock, writeTextFile } from "./lib/ipc";
+import {
+  applyRowEdits,
+  asAppError,
+  execute,
+  guardStatus,
+  previewEdits,
+  relock,
+  unlock,
+  writeTextFile,
+} from "./lib/ipc";
+import {
+  applyPatches,
+  count as pendingCount,
+  emptyPending,
+  stage,
+  toRowEdits,
+} from "./lib/pendingEdits";
+import type { Pending } from "./lib/pendingEdits";
 import { formatCountdown } from "./lib/guard";
 import { DEFAULT_SIDEBAR_WIDTH } from "./lib/layout";
 import type { SortState } from "./lib/gridSort";
@@ -32,6 +50,7 @@ import type {
   AppErrorPayload,
   Connection,
   ConnectionInput,
+  EditStatement,
   GuardStatus,
   LibraryTree,
   QueryResult,
@@ -85,6 +104,12 @@ export default function App() {
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<AppErrorPayload | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // Cell edits staged against `result`, and the statements the backend
+  // would run for them while the SQL panel is open.
+  const [pending, setPending] = useState<Pending>(emptyPending());
+  const [editSql, setEditSql] = useState<EditStatement[] | null>(null);
+  const [applying, setApplying] = useState(false);
 
   // Deliberately not persisted: one integer of UI state, restored by a
   // single drag.
@@ -171,6 +196,49 @@ export default function App() {
   const unlocked =
     guard?.policy === "read_only" && guard.unlocked_seconds_remaining !== null;
 
+  // Editing is off entirely when the connection is locked or the result
+  // is not one the backend decided is editable.
+  const canEditRows = Boolean(result?.edit.editable) && !locked;
+
+  function onStage(row: number, col: number, value: string | null) {
+    if (!result) return;
+    setPending((current) => stage(current, result, row, col, value));
+    // The shown SQL is about a set of edits that just changed.
+    setEditSql(null);
+  }
+
+  async function onViewSql() {
+    if (!result) return;
+    try {
+      setEditSql(await previewEdits(result.edit, toRowEdits(pending, result)));
+    } catch (e) {
+      setError(asAppError(e));
+    }
+  }
+
+  async function onConfirmEdits() {
+    if (!result) return;
+    setApplying(true);
+    try {
+      const applied = await applyRowEdits(
+        result.edit,
+        toRowEdits(pending, result),
+      );
+      // Patch with what the database returned, not with what was
+      // typed: a trigger or a type coercion may have changed it.
+      setResult(applyPatches(result, applied));
+      setPending(emptyPending());
+      setEditSql(null);
+      setError(null);
+    } catch (e) {
+      // The whole batch rolled back, so the staged edits stay staged —
+      // the user can fix the offending cell and confirm again.
+      setError(asAppError(e));
+    } finally {
+      setApplying(false);
+    }
+  }
+
   const doUnlock = useCallback(async (typedName: string) => {
     try {
       await unlock(typedName);
@@ -240,6 +308,9 @@ export default function App() {
       try {
         setResult(await execute(sql));
         setRanSql(sql);
+        // Staged edits belong to the rows they were staged against.
+        setPending(emptyPending());
+        setEditSql(null);
       } catch (e) {
         setError(asAppError(e));
         // The previous result deliberately stays on screen. A sort on a
@@ -451,6 +522,8 @@ export default function App() {
       try {
         await connActions.connect(id, password);
         setResult(null);
+        setPending(emptyPending());
+        setEditSql(null);
         setError(null);
         setPickerOpen(false);
         setPasswordFor(null);
@@ -708,9 +781,23 @@ export default function App() {
                   sort={sort}
                   onSortChange={(next) => void changeSort(next)}
                   serverSorted={serverSorted}
-                  pending={null}
-                  onStage={() => {}}
+                  pending={canEditRows ? pending : null}
+                  onStage={onStage}
                 />
+                {canEditRows && (
+                  <EditBar
+                    count={pendingCount(pending)}
+                    statements={editSql}
+                    busy={applying}
+                    onViewSql={() => void onViewSql()}
+                    onHideSql={() => setEditSql(null)}
+                    onCancel={() => {
+                      setPending(emptyPending());
+                      setEditSql(null);
+                    }}
+                    onConfirm={() => void onConfirmEdits()}
+                  />
+                )}
               </>
             )}
           </TableView>
@@ -736,9 +823,23 @@ export default function App() {
                   sort={sort}
                   onSortChange={(next) => void changeSort(next)}
                   serverSorted={serverSorted}
-                  pending={null}
-                  onStage={() => {}}
+                  pending={canEditRows ? pending : null}
+                  onStage={onStage}
                 />
+                {canEditRows && (
+                  <EditBar
+                    count={pendingCount(pending)}
+                    statements={editSql}
+                    busy={applying}
+                    onViewSql={() => void onViewSql()}
+                    onHideSql={() => setEditSql(null)}
+                    onCancel={() => {
+                      setPending(emptyPending());
+                      setEditSql(null);
+                    }}
+                    onConfirm={() => void onConfirmEdits()}
+                  />
+                )}
               </>
             )}
           </>
