@@ -7,7 +7,7 @@
 //! rule table be tested exhaustively rather than representatively —
 //! the same reason `guard` is a pure function.
 
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 /// What Postgres reported about one result column, taken from
 /// `tokio_postgres::Column`.
@@ -38,14 +38,14 @@ pub struct TableFacts {
 }
 
 /// A primary-key column and where its value sits in each result row.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PkColumn {
     pub name: String,
     pub result_index: usize,
 }
 
 /// The verdict for one result column.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ColumnEdit {
     pub editable: bool,
     /// The real column name to write in `SET`, which is not always the
@@ -58,7 +58,7 @@ pub struct ColumnEdit {
 }
 
 /// The verdict for the whole result, shipped to the UI with every query.
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EditInfo {
     pub editable: bool,
     /// Why the result cannot be edited at all. `None` when it can.

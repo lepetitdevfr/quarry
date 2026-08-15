@@ -1,4 +1,5 @@
 use crate::conn::{build_pool, ping, ConnectionConfig};
+use crate::edit::{apply_edits, build_updates, plan_apply, AppliedRow, EditInfo, RowEdit, Statement};
 use crate::error::AppError;
 use crate::exec::{run_query, QueryResult};
 use crate::guard::{decide, Decision, Policy};
@@ -115,6 +116,41 @@ pub async fn execute(
     };
 
     run_query(&pool, &sql, read_write).await
+}
+
+/// Show the statements an apply would run, without running them.
+///
+/// Calls the same generator `apply_row_edits` calls. A preview that
+/// could drift from what executes would be worse than no preview.
+#[tauri::command]
+pub fn preview_edits(edit: EditInfo, rows: Vec<RowEdit>) -> Result<Vec<Statement>, AppError> {
+    build_updates(&edit, &rows)
+}
+
+/// Apply staged cell edits in one transaction.
+///
+/// The decision comes back from the frontend rather than being
+/// recomputed: recomputing would mean re-preparing the original SQL,
+/// which the user may have since edited in the buffer. `build_updates`
+/// refuses anything inconsistent and the guard refuses anything that
+/// should not run, so a tampered payload cannot widen what an edit can
+/// do beyond an `UPDATE` against a table the connection can already
+/// write to.
+#[tauri::command]
+pub async fn apply_row_edits(
+    state: tauri::State<'_, AppState>,
+    edit: EditInfo,
+    rows: Vec<RowEdit>,
+) -> Result<Vec<AppliedRow>, AppError> {
+    let (pool, policy, unlocked_until) = state.pool_and_guard()?;
+
+    let statements = build_updates(&edit, &rows)?;
+
+    // The same chokepoint every typed statement crosses. The UI hides
+    // editing on a locked connection; this does not trust it to.
+    let read_write = plan_apply(policy, unlocked_until, Instant::now(), &statements)?;
+
+    apply_edits(&pool, &statements, read_write).await
 }
 
 /// How long an unlock lasts. Fixed from the moment of unlocking rather
