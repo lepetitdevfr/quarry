@@ -25,6 +25,8 @@ export function TableView({
   return (
     <div className="table-view">
       <header className="table-view-head">
+        {/* Built from props, not `detail` — the header must still render
+            the table's identity when `detail` is null (table not found). */}
         <span className="table-view-name">
           {schemaName}.{tableName}
         </span>
@@ -78,7 +80,7 @@ export function TableView({
                         {c.isPrimaryKey && <span className="marker pk">PK</span>}
                       </td>
                       <td className="mono">{c.type}</td>
-                      <td>{c.nullable ? "yes" : "no"}</td>
+                      <td>{c.nullableLabel}</td>
                       <td className="mono">{c.default ?? ""}</td>
                       <td className="mono">{c.referencesLabel ?? ""}</td>
                     </tr>

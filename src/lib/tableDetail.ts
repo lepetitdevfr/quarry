@@ -17,6 +17,8 @@ export interface DetailColumn {
   name: string;
   type: string;
   nullable: boolean;
+  /** Display text for the nullable column — decided here, not in the view. */
+  nullableLabel: string;
   default: string | null;
   isPrimaryKey: boolean;
   /** `schema.table.column`, on single-column foreign keys only. */
@@ -70,6 +72,7 @@ export function tableDetail(
       name: c.name,
       type: c.type_name,
       nullable: c.nullable,
+      nullableLabel: c.nullable ? "yes" : "no",
       default: c.default,
       isPrimaryKey: c.is_primary_key,
       referencesLabel: c.references
