@@ -780,3 +780,125 @@ button.link {
   font-variant-numeric: tabular-nums;
   user-select: none;
 }
+
+/* ---- table detail view ---------------------------------------- */
+
+.table-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.table-view-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.table-view-name {
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 13px;
+}
+
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.segmented button {
+  padding: 3px 10px;
+  font-size: 12px;
+  background: none;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.segmented button.active {
+  background: var(--panel);
+  color: var(--text);
+}
+
+.table-view-body {
+  overflow: auto;
+  padding: 12px;
+}
+
+.table-view-body section {
+  margin-bottom: 20px;
+}
+
+.table-view-body h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+
+.table-view-body h4 {
+  font-size: 12px;
+  color: var(--muted);
+  margin: 8px 0 4px;
+}
+
+.table-view-body .none {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.detail-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.detail-table th {
+  text-align: left;
+  font-weight: 500;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  padding: 4px 8px;
+}
+
+.detail-table td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-table .mono,
+.detail-list code {
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.detail-list {
+  list-style: none;
+  font-size: 13px;
+}
+
+.detail-list li {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-list .detail-name {
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: 12px;
+}
+
+.table-view-empty {
+  padding: 16px;
+  color: var(--muted);
+  font-size: 13px;
+}
