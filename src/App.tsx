@@ -16,6 +16,7 @@ import { useLibrary } from "./hooks/useLibrary";
 import { useSchema } from "./hooks/useSchema";
 import { asAppError, execute } from "./lib/ipc";
 import { DEFAULT_SIDEBAR_WIDTH } from "./lib/layout";
+import type { SortState } from "./lib/gridSort";
 import { buildCompletionSchema, previewSql } from "./lib/schema";
 import { tableDetail } from "./lib/tableDetail";
 import { effectiveSql } from "./lib/tree";
@@ -103,6 +104,13 @@ export default function App() {
     [dbSchema, tableTarget?.schema, tableTarget?.table],
   );
 
+  // Sort lives here rather than in the grid because a table Data tab
+  // sorts by re-running the query, which only App can do.
+  const [sort, setSort] = useState<SortState | null>(null);
+  // The statement behind the current result, for truncation detection
+  // and for re-running a Data tab in a new order.
+  const [ranSql, setRanSql] = useState("");
+
   // The editor's text is local while typing; autosave persists it.
   const [text, setText] = useState("");
 
@@ -171,9 +179,12 @@ export default function App() {
       setError(null);
       try {
         setResult(await execute(sql));
+        setRanSql(sql);
       } catch (e) {
         setError(asAppError(e));
-        setResult(null);
+        // The previous result deliberately stays on screen. A sort on a
+        // Data tab is a re-run, so a failed sort would otherwise throw
+        // away the rows you already had — worse than the failure.
       } finally {
         setBusy(false);
       }
@@ -181,7 +192,10 @@ export default function App() {
     [connection],
   );
 
-  const run = useCallback(() => void runSql(text), [runSql, text]);
+  const run = useCallback(() => {
+    setSort(null);
+    void runSql(text);
+  }, [runSql, text]);
 
   // Single-click in the tree: a disposable structure tab, reused by the
   // next click so navigating the tree does not open a tab per row.
@@ -195,6 +209,7 @@ export default function App() {
   // Double-click: data, pinned — an explicit "keep this one".
   const openTableData = useCallback(
     async (schemaName: string, tableName: string) => {
+      setSort(null);
       await actions.openTableTab(schemaName, tableName, "data", true);
       await runSql(previewSql(schemaName, tableName));
     },
@@ -204,10 +219,34 @@ export default function App() {
   const changeTableMode = useCallback(
     async (next: TableMode) => {
       if (!activeTab || !tableTarget) return;
+      setSort(null);
       await actions.setTabMode(activeTab.id, next);
       if (next === "data") await runSql(previewSql(tableTarget.schema, tableTarget.table));
     },
     [activeTab, tableTarget, actions, runSql],
+  );
+
+  // A Data tab re-runs with ORDER BY, because its rows are capped at
+  // PREVIEW_LIMIT and sorting that page in memory would answer a
+  // question nobody asked. A query tab sorts its fetched rows, since
+  // re-running would either strip a LIMIT the user wrote or return the
+  // very same rows.
+  const changeSort = useCallback(
+    async (next: SortState | null) => {
+      setSort(next);
+
+      if (!tableTarget || activeTab?.mode !== "data") return;
+
+      const column = next === null ? undefined : result?.columns[next.column]?.name;
+      await runSql(
+        previewSql(
+          tableTarget.schema,
+          tableTarget.table,
+          column && next ? { column, direction: next.direction } : undefined,
+        ),
+      );
+    },
+    [tableTarget, activeTab?.mode, result, runSql],
   );
 
   // Cmd+S saves the active tab. If it is untitled, this opens the
@@ -528,7 +567,15 @@ export default function App() {
             onModeChange={(next) => void changeTableMode(next)}
             onRefreshSchema={() => void refreshDbSchema()}
           >
-            {result && <ResultGrid result={result} />}
+            {result && (
+              <ResultGrid
+                result={result}
+                sql={ranSql}
+                sort={sort}
+                onSortChange={(next) => void changeSort(next)}
+                serverSorted={tableTarget !== null && activeTab?.mode === "data"}
+              />
+            )}
           </TableView>
         ) : (
           <>
@@ -539,7 +586,15 @@ export default function App() {
               busy={busy}
               completionSchema={completionSchema}
             />
-            {result && <ResultGrid result={result} />}
+            {result && (
+              <ResultGrid
+                result={result}
+                sql={ranSql}
+                sort={sort}
+                onSortChange={(next) => void changeSort(next)}
+                serverSorted={tableTarget !== null && activeTab?.mode === "data"}
+              />
+            )}
           </>
         )}
         <StatusBar result={result} error={error} saved={showSaved} />
