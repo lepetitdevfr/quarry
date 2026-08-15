@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use std::path::Path;
 
 /// Bump this when the schema changes and add a migration step below.
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 4;
 
 /// Open the database, creating and migrating it if needed.
 ///
@@ -53,14 +53,17 @@ fn migrate(conn: &Connection) -> Result<(), AppError> {
         );
 
         create table if not exists tabs (
-            id          text primary key,
-            query_id    text references queries(id) on delete cascade,
-            scratch_sql text,
-            position    integer not null,
-            is_active   integer not null default 0,
-            cursor_pos  integer not null default 0,
-            is_preview  integer not null default 0,
-            title       text
+            id            text primary key,
+            query_id      text references queries(id) on delete cascade,
+            scratch_sql   text,
+            position      integer not null,
+            is_active     integer not null default 0,
+            cursor_pos    integer not null default 0,
+            is_preview    integer not null default 0,
+            title         text,
+            target_schema text,
+            target_table  text,
+            mode          text
         );
 
         create table if not exists connections (
@@ -91,6 +94,13 @@ fn migrate(conn: &Connection) -> Result<(), AppError> {
     // rather than a no-op — so ask first.
     add_column_if_missing(conn, "tabs", "is_preview", "integer not null default 0")?;
     add_column_if_missing(conn, "tabs", "title", "text")?;
+
+    // v4: a tab may target a table instead of a query. Two columns
+    // rather than one qualified string, because a Postgres identifier
+    // may contain a dot and could not be split back apart reliably.
+    add_column_if_missing(conn, "tabs", "target_schema", "text")?;
+    add_column_if_missing(conn, "tabs", "target_table", "text")?;
+    add_column_if_missing(conn, "tabs", "mode", "text")?;
 
     // Preview tabs are transient. Purging them here rather than filtering
     // them on restore means a crash cannot leave one behind.
@@ -279,6 +289,46 @@ mod tests {
     }
 
     #[test]
+    fn adds_table_target_columns_to_an_existing_tabs_table() {
+        // A real database on disk, with a real tab in it. This is exactly
+        // where a migration can cost someone their work: prove both that
+        // the columns arrive and that the old row is untouched.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("w.db");
+
+        {
+            let conn = open(&path).unwrap();
+            conn.execute(
+                "insert into tabs (id, query_id, scratch_sql, position, is_active, cursor_pos)
+                 values ('t1', null, 'select 1', 100, 1, 0)",
+                [],
+            )
+            .unwrap();
+        }
+
+        let conn = open(&path).unwrap();
+
+        let sql: String = conn
+            .query_row("select scratch_sql from tabs where id = 't1'", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(sql, "select 1", "an existing tab must survive the migration");
+
+        let target_schema: Option<String> = conn
+            .query_row("select target_schema from tabs where id = 't1'", [], |r| r.get(0))
+            .unwrap();
+        let target_table: Option<String> = conn
+            .query_row("select target_table from tabs where id = 't1'", [], |r| r.get(0))
+            .unwrap();
+        let mode: Option<String> = conn
+            .query_row("select mode from tabs where id = 't1'", [], |r| r.get(0))
+            .unwrap();
+
+        assert_eq!(target_schema, None, "an existing tab targets no table");
+        assert_eq!(target_table, None);
+        assert_eq!(mode, None);
+    }
+
+    #[test]
     fn purges_preview_tabs_when_the_database_is_opened() {
         // Previews are transient. Deleting them at open time is simpler
         // and more robust than filtering them on restore: a crash cannot
@@ -343,6 +393,6 @@ mod tests {
                 r.get(0)
             })
             .unwrap();
-        assert_eq!(version, "3");
+        assert_eq!(version, "4");
     }
 }
