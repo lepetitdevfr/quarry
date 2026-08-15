@@ -157,10 +157,29 @@ visibility churn.
 Do it as the first task of whichever stage next grows the tab code, not inside
 one: a 400-line move would bury that stage's actual diff.
 
-## `cargo clippy` and `cargo fmt` do not pass at baseline
+## `cargo clippy` and `cargo fmt` do not pass at baseline — RESOLVED
 
 **Found:** 2026-08-15, confirmed at commit `6af8a67` by two independent
-reviewers.
+reviewers. **Closed:** 2026-08-16, on its own branch between stages, as
+this entry recommended.
+
+Both commands now exit 0, so "the checks pass" no longer carries a
+footnote and stage plans no longer have to tell implementers to skip
+them. Add them to the check list for future stages:
+
+```bash
+cargo clippy --all-targets -- -D warnings && cargo fmt --check
+```
+
+- **Clippy** needed `#[allow(dead_code)]` on `TestDb` and on `config_for`
+  in `src-tauri/tests/common/mod.rs`, each with a comment. It was three
+  items rather than the two guessed below, and six test targets rather
+  than four.
+- **Format** was 111 diffs across 26 files, not 19 files. Done as a
+  single formatting-only commit (`e60dab1`); 209 tests pass either side
+  of it.
+
+The original entry follows.
 
 - **Clippy:** `cargo clippy --all-targets -- -D warnings` fails with two
   `dead_code` errors — `pub pool` and `pub port` in
