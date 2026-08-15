@@ -923,6 +923,7 @@ describe("tableDetail", () => {
     expect(detail!.constraints[0].items[0].name).toBe("orders_pkey");
   });
 
+
   it("reports empty sections rather than omitting them", () => {
     const detail = tableDetail(schema, "public", "bare");
 
@@ -940,6 +941,12 @@ describe("tableDetail", () => {
   });
 });
 ```
+
+**Three traps in this fixture, all found the hard way:**
+
+1. List the constraints in a **non-canonical** order — a `c` check and a `u` unique before the `p` primary key — and assert the labels come back `["Primary key", "Unique", "Check"]`. A fixture already in canonical order cannot tell canonical grouping from input-order grouping, so the ordering test proves nothing.
+2. Include **two** constraints with an unknown `kind` (e.g. `"t"`) and assert they come back as one group under the raw letter. Without this, deleting the whole `others` branch leaves every test green, and the two-of-a-kind case is what pins the grouping.
+3. Give the fixture **three** indexes — primary+unique, unique-only, and plain — or the badge conditionals pass even when mutated to emit unconditionally.
 
 - [ ] **Step 2: Run it and watch it fail**
 
@@ -1052,13 +1059,18 @@ function groupConstraints(
       .map((c) => ({ name: c.name, definition: c.definition })),
   })).filter((g) => g.items.length > 0);
 
+  // Unknown kinds group by letter exactly as known ones do. Mapping
+  // each constraint to its own group instead would render the same
+  // heading twice and collide on the React key, which is keyed by kind.
   const seen = new Set(CONSTRAINT_KINDS.map(([kind]) => kind));
-  const others = constraints
-    .filter((c) => !seen.has(c.kind))
-    .map((c) => ({
-      kind: c.kind,
-      label: c.kind,
-      items: [{ name: c.name, definition: c.definition }],
+  const others = [...new Set(constraints.map((c) => c.kind))]
+    .filter((kind) => !seen.has(kind))
+    .map((kind) => ({
+      kind,
+      label: kind,
+      items: constraints
+        .filter((c) => c.kind === kind)
+        .map((c) => ({ name: c.name, definition: c.definition })),
     }));
 
   return [...known, ...others];
