@@ -175,6 +175,50 @@ Neither is urgent, but both mean "the checks pass" currently has an asterisk,
 and every stage plan has to explain the asterisk. Best done alone, on its own
 branch, between stages.
 
+## Windows and Linux support
+
+**Assessed:** 2026-08-15, by measuring the codebase rather than estimating.
+Out of scope for v1 by the original design spec, but cheaper than expected —
+**and it stays cheap only while nothing else reaches for a platform API
+directly.** That is the reason this entry exists: to keep the constraint
+visible, not because the work is scheduled.
+
+**One file is genuinely macOS-only.** `security-framework` is the single
+platform crate, used in `src-tauri/src/secrets.rs` and nowhere else, behind a
+three-function interface — `save_password`, `load_password`,
+`delete_password`. There are **zero `cfg(target_os)` guards in the codebase**;
+nothing else ever needed one.
+
+Already portable: `dirs::data_dir()` for paths, `rusqlite` with `bundled`,
+`rustls` + `webpki-roots` (no system TLS), the `.ico` and Windows `Square*`
+icons that `tauri icon` already emits, `"targets": "all"` in
+`tauri.conf.json`, and a window config carrying nothing but title and size.
+
+**The work, in order of cost:**
+
+1. **Keychain → the `keyring` crate**, which wraps macOS Keychain, Windows
+   Credential Manager and Linux Secret Service behind one API. The three
+   signatures stay identical, so `commands.rs` and every test are untouched.
+   The subtlety is error semantics: `secrets.rs` distinguishes
+   `errSecItemNotFound` (→ `Ok(None)`) from `errSecAuthFailed` (→ "enter the
+   password again to re-save it"). Those codes are macOS-specific and each
+   platform needs its equivalents mapped. The existing tests pin the
+   behaviour that matters.
+2. **Keyboard shortcuts.** Only two `metaKey` uses, both already
+   `metaKey || ctrlKey`, and CodeMirror's `Mod-` handles the rest. Mostly a
+   labelling question — showing "Ctrl+S" rather than "⌘S".
+3. **Fonts.** Six references to `-apple-system` / `SF Pro` / `SF Mono` in
+   `App.css`. Cosmetic; needs fallbacks.
+4. **CI, signing and installers.** Not code, and the largest item: build
+   runners per platform, an Authenticode certificate for Windows (without it
+   SmartScreen warns on every download), AppImage or `.deb` for Linux.
+   Money and bureaucracy rather than engineering time.
+5. **Testing on real machines.** The Keychain replacement in particular
+   cannot be proven from a Mac.
+
+**Rough size:** the code port is about one stage. Distribution is a separate
+stage and the one that actually consumes the time.
+
 ## Table detail extras
 
 **Deferred:** 2026-08-15, while designing table detail tabs
