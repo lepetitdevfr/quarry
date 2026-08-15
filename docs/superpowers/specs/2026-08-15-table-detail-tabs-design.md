@@ -165,6 +165,21 @@ when the active tab has a target. Data mode reuses the existing
 addition to its existing expand toggle. Double-click replaces its
 current `openPreview` call with `open_table_tab(..., Data)`.
 
+### The tree stops at tables
+
+Added 2026-08-15, after the detail view was working and the duplication
+became obvious. The tree used to expand a table into its columns, plus
+`indexes (n)` and `constraints (n)` groups. All of that is in the detail
+tab now, with room to show a definition instead of truncating it to
+sidebar width, so the tree is two levels: schemas and their tables.
+
+A table row is therefore a leaf, and a single click opens its tab rather
+than expanding anything.
+
+Filtering still matches column names — that is how you find which table
+holds `user_id` — but it now surfaces the *table* rather than listing
+the matching column beneath it. Clicking through shows the column.
+
 ### Missing target
 
 The schema cache is cleared on every connection change, and a table can

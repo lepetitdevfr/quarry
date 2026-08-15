@@ -684,12 +684,6 @@ button.secondary {
   position: relative;
 }
 
-.tree-row.schema-column,
-.tree-row.schema-index,
-.tree-row.schema-constraint {
-  cursor: default;
-}
-
 .twisty {
   display: inline-block;
   width: 12px;
@@ -707,25 +701,8 @@ button.secondary {
   min-width: 0;
 }
 
-.schema-type {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.schema-type {
-  margin-left: 8px;
-  color: var(--muted);
-  font-family: ui-monospace, monospace;
-  font-size: var(--t-sm);
-}
-
-/* NOT NULL columns read stronger than nullable ones. */
-.schema-type.nullable {
-  opacity: 0.6;
-}
-
+/* Used by the table detail view's badges. The schema tree stops at
+   tables, so nothing in the sidebar renders these any more. */
 .marker {
   margin-left: 6px;
   font-size: var(--t-xs);
@@ -738,18 +715,6 @@ button.secondary {
 
 .marker.fk {
   color: var(--muted);
-}
-
-/* A short kind marker (PK / UNIQUE / CHECK) rather than the full
-   definition, which is far too long for a sidebar. The definition is in
-   the row's tooltip. */
-.schema-badge {
-  margin-left: auto;
-  padding-left: 8px;
-  color: var(--faint);
-  font-size: var(--t-xs);
-  letter-spacing: 0.04em;
-  flex: none;
 }
 
 .tree-error {

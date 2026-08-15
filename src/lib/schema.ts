@@ -1,27 +1,21 @@
 import type { Schema, SchemaTable } from "../types";
 
-/** One rendered line of the tree. */
+/**
+ * One rendered line of the tree.
+ *
+ * Two levels only: schemas, and the tables inside them. A table's
+ * columns, indexes and constraints are shown by the table detail tab,
+ * not here.
+ */
 export interface SchemaRow {
-  /** Stable identity, also the expansion key: `table:public.users`. */
+  /** Stable identity, also the expansion key: `schema:public`. */
   id: string;
-  kind: "schema" | "table" | "column" | "group" | "index" | "constraint";
+  kind: "schema" | "table";
   label: string;
   depth: number;
-  /** Column type, or an index/constraint definition. */
-  detail?: string;
-  /** Set on rows that can be expanded. */
+  /** Set on schema rows, which are the only expandable kind. */
   expandable?: boolean;
-  /** Column markers. */
-  isPrimaryKey?: boolean;
-  nullable?: boolean;
-  /** Tooltip text for a foreign key marker. */
-  referencesLabel?: string;
-  /** `pg_constraint.contype`, on constraint rows only. */
-  constraintKind?: string;
-  /** Index rows only — drives the UNIQUE/PK badge. */
-  isUniqueIndex?: boolean;
-  isPrimaryIndex?: boolean;
-  /** Table rows only — identity for previewing. */
+  /** Table rows only — identity for opening the detail tab. */
   tableSchema?: string;
   tableName?: string;
 }
@@ -80,87 +74,18 @@ export function flattenSchema(
 
     if (!schemaOpen) continue;
 
+    // Tables are leaves. Columns, indexes and constraints used to hang
+    // below them; they live in the table detail tab now, where there is
+    // room to show a definition without truncating it to sidebar width.
     for (const table of tables) {
-      const tableId = `table:${table.schema}.${table.name}`;
-      // A filter that matched a column expands that table so the match
-      // is visible; a filter matching only the table name does not.
-      const columnHit =
-        filtering && table.columns.some((c) => matchesFilter(c.name, filter));
-      const tableOpen = expanded.has(tableId) || columnHit;
-
       rows.push({
-        id: tableId,
+        id: `table:${table.schema}.${table.name}`,
         kind: "table",
         label: table.name,
         depth: 1,
-        expandable: true,
         tableSchema: table.schema,
         tableName: table.name,
       });
-
-      if (!tableOpen) continue;
-
-      for (const column of table.columns) {
-        rows.push({
-          id: `column:${table.schema}.${table.name}.${column.name}`,
-          kind: "column",
-          label: column.name,
-          depth: 2,
-          detail: column.type_name,
-          isPrimaryKey: column.is_primary_key,
-          nullable: column.nullable,
-          referencesLabel: column.references
-            ? `references ${column.references.schema}.${column.references.table}.${column.references.column}`
-            : undefined,
-        });
-      }
-
-      if (table.indexes.length > 0) {
-        const groupId = `indexes:${table.schema}.${table.name}`;
-        rows.push({
-          id: groupId,
-          kind: "group",
-          label: `indexes (${table.indexes.length})`,
-          depth: 2,
-          expandable: true,
-        });
-        if (expanded.has(groupId)) {
-          for (const index of table.indexes) {
-            rows.push({
-              id: `index:${table.schema}.${table.name}.${index.name}`,
-              kind: "index",
-              label: index.name,
-              depth: 3,
-              detail: index.definition,
-              isUniqueIndex: index.is_unique,
-              isPrimaryIndex: index.is_primary,
-            });
-          }
-        }
-      }
-
-      if (table.constraints.length > 0) {
-        const groupId = `constraints:${table.schema}.${table.name}`;
-        rows.push({
-          id: groupId,
-          kind: "group",
-          label: `constraints (${table.constraints.length})`,
-          depth: 2,
-          expandable: true,
-        });
-        if (expanded.has(groupId)) {
-          for (const constraint of table.constraints) {
-            rows.push({
-              id: `constraint:${table.schema}.${table.name}.${constraint.name}`,
-              kind: "constraint",
-              label: constraint.name,
-              depth: 3,
-              detail: constraint.definition,
-              constraintKind: constraint.kind,
-            });
-          }
-        }
-      }
     }
   }
 

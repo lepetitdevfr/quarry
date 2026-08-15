@@ -126,16 +126,32 @@ describe("flattenSchema", () => {
     ]);
   });
 
-  it("reveals columns and group rows when a table is expanded", () => {
+  it("stops at tables, even when a table id is in the expanded set", () => {
+    // Columns, indexes and constraints live in the table detail tab
+    // now. A stale table id left in the expanded set from an earlier
+    // session must not resurrect a third level.
     const rows = flattenSchema(
       SCHEMA,
       new Set(["schema:public", "table:public.users"]),
       "",
     );
-    const labels = rows.map((r) => r.label);
-    expect(labels).toContain("id");
-    expect(labels).toContain("email");
-    expect(labels).toContain("indexes (1)");
+    expect(rows.map((r) => r.label)).toEqual([
+      "analytics",
+      "public",
+      "invoices",
+      "users",
+    ]);
+    expect(rows.every((r) => r.kind === "schema" || r.kind === "table")).toBe(
+      true,
+    );
+  });
+
+  it("marks tables as leaves", () => {
+    // The twisty is what tells the user a row opens; a table opens a
+    // tab instead, so it must not claim to expand.
+    const rows = flattenSchema(SCHEMA, new Set(["schema:public"]), "");
+    const users = rows.find((r) => r.label === "users")!;
+    expect(users.expandable).toBeFalsy();
   });
 
   it("indents deeper rows", () => {
@@ -159,13 +175,14 @@ describe("matchesFilter", () => {
     expect(rows.map((r) => r.label)).toContain("invoices");
   });
 
-  it("auto-expands to reveal a matching column", () => {
-    // Typing a column name should surface the table containing it,
-    // without the user expanding anything by hand.
+  it("surfaces a table whose column matches, without listing the column", () => {
+    // Filtering on a column name is how you find which table holds it,
+    // so the match still has to reach the table row. The column itself
+    // is no longer a tree row — clicking through shows it.
     const rows = flattenSchema(SCHEMA, new Set(), "email");
     const labels = rows.map((r) => r.label);
     expect(labels).toContain("users");
-    expect(labels).toContain("email");
+    expect(labels).not.toContain("email");
     expect(labels).not.toContain("invoices");
   });
 

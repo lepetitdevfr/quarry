@@ -1,7 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { flattenSchema } from "../lib/schema";
-import type { SchemaRow } from "../lib/schema";
 import type { Schema } from "../types";
 
 interface Props {
@@ -18,29 +17,6 @@ interface Props {
 /** Must match --h-row in App.css: the virtualizer positions rows by this
     number, so a mismatch overlaps or gaps every row. */
 const ROW_HEIGHT = 26;
-
-/**
- * A short marker for an index or constraint row.
- *
- * The full definition is far too long for a sidebar, so the row shows
- * its name plus a couple of characters saying what kind of thing it is,
- * and puts the definition in the tooltip.
- */
-function indexBadge(row: SchemaRow): string {
-  if (row.kind === "constraint") {
-    const kinds: Record<string, string> = {
-      p: "PK",
-      f: "FK",
-      u: "UNIQUE",
-      c: "CHECK",
-      x: "EXCL",
-    };
-    return kinds[row.constraintKind ?? ""] ?? "";
-  }
-
-  if (row.isPrimaryIndex) return "PK";
-  return row.isUniqueIndex ? "UNIQUE" : "";
-}
 
 export function SchemaTree({
   schema,
@@ -134,11 +110,10 @@ export function SchemaTree({
                   paddingLeft: 8 + row.depth * 12,
                 }}
                 onClick={() => {
-                  // Both, deliberately: expanding and inspecting are the
-                  // same intent, and a click that only did one of them
-                  // would make the other need a second gesture.
+                  // A schema expands; a table opens its detail tab. The
+                  // two kinds are the whole tree, so these never overlap.
                   if (row.expandable) toggle(row.id);
-                  if (row.kind === "table" && row.tableSchema && row.tableName) {
+                  else if (row.tableSchema && row.tableName) {
                     onOpenTableStructure(row.tableSchema, row.tableName);
                   }
                 }}
@@ -147,33 +122,14 @@ export function SchemaTree({
                     onPreviewTable(row.tableSchema, row.tableName);
                   }
                 }}
-                title={row.referencesLabel ?? row.detail}
               >
-                {/* Always rendered, even when empty: leaf rows without a
+                {/* Always rendered, even when empty: table rows without a
                     twisty would otherwise sit 12px left of their own
-                    parent, inverting the indentation. */}
+                    schema, inverting the indentation. */}
                 <span className="twisty">
                   {row.expandable ? (open ? "▾" : "▸") : ""}
                 </span>
                 <span className="schema-label">{row.label}</span>
-                {row.kind === "column" && (
-                  <>
-                    <span
-                      className={`schema-type${row.nullable ? " nullable" : ""}`}
-                    >
-                      {row.detail}
-                    </span>
-                    {row.isPrimaryKey && <span className="marker pk">PK</span>}
-                    {row.referencesLabel && <span className="marker fk">↗</span>}
-                  </>
-                )}
-                {/* The definition is deliberately NOT rendered inline: at
-                    sidebar width it truncates the name it belongs to down
-                    to "us…" while showing an equally useless fragment of
-                    itself. It lives in the row's tooltip instead. */}
-                {(row.kind === "index" || row.kind === "constraint") && (
-                  <span className="schema-badge">{indexBadge(row)}</span>
-                )}
               </div>
             );
           })}
