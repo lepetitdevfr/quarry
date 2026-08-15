@@ -674,6 +674,12 @@ export default function App() {
       <SidebarResizer onResize={setSidebarWidth} />
 
       <div className="main-pane">
+        {locked && (
+          <div className="lock-banner">
+            <span>Locked · writes and row editing are refused</span>
+            <button onClick={() => setUnlockOpen(true)}>Unlock…</button>
+          </div>
+        )}
         {unlocked && (
           <div className="unlock-banner">
             <span>

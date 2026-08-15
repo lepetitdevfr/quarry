@@ -1135,3 +1135,28 @@ button.link {
 .status-readonly {
   color: var(--muted);
 }
+
+/* The standing counterpart to `.unlock-banner`. Deliberately quieter:
+   locked is the safe state, so it informs rather than warns — but it
+   still has to carry the way out, or a locked connection has no
+   reachable unlock at all until a write is refused. */
+.lock-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-3);
+  background: color-mix(in srgb, var(--muted) 12%, transparent);
+  color: var(--muted);
+  font-size: var(--t-sm);
+}
+
+.lock-banner button {
+  height: 22px;
+  padding: 0 var(--s-2);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: var(--t-sm);
+}
