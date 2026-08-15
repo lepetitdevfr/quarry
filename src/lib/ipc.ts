@@ -156,6 +156,13 @@ export async function setTabMode(id: string, mode: TableMode): Promise<Tab[]> {
   return invoke<Tab[]>("set_tab_mode", { id, mode });
 }
 
+export async function writeTextFile(
+  path: string,
+  contents: string,
+): Promise<void> {
+  return invoke("write_text_file", { path, contents });
+}
+
 /// Re-reads the database structure. Used for both the initial load
 /// after connecting and the manual refresh button.
 export async function refreshSchema(): Promise<Schema> {
