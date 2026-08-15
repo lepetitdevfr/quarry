@@ -2,6 +2,7 @@ pub mod commands;
 pub mod conn;
 pub mod error;
 pub mod exec;
+pub mod guard;
 pub mod library;
 pub mod schema;
 pub mod secrets;
