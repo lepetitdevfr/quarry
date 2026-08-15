@@ -1,4 +1,5 @@
 use quarry_lib::conn::{build_pool, ConnectionConfig};
+use quarry_lib::guard::Policy;
 use deadpool_postgres::Pool;
 use testcontainers_modules::postgres::Postgres;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
@@ -36,7 +37,7 @@ pub async fn start() -> TestDb {
     // testcontainers' postgres image defaults: user/password/db = postgres.
     let url = format!("postgres://postgres:postgres@localhost:{port}/postgres?sslmode=disable");
     let cfg = ConnectionConfig::from_url(&url).expect("test URL should parse");
-    let pool = build_pool(&cfg).expect("pool should build");
+    let pool = build_pool(&cfg, Policy::Free).expect("pool should build");
 
     TestDb {
         pool,

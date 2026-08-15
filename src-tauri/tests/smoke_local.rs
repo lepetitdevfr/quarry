@@ -12,13 +12,14 @@
 //! Then run: `cargo test --test smoke_local -- --ignored --nocapture`
 
 use quarry_lib::conn::{build_pool, ping, ConnectionConfig};
+use quarry_lib::guard::Policy;
 use quarry_lib::exec::run_query;
 
 const URL: &str = "postgres://postgres:postgres@localhost:55432/postgres?sslmode=disable";
 
 fn pool() -> deadpool_postgres::Pool {
     let cfg = ConnectionConfig::from_url(URL).expect("URL should parse");
-    build_pool(&cfg).expect("pool should build")
+    build_pool(&cfg, Policy::Free).expect("pool should build")
 }
 
 #[tokio::test]
@@ -32,7 +33,7 @@ async fn connects_and_reports_server_version() {
 #[tokio::test]
 #[ignore]
 async fn reads_fifty_thousand_rows() {
-    let result = run_query(&pool(), "select * from users")
+    let result = run_query(&pool(), "select * from users", false)
         .await
         .expect("query should succeed");
 
@@ -55,6 +56,7 @@ async fn null_and_empty_string_stay_distinguishable() {
     let result = run_query(
         &pool(),
         "select email from users where plan = 'edge' order by email nulls last",
+        false,
     )
     .await
     .expect("query should succeed");
@@ -67,7 +69,7 @@ async fn null_and_empty_string_stay_distinguishable() {
 #[tokio::test]
 #[ignore]
 async fn jsonb_survives_the_round_trip() {
-    let result = run_query(&pool(), "select meta from users where id = 1")
+    let result = run_query(&pool(), "select meta from users where id = 1", false)
         .await
         .expect("query should succeed");
 
@@ -77,7 +79,7 @@ async fn jsonb_survives_the_round_trip() {
 #[tokio::test]
 #[ignore]
 async fn a_missing_table_reports_its_sqlstate() {
-    let err = run_query(&pool(), "select * from nope")
+    let err = run_query(&pool(), "select * from nope", false)
         .await
         .expect_err("query should fail");
 
@@ -101,7 +103,7 @@ async fn a_missing_table_reports_its_sqlstate() {
 #[tokio::test]
 #[ignore]
 async fn an_empty_result_still_reports_its_columns() {
-    let result = run_query(&pool(), "select id, email from users where false")
+    let result = run_query(&pool(), "select id, email from users where false", false)
         .await
         .expect("query should succeed");
 

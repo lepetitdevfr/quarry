@@ -1,6 +1,7 @@
 mod common;
 
 use quarry_lib::conn::{build_pool, ping, ConnectionConfig, SslMode};
+use quarry_lib::guard::Policy;
 
 /// Reproduces the bug this change fixes: a saved connection with no
 /// password configured for a server that requires one.
@@ -33,7 +34,7 @@ async fn connecting_with_no_password_fails() {
     // build_pool is purely local setup — it never contacts the server,
     // so it succeeds even though the config is missing a password the
     // server will demand.
-    let pool = build_pool(&cfg).expect("build_pool should succeed even without a password");
+    let pool = build_pool(&cfg, Policy::Free).expect("build_pool should succeed even without a password");
 
     let err = ping(&pool)
         .await

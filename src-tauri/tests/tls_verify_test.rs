@@ -9,6 +9,7 @@
 use std::process::Command;
 
 use quarry_lib::conn::{build_pool, ping, ConnectionConfig};
+use quarry_lib::guard::Policy;
 use testcontainers_modules::testcontainers::core::{CopyDataSource, WaitFor};
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use testcontainers_modules::testcontainers::{GenericImage, ImageExt};
@@ -94,7 +95,7 @@ async fn require_accepts_a_self_signed_certificate() {
     let url =
         format!("postgres://postgres:postgres@localhost:{port}/postgres?sslmode=require");
     let cfg = ConnectionConfig::from_url(&url).expect("test URL should parse");
-    let pool = build_pool(&cfg).expect("pool should build");
+    let pool = build_pool(&cfg, Policy::Free).expect("pool should build");
 
     let version = ping(&pool)
         .await

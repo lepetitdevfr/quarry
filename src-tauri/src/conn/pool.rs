@@ -1,5 +1,6 @@
 use crate::conn::config::{ConnectionConfig, SslMode};
 use crate::error::AppError;
+use crate::guard::Policy;
 use deadpool_postgres::{
     Config as PoolConfig, ManagerConfig, Pool, RecyclingMethod, Runtime,
     SslMode as DeadpoolSslMode,
@@ -20,9 +21,33 @@ use tokio_postgres_rustls::MakeRustlsConnect;
 /// with the reset itself.
 const STATEMENT_TIMEOUT_MS: u64 = 30_000;
 
+/// The `-c` flags applied at connection time.
+///
+/// These survive for the life of the physical connection *and* the
+/// `DISCARD ALL` that runs when it returns to the pool — because they
+/// are the values `DISCARD ALL` resets to. That is what makes
+/// `default_transaction_read_only` a real protection rather than a
+/// session setting a stray `SET` could undo.
+fn startup_options(policy: Policy) -> String {
+    let mut options = format!("-c statement_timeout={STATEMENT_TIMEOUT_MS}");
+
+    if policy == Policy::ReadOnly {
+        // Layer two of the guard. Every transaction on this connection
+        // starts read-only; only an explicit `BEGIN READ WRITE` opts
+        // out, which execution does exactly while unlocked.
+        options.push_str(" -c default_transaction_read_only=on");
+    }
+
+    options
+}
+
 /// Create a connection pool. This does not open a socket yet —
 /// `ping` below is what proves the database is reachable.
-pub fn build_pool(cfg: &ConnectionConfig) -> Result<Pool, AppError> {
+///
+/// `policy` decides whether the pool's connections start read-only at
+/// the Postgres level (see `startup_options`) — the guard's second,
+/// independent layer of enforcement.
+pub fn build_pool(cfg: &ConnectionConfig, policy: Policy) -> Result<Pool, AppError> {
     let mut pc = PoolConfig::new();
     pc.host = Some(cfg.host.clone());
     pc.port = Some(cfg.port);
@@ -32,7 +57,7 @@ pub fn build_pool(cfg: &ConnectionConfig) -> Result<Pool, AppError> {
     // Applied via `startup_options`-style `-c` flags at connection time,
     // so it survives for the life of the physical connection and every
     // query on it, without a per-query round-trip.
-    pc.options = Some(format!("-c statement_timeout={STATEMENT_TIMEOUT_MS}"));
+    pc.options = Some(startup_options(policy));
     pc.manager = Some(ManagerConfig {
         // `Clean` runs `DISCARD ALL` when a connection is returned to
         // the pool: it rolls back any open transaction, resets all
@@ -238,7 +263,37 @@ mod tests {
                 password: None,
                 sslmode: mode,
             };
-            assert!(build_pool(&cfg).is_ok(), "failed to build pool for {mode:?}");
+            assert!(
+                build_pool(&cfg, Policy::Free).is_ok(),
+                "failed to build pool for {mode:?}"
+            );
         }
+    }
+
+    /// The second layer of the guard. This is the option that protects
+    /// against code paths which forget to ask the classifier — including
+    /// ones not written yet.
+    #[test]
+    fn a_read_only_pool_asks_postgres_to_refuse_writes() {
+        let cfg = ConnectionConfig {
+            host: "localhost".to_string(),
+            port: 5432,
+            user: "postgres".to_string(),
+            dbname: "postgres".to_string(),
+            password: None,
+            sslmode: SslMode::Disable,
+        };
+
+        assert!(
+            startup_options(Policy::ReadOnly).contains("default_transaction_read_only=on")
+        );
+        assert!(!startup_options(Policy::Free).contains("default_transaction_read_only"));
+
+        // Both still carry the statement timeout, which is not part of
+        // the guard and must not be lost.
+        assert!(startup_options(Policy::ReadOnly).contains("statement_timeout"));
+        assert!(startup_options(Policy::Free).contains("statement_timeout"));
+
+        assert!(build_pool(&cfg, Policy::ReadOnly).is_ok());
     }
 }
