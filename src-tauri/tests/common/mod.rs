@@ -45,3 +45,10 @@ pub async fn start() -> TestDb {
         _container: container,
     }
 }
+
+/// The same connection config `start` used, so a test can build a second
+/// pool — with a different policy — against the same container.
+pub fn config_for(port: u16) -> ConnectionConfig {
+    let url = format!("postgres://postgres:postgres@localhost:{port}/postgres?sslmode=disable");
+    ConnectionConfig::from_url(&url).expect("test URL should parse")
+}
