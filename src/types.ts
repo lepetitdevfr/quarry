@@ -92,10 +92,18 @@ export interface AppErrorPayload {
     | "unknown_connection"
     | "query"
     | "keychain"
-    | "password_required";
+    | "password_required"
+    | "write_blocked";
   message: string;
   code: string | null;
   position: number | null;
+}
+
+/** Mirrors Rust `GuardStatus`. */
+export interface GuardStatus {
+  policy: "free" | "read_only";
+  /** Seconds left on the unlock; null when locked. */
+  unlocked_seconds_remaining: number | null;
 }
 
 export type Tag = "local" | "staging" | "prod";

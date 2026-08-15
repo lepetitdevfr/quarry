@@ -3,6 +3,7 @@ import type {
   Connection,
   ConnectionInfo,
   ConnectionInput,
+  GuardStatus,
   LibraryTree,
   Query,
   QueryResult,
@@ -167,4 +168,16 @@ export async function writeTextFile(
 /// after connecting and the manual refresh button.
 export async function refreshSchema(): Promise<Schema> {
   return invoke<Schema>("refresh_schema");
+}
+
+export async function guardStatus(): Promise<GuardStatus | null> {
+  return invoke<GuardStatus | null>("guard_status");
+}
+
+export async function unlock(typedName: string): Promise<void> {
+  return invoke("unlock", { typedName });
+}
+
+export async function relock(): Promise<void> {
+  return invoke("relock");
 }
