@@ -52,6 +52,9 @@ export interface Query {
   updated_at: string;
 }
 
+/** Mirrors Rust `TableMode`. */
+export type TableMode = "structure" | "data";
+
 /** Mirrors Rust `Tab`. `query_id === null` means an untitled tab. */
 export interface Tab {
   id: string;
@@ -62,6 +65,10 @@ export interface Tab {
   cursor_pos: number;
   is_preview: boolean;
   title: string | null;
+  /** Both set on a table tab, both null on a query tab. */
+  target_schema: string | null;
+  target_table: string | null;
+  mode: TableMode | null;
 }
 
 /** Mirrors Rust `LibraryTree`. */

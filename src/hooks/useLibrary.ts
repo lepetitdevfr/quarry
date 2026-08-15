@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as ipc from "../lib/ipc";
-import type { LibraryTree, Query, Tab } from "../types";
+import type { LibraryTree, Query, Tab, TableMode } from "../types";
 
 /** How long typing must pause before a draft is written. */
 const AUTOSAVE_DELAY_MS = 400;
@@ -103,6 +103,14 @@ export function useLibrary() {
     openPreview: async (title: string, sql: string) =>
       setTabs(await ipc.openPreviewTab(title, sql)),
     promoteTab: async (id: string) => setTabs(await ipc.promoteTab(id)),
+    openTableTab: async (
+      schema: string,
+      table: string,
+      mode: TableMode,
+      pin: boolean,
+    ) => setTabs(await ipc.openTableTab(schema, table, mode, pin)),
+    setTabMode: async (id: string, mode: TableMode) =>
+      setTabs(await ipc.setTabMode(id, mode)),
 
     createCollection: async (name: string, parentId: string | null) =>
       setLibrary(await ipc.createCollection(name, parentId)),

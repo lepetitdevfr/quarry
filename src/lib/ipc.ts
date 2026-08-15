@@ -8,6 +8,7 @@ import type {
   QueryResult,
   Schema,
   Tab,
+  TableMode,
 } from "../types";
 
 /**
@@ -140,6 +141,19 @@ export async function openPreviewTab(title: string, sql: string): Promise<Tab[]>
 
 export async function promoteTab(id: string): Promise<Tab[]> {
   return invoke<Tab[]>("promote_tab", { id });
+}
+
+export async function openTableTab(
+  schema: string,
+  table: string,
+  mode: TableMode,
+  pin: boolean,
+): Promise<Tab[]> {
+  return invoke<Tab[]>("open_table_tab", { schema, table, mode, pin });
+}
+
+export async function setTabMode(id: string, mode: TableMode): Promise<Tab[]> {
+  return invoke<Tab[]>("set_tab_mode", { id, mode });
 }
 
 /// Re-reads the database structure. Used for both the initial load
