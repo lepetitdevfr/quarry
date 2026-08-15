@@ -40,3 +40,74 @@ describe("compareCells", () => {
     expect(compareCells({ a: 1 }, { b: 1 })).toBeLessThan(0);
   });
 });
+
+import { nextSort, sortedIndices } from "./gridSort";
+import type { CellValue } from "../types";
+
+const ROWS: CellValue[][] = [
+  ["carol", 30],
+  ["alice", null],
+  ["bob", 9],
+  ["dave", 10],
+];
+
+describe("nextSort", () => {
+  it("cycles ascending, descending, off on the same column", () => {
+    // Off has to be reachable, or there is no way back to the order
+    // the query returned.
+    expect(nextSort(null, 0)).toEqual({ column: 0, direction: "asc" });
+    expect(nextSort({ column: 0, direction: "asc" }, 0)).toEqual({
+      column: 0,
+      direction: "desc",
+    });
+    expect(nextSort({ column: 0, direction: "desc" }, 0)).toBeNull();
+  });
+
+  it("starts a different column ascending", () => {
+    expect(nextSort({ column: 0, direction: "desc" }, 1)).toEqual({
+      column: 1,
+      direction: "asc",
+    });
+  });
+});
+
+describe("sortedIndices", () => {
+  it("returns row order, not copied rows", () => {
+    const order = sortedIndices(ROWS, { column: 0, direction: "asc" });
+    expect(order).toEqual([1, 2, 0, 3]);
+  });
+
+  it("sorts descending", () => {
+    const order = sortedIndices(ROWS, { column: 0, direction: "desc" });
+    expect(order).toEqual([3, 0, 2, 1]);
+  });
+
+  it("puts nulls last ascending and first descending, like Postgres", () => {
+    // Row 1 holds the null in column 1. Matching Postgres matters:
+    // a Data tab sorts server-side, a query tab sorts here, and the
+    // two must not disagree about the same data.
+    expect(sortedIndices(ROWS, { column: 1, direction: "asc" })).toEqual([
+      2, 3, 0, 1,
+    ]);
+    expect(sortedIndices(ROWS, { column: 1, direction: "desc" })).toEqual([
+      1, 0, 3, 2,
+    ]);
+  });
+
+  it("returns query order when there is no sort", () => {
+    expect(sortedIndices(ROWS, null)).toEqual([0, 1, 2, 3]);
+  });
+
+  it("keeps equal values in their original order", () => {
+    const tied: CellValue[][] = [["x", 1], ["x", 2], ["x", 3]];
+    const order = sortedIndices(tied, { column: 0, direction: "asc" });
+    expect(order).toEqual([0, 1, 2]);
+  });
+
+  it("handles a column of all nulls", () => {
+    const nulls: CellValue[][] = [[null], [null], [null]];
+    expect(sortedIndices(nulls, { column: 0, direction: "asc" })).toEqual([
+      0, 1, 2,
+    ]);
+  });
+});
