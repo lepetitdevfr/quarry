@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   MAX_INITIAL_WIDTH,
   MIN_WIDTH,
+  columnsKey,
   fitWidth,
   initialWidths,
   resized,
@@ -75,5 +76,33 @@ describe("resized", () => {
 
   it("ignores an index outside the list", () => {
     expect(resized([100, 200], 7, 50)).toEqual([100, 200]);
+  });
+});
+
+describe("columnsKey", () => {
+  it("is stable when the same columns come back", () => {
+    // A sort on a Data tab re-runs the query and returns a new result
+    // object with the very same columns. Widths must survive that.
+    expect(columnsKey(COLUMNS)).toBe(columnsKey([...COLUMNS]));
+  });
+
+  it("changes when a column is renamed, added, or reordered", () => {
+    const renamed = [COLUMNS[0], { name: "biography", type_name: "text" }];
+    const added = [...COLUMNS, { name: "extra", type_name: "int4" }];
+    const reordered = [COLUMNS[1], COLUMNS[0]];
+
+    expect(columnsKey(renamed)).not.toBe(columnsKey(COLUMNS));
+    expect(columnsKey(added)).not.toBe(columnsKey(COLUMNS));
+    expect(columnsKey(reordered)).not.toBe(columnsKey(COLUMNS));
+  });
+
+  it("does not confuse a split name with two columns", () => {
+    // A naive join on a printable separator would make these equal.
+    const one = [{ name: "a,b", type_name: "text" }];
+    const two = [
+      { name: "a", type_name: "text" },
+      { name: "b", type_name: "text" },
+    ];
+    expect(columnsKey(one)).not.toBe(columnsKey(two));
   });
 });

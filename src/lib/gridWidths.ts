@@ -79,6 +79,23 @@ export function fitWidth(
   return Math.max(MIN_WIDTH, measured);
 }
 
+/**
+ * Identity of a result's column shape.
+ *
+ * Measured widths are meaningless once the columns change, but they are
+ * still valid when the *same* columns come back — which is exactly what
+ * a sort on a Data tab produces, since it re-runs the query and returns
+ * a fresh result object holding the same columns. Keying the re-measure
+ * on this rather than on result identity is what stops a sort from
+ * throwing away a width you dragged.
+ *
+ * The separator is a null character because it cannot appear in a
+ * Postgres identifier, so no pair of distinct column lists can collide.
+ */
+export function columnsKey(columns: ColumnMeta[]): string {
+  return columns.map((c) => c.name).join("\0");
+}
+
 /** Apply a drag to one column. An unknown index changes nothing. */
 export function resized(
   widths: number[],

@@ -3,7 +3,13 @@ import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatCell } from "../lib/format";
 import { isTruncated, nextSort, sortedIndices } from "../lib/gridSort";
 import type { SortState } from "../lib/gridSort";
-import { MIN_WIDTH, fitWidth, initialWidths, resized } from "../lib/gridWidths";
+import {
+  MIN_WIDTH,
+  columnsKey,
+  fitWidth,
+  initialWidths,
+  resized,
+} from "../lib/gridWidths";
 import type { QueryResult } from "../types";
 
 interface Props {
@@ -45,12 +51,17 @@ export function ResultGrid({
     initialWidths(result.columns, result.rows),
   );
 
-  // A new result may have entirely different columns, so measured
-  // widths from the previous one mean nothing. `result` is a fresh
-  // object per run, so identity is the right trigger.
+  // Re-measure when the column *shape* changes, not on every new
+  // result. Sorting a Data tab re-runs the query and returns a fresh
+  // result object holding the very same columns; keying this on result
+  // identity threw away the widths you had dragged every time you
+  // sorted.
+  const shape = columnsKey(result.columns);
   useEffect(() => {
     setWidths(initialWidths(result.columns, result.rows));
-  }, [result]);
+    // `shape` is the trigger; result is read, not watched.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shape]);
 
   // Drag state lives in a ref, not state: it changes on every
   // pointermove and re-rendering a virtualized grid at that rate is
@@ -133,6 +144,16 @@ export function ResultGrid({
                   onPointerDown={(e) => onHandleDown(e, i)}
                   onPointerMove={onHandleMove}
                   onPointerUp={onHandleUp}
+                  onClick={(e) => {
+                    // Releasing a drag fires a click, and `click` is
+                    // synthesised from the mousedown/mouseup pair rather
+                    // than bubbling from `pointerdown` — so stopping
+                    // propagation there does not stop this. Without it
+                    // every resize also sorted, and on a Data tab the
+                    // sort re-ran the query and wiped the width just
+                    // dragged.
+                    e.stopPropagation();
+                  }}
                   onDoubleClick={(e) => {
                     // Without this the double-click also cycles the sort
                     // twice on its way through the header.
