@@ -1,5 +1,6 @@
 pub mod commands;
 pub mod conn;
+pub mod edit;
 pub mod error;
 pub mod exec;
 pub mod guard;
