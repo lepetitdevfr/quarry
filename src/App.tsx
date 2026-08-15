@@ -197,23 +197,26 @@ export default function App() {
     void runSql(text);
   }, [runSql, text]);
 
-  // Single-click in the tree: a disposable structure tab, reused by the
-  // next click so navigating the tree does not open a tab per row.
-  const openTableStructure = useCallback(
-    async (schemaName: string, tableName: string) => {
-      await actions.openTableTab(schemaName, tableName, "structure", false);
-    },
-    [actions],
-  );
-
-  // Double-click: data, pinned — an explicit "keep this one".
+  // Single-click in the tree: the rows, which is what you usually want
+  // from a table. The tab is disposable and reused by the next click, so
+  // browsing the tree does not open a tab per row — but note each click
+  // does run the preview query, unlike the structure view, which renders
+  // from the cached schema.
   const openTableData = useCallback(
     async (schemaName: string, tableName: string) => {
       setSort(null);
-      await actions.openTableTab(schemaName, tableName, "data", true);
+      await actions.openTableTab(schemaName, tableName, "data", false);
       await runSql(previewSql(schemaName, tableName));
     },
     [actions, runSql],
+  );
+
+  // Double-click: structure, pinned — an explicit "keep this one".
+  const openTableStructure = useCallback(
+    async (schemaName: string, tableName: string) => {
+      await actions.openTableTab(schemaName, tableName, "structure", true);
+    },
+    [actions],
   );
 
   const changeTableMode = useCallback(
@@ -481,8 +484,8 @@ export default function App() {
           schemaError={schemaError}
           connected={connection !== null}
           onRefreshSchema={() => void refreshDbSchema()}
-          onOpenTableStructure={(s, t) => void openTableStructure(s, t)}
-          onPreviewTable={(s, t) => void openTableData(s, t)}
+          onTableClick={(s, t) => void openTableData(s, t)}
+          onTableDoubleClick={(s, t) => void openTableStructure(s, t)}
         />
       </div>
       <SidebarResizer onResize={setSidebarWidth} />
