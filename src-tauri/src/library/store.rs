@@ -491,6 +491,22 @@ impl Store {
         Ok(())
     }
 
+    /// Switch a table tab between structure and data, pinning it.
+    ///
+    /// The `self.lock()` guard here is a temporary: it lives only to the
+    /// end of this statement, so it is already released before
+    /// `self.tabs()` takes the same lock. `promote_tab` above has the
+    /// same shape.
+    pub fn set_tab_mode(&self, id: &str, mode: TableMode) -> Result<Vec<Tab>, AppError> {
+        self.lock()
+            .execute(
+                "update tabs set mode = ?2, is_preview = 0 where id = ?1",
+                params![id, mode.as_str()],
+            )
+            .map_err(sql_err)?;
+        self.tabs()
+    }
+
     pub fn activate_tab(&self, id: &str) -> Result<(), AppError> {
         activate(&self.lock(), id)
     }

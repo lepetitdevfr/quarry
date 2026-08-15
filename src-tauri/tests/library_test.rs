@@ -545,3 +545,20 @@ fn a_query_preview_clears_a_table_target() {
     assert_eq!(tabs[0].mode, None);
     assert_eq!(tabs[0].scratch_sql.as_deref(), Some("select * from events"));
 }
+
+#[test]
+fn switching_mode_pins_the_tab() {
+    // Toggling to Data is a deliberate act on a specific table, so the
+    // tab stops being disposable — same rule as editing a query preview.
+    let (s, _dir) = store();
+
+    let tabs = s
+        .open_table_tab("public", "users", TableMode::Structure, false)
+        .unwrap();
+    let id = tabs[0].id.clone();
+
+    let tabs = s.set_tab_mode(&id, TableMode::Data).unwrap();
+
+    assert_eq!(tabs[0].mode, Some(TableMode::Data));
+    assert!(!tabs[0].is_preview, "switching mode pins the tab");
+}
