@@ -94,6 +94,44 @@ can be deleted whenever convenient.
 never `cp`. A plain copy of a WAL database captures a file with no tables in
 it — which is exactly what happened on the first attempt that night.
 
+## A migration test that passes without the migration
+
+**Found:** 2026-08-15, in code review of the table-detail stage.
+
+`adds_preview_columns_to_an_existing_tabs_table` in `src-tauri/src/library/db.rs`
+builds its "old" database by calling `open()` — which creates `tabs` with
+`is_preview` and `title` already in it, because they are in the
+`create table if not exists` block. So `add_column_if_missing` never runs, and
+the test passes with those calls deleted. It covers the fresh-database path
+while claiming to cover the upgrade path.
+
+The v4 test written this stage had the identical defect and was fixed by
+building the old table with raw SQL instead. Apply the same fix here. The real
+failure it should guard is a user's existing database lacking a column, which
+makes every launch fail with `no such column`.
+
+**Worth doing generally:** any future migration test must be checked by
+deleting the migration and watching the test fail. A migration test that
+passes without the migration is worse than no test.
+
+## `cargo clippy` and `cargo fmt` do not pass at baseline
+
+**Found:** 2026-08-15, confirmed at commit `6af8a67` by two independent
+reviewers.
+
+- **Clippy:** `cargo clippy --all-targets -- -D warnings` fails with two
+  `dead_code` errors — `pub pool` and `pub port` in
+  `src-tauri/tests/common/mod.rs` — which fail four test targets. Different
+  test binaries use different fields of the shared harness struct, so the fix
+  is probably `#[allow(dead_code)]` on it with a comment saying why.
+- **Format:** the repo has never been rustfmt-formatted; 19 files differ at
+  baseline. Running `cargo fmt` now would rewrite the tree and bury whatever
+  stage is in flight.
+
+Neither is urgent, but both mean "the checks pass" currently has an asterisk,
+and every stage plan has to explain the asterisk. Best done alone, on its own
+branch, between stages.
+
 ## Table detail extras
 
 **Deferred:** 2026-08-15, while designing table detail tabs

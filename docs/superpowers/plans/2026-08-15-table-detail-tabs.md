@@ -173,15 +173,29 @@ fn adds_table_target_columns_to_an_existing_tabs_table() {
     let path = dir.path().join("w.db");
 
     {
-        let conn = open(&path).unwrap();
-        conn.execute(
-            "insert into tabs (id, query_id, scratch_sql, position, is_active, cursor_pos)
-             values ('t1', null, 'select 1', 100, 1, 0)",
-            [],
+        // The v3 tabs table exactly as it shipped, built with raw SQL.
+        // Going through open() would create the new columns for us and
+        // the migration under test would never run — the test would
+        // pass with the add_column_if_missing calls deleted.
+        let conn = rusqlite::Connection::open(&path).unwrap();
+        conn.execute_batch(
+            "create table tabs (
+                id          text primary key,
+                query_id    text,
+                scratch_sql text,
+                position    integer not null,
+                is_active   integer not null default 0,
+                cursor_pos  integer not null default 0,
+                is_preview  integer not null default 0,
+                title       text
+             );
+             insert into tabs (id, query_id, scratch_sql, position, is_active, cursor_pos)
+             values ('t1', null, 'select 1', 100, 1, 0);",
         )
         .unwrap();
     }
 
+    // The real upgrade.
     let conn = open(&path).unwrap();
 
     let sql: String = conn
@@ -212,6 +226,8 @@ cd src-tauri && cargo test --lib adds_table_target_columns
 ```
 
 Expected: FAIL — `no such column: target_schema`.
+
+**Then prove the test bites the right thing.** After Step 3, delete the three `add_column_if_missing` lines you added, re-run this test, and confirm it fails; restore them and confirm it passes. A migration test that passes without the migration is worse than no test, and this one is easy to write that way by accident.
 
 - [ ] **Step 3: Migrate**
 
@@ -1606,13 +1622,15 @@ npm test && npx tsc --noEmit
 
 Expected: PASS. Baseline was 51 tests; this plan adds 5.
 
-- [ ] **Step 3: Clippy and format**
+- [ ] **Step 3: Clippy**
 
 ```bash
-cd src-tauri && cargo clippy --all-targets -- -D warnings && cargo fmt --check
+cd src-tauri && cargo clippy --all-targets -- -D warnings
 ```
 
-Expected: clean. Fix anything reported.
+**This does not pass at baseline and is not expected to.** Two `dead_code` errors on `pub pool` and `pub port` in `src-tauri/tests/common/mod.rs` fail four test targets, and they failed identically at `6af8a67`, before this stage. What you are checking is that this stage adds nothing new: the output must contain those two errors and nothing else. Anything naming a file this stage touched is yours to fix.
+
+`cargo fmt --check` is deliberately not run. The repo has never been rustfmt-formatted (19 files differ at baseline) and reformatting would bury this stage's diff. Both of these are on the backlog as their own piece of work.
 
 - [ ] **Step 4: Migration on the real database**
 
