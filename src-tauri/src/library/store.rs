@@ -407,7 +407,9 @@ impl Store {
     /// so the next single-click in the tree opens elsewhere instead of
     /// overwriting it. The preview slot is shared with query previews,
     /// so this clears `scratch_sql` on the reuse path — otherwise a
-    /// table tab would still be carrying the previous preview's SQL.
+    /// table tab would still be carrying the previous preview's SQL —
+    /// and `query_id`, so a reused saved-query preview stops pointing at
+    /// its query.
     pub fn open_table_tab(
         &self,
         schema: &str,
@@ -466,13 +468,15 @@ impl Store {
         Ok(())
     }
 
-    /// Switch a table tab between structure and data, pinning it.
+    /// Switch a table tab between structure and data.
     ///
-    /// The `self.lock()` guard here is a temporary: it lives only to the
-    /// end of this statement, so it is already released before
-    /// `self.tabs()` takes the same lock. `promote_tab` above has the
-    /// same shape.
+    /// Toggling also pins the tab: choosing a face for a specific table
+    /// is a deliberate act, so the tab stops being disposable — the same
+    /// rule that promotes a query preview on its first edit.
     pub fn set_tab_mode(&self, id: &str, mode: TableMode) -> Result<Vec<Tab>, AppError> {
+        // The `self.lock()` guard is a temporary: it lives only to the end
+        // of this statement, so it is already released before `self.tabs()`
+        // takes the same lock. `promote_tab` above has the same shape.
         self.lock()
             .execute(
                 "update tabs set mode = ?2, is_preview = 0 where id = ?1",
