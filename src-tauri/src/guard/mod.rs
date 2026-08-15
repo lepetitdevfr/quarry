@@ -39,7 +39,10 @@ pub fn classify(sql: &str) -> Access {
         return Access::Read;
     }
 
-    if statements.iter().any(|s| classify_statement(s) == Access::Write) {
+    if statements
+        .iter()
+        .any(|s| classify_statement(s) == Access::Write)
+    {
         Access::Write
     } else {
         Access::Read
@@ -106,8 +109,7 @@ fn classify_set_expr(body: &SetExpr) -> Access {
         SetExpr::Select(_) => Access::Read,
         SetExpr::Query(query) => classify_query(query),
         SetExpr::SetOperation { left, right, .. } => {
-            if classify_set_expr(left) == Access::Write
-                || classify_set_expr(right) == Access::Write
+            if classify_set_expr(left) == Access::Write || classify_set_expr(right) == Access::Write
             {
                 Access::Write
             } else {
@@ -163,7 +165,12 @@ pub enum Decision {
 ///
 /// `now` is passed in rather than read here so the decision stays a pure
 /// function of its inputs and the expiry can be tested without sleeping.
-pub fn decide(policy: Policy, unlocked_until: Option<Instant>, now: Instant, sql: &str) -> Decision {
+pub fn decide(
+    policy: Policy,
+    unlocked_until: Option<Instant>,
+    now: Instant,
+    sql: &str,
+) -> Decision {
     if policy == Policy::Free {
         return Decision::Allow { read_write: true };
     }

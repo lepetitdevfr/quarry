@@ -12,8 +12,8 @@
 //! Then run: `cargo test --test smoke_local -- --ignored --nocapture`
 
 use quarry_lib::conn::{build_pool, ping, ConnectionConfig};
-use quarry_lib::guard::Policy;
 use quarry_lib::exec::run_query;
+use quarry_lib::guard::Policy;
 
 const URL: &str = "postgres://postgres:postgres@localhost:55432/postgres?sslmode=disable";
 

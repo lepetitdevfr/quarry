@@ -50,11 +50,7 @@ pub fn cell_to_json(row: &Row, idx: usize) -> Value {
             Ok(None) => Value::Null,
             Err(e) => unreadable(e),
         }
-    } else if t == &Type::TEXT
-        || t == &Type::VARCHAR
-        || t == &Type::NAME
-        || t == &Type::BPCHAR
-    {
+    } else if t == &Type::TEXT || t == &Type::VARCHAR || t == &Type::NAME || t == &Type::BPCHAR {
         convert::<String>(row, idx)
     } else if t == &Type::JSON || t == &Type::JSONB {
         convert::<Value>(row, idx)

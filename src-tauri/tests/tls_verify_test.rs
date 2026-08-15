@@ -92,8 +92,7 @@ async fn require_accepts_a_self_signed_certificate() {
         .await
         .expect("no mapped port");
 
-    let url =
-        format!("postgres://postgres:postgres@localhost:{port}/postgres?sslmode=require");
+    let url = format!("postgres://postgres:postgres@localhost:{port}/postgres?sslmode=require");
     let cfg = ConnectionConfig::from_url(&url).expect("test URL should parse");
     let pool = build_pool(&cfg, Policy::Free).expect("pool should build");
 

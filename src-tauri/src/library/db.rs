@@ -184,9 +184,11 @@ mod tests {
         let second = open(&path).unwrap();
 
         let version: i64 = second
-            .query_row("select value from meta where key='schema_version'", [], |r| {
-                r.get::<_, String>(0)
-            })
+            .query_row(
+                "select value from meta where key='schema_version'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
             .unwrap()
             .parse()
             .unwrap();
@@ -226,7 +228,8 @@ mod tests {
         )
         .unwrap();
 
-        conn.execute("delete from collections where id='c1'", []).unwrap();
+        conn.execute("delete from collections where id='c1'", [])
+            .unwrap();
 
         let remaining: i64 = conn
             .query_row("select count(*) from queries", [], |r| r.get(0))
@@ -273,12 +276,19 @@ mod tests {
         let conn = open(&path).unwrap();
 
         let sql: String = conn
-            .query_row("select scratch_sql from tabs where id = 't1'", [], |r| r.get(0))
+            .query_row("select scratch_sql from tabs where id = 't1'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
-        assert_eq!(sql, "select 1", "an existing tab must survive the migration");
+        assert_eq!(
+            sql, "select 1",
+            "an existing tab must survive the migration"
+        );
 
         let is_preview: i64 = conn
-            .query_row("select is_preview from tabs where id = 't1'", [], |r| r.get(0))
+            .query_row("select is_preview from tabs where id = 't1'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         assert_eq!(is_preview, 0, "existing tabs default to not-preview");
 
@@ -322,15 +332,24 @@ mod tests {
         let conn = open(&path).unwrap();
 
         let sql: String = conn
-            .query_row("select scratch_sql from tabs where id = 't1'", [], |r| r.get(0))
+            .query_row("select scratch_sql from tabs where id = 't1'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
-        assert_eq!(sql, "select 1", "an existing tab must survive the migration");
+        assert_eq!(
+            sql, "select 1",
+            "an existing tab must survive the migration"
+        );
 
         let target_schema: Option<String> = conn
-            .query_row("select target_schema from tabs where id = 't1'", [], |r| r.get(0))
+            .query_row("select target_schema from tabs where id = 't1'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         let target_table: Option<String> = conn
-            .query_row("select target_table from tabs where id = 't1'", [], |r| r.get(0))
+            .query_row("select target_table from tabs where id = 't1'", [], |r| {
+                r.get(0)
+            })
             .unwrap();
         let mode: Option<String> = conn
             .query_row("select mode from tabs where id = 't1'", [], |r| r.get(0))
@@ -389,8 +408,11 @@ mod tests {
                 [],
             )
             .unwrap();
-            conn.execute("update meta set value = '1' where key = 'schema_version'", [])
-                .unwrap();
+            conn.execute(
+                "update meta set value = '1' where key = 'schema_version'",
+                [],
+            )
+            .unwrap();
         }
 
         // Reopening runs migrate() again, as a version upgrade would.
@@ -402,9 +424,11 @@ mod tests {
         assert_eq!(name, "keeper");
 
         let version: String = conn
-            .query_row("select value from meta where key = 'schema_version'", [], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "select value from meta where key = 'schema_version'",
+                [],
+                |r| r.get(0),
+            )
             .unwrap();
         assert_eq!(version, "4");
     }

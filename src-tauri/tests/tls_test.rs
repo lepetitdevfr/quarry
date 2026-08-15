@@ -15,8 +15,7 @@ use quarry_lib::conn::{build_pool, ping, ConnectionConfig};
 use quarry_lib::guard::Policy;
 
 fn config_for(port: u16, sslmode: &str) -> ConnectionConfig {
-    let url =
-        format!("postgres://postgres:postgres@localhost:{port}/postgres?sslmode={sslmode}");
+    let url = format!("postgres://postgres:postgres@localhost:{port}/postgres?sslmode={sslmode}");
     ConnectionConfig::from_url(&url).expect("test URL should parse")
 }
 
@@ -24,7 +23,8 @@ fn config_for(port: u16, sslmode: &str) -> ConnectionConfig {
 async fn require_refuses_a_server_without_tls() {
     let db = common::start().await;
 
-    let pool = build_pool(&config_for(db.port, "require"), Policy::Free).expect("pool should build");
+    let pool =
+        build_pool(&config_for(db.port, "require"), Policy::Free).expect("pool should build");
     let result = ping(&pool).await;
 
     assert!(
@@ -42,7 +42,9 @@ async fn prefer_falls_back_to_plaintext() {
     // back, and must still connect. If this ever fails, the fix above
     // has been over-applied and every non-TLS database is unreachable.
     let pool = build_pool(&config_for(db.port, "prefer"), Policy::Free).expect("pool should build");
-    let version = ping(&pool).await.expect("prefer should fall back and connect");
+    let version = ping(&pool)
+        .await
+        .expect("prefer should fall back and connect");
 
     assert!(version.contains("PostgreSQL"));
 }
@@ -51,7 +53,8 @@ async fn prefer_falls_back_to_plaintext() {
 async fn disable_connects_without_tls() {
     let db = common::start().await;
 
-    let pool = build_pool(&config_for(db.port, "disable"), Policy::Free).expect("pool should build");
+    let pool =
+        build_pool(&config_for(db.port, "disable"), Policy::Free).expect("pool should build");
     let version = ping(&pool).await.expect("disable should connect");
 
     assert!(version.contains("PostgreSQL"));
@@ -67,7 +70,8 @@ async fn verify_full_refuses_a_server_without_tls() {
     // verification path itself (see the module doc comment on the
     // coverage gap there) — it only proves `verify-full` still mandates
     // TLS and does not fall back to plaintext.
-    let pool = build_pool(&config_for(db.port, "verify-full"), Policy::Free).expect("pool should build");
+    let pool =
+        build_pool(&config_for(db.port, "verify-full"), Policy::Free).expect("pool should build");
     let result = ping(&pool).await;
 
     assert!(

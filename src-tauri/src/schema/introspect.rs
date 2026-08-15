@@ -192,7 +192,10 @@ pub async fn introspect(pool: &Pool) -> Result<Schema, AppError> {
             .filter(|((s, _), _)| s == &name)
             .map(|(_, t)| t.clone())
             .collect();
-        nodes.push(SchemaNode { name, tables: owned });
+        nodes.push(SchemaNode {
+            name,
+            tables: owned,
+        });
     }
 
     Ok(Schema { schemas: nodes })

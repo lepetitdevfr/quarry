@@ -1,5 +1,7 @@
 use crate::conn::{build_pool, ping, ConnectionConfig};
-use crate::edit::{apply_edits, build_updates, plan_apply, AppliedRow, EditInfo, RowEdit, Statement};
+use crate::edit::{
+    apply_edits, build_updates, plan_apply, AppliedRow, EditInfo, RowEdit, Statement,
+};
 use crate::error::AppError;
 use crate::exec::{run_query, QueryResult};
 use crate::guard::{decide, Decision, Policy};
@@ -75,10 +77,8 @@ impl AppState {
 
     /// Install a new active connection, closing whatever it replaces.
     fn set_active(&self, next: Option<ActiveConnection>) {
-        let previous = std::mem::replace(
-            &mut *self.active.lock().expect("state lock poisoned"),
-            next,
-        );
+        let previous =
+            std::mem::replace(&mut *self.active.lock().expect("state lock poisoned"), next);
 
         // `Pool` does not close its sockets when dropped, so an
         // un-closed pool leaves idle connections open on the server
@@ -265,7 +265,9 @@ pub fn create_collection(
     name: String,
     parent_id: Option<String>,
 ) -> Result<LibraryTree, AppError> {
-    state.library.create_collection(&name, parent_id.as_deref())?;
+    state
+        .library
+        .create_collection(&name, parent_id.as_deref())?;
     state.library.tree()
 }
 
@@ -295,7 +297,9 @@ pub fn create_query(
     sql: String,
     collection_id: Option<String>,
 ) -> Result<Query, AppError> {
-    state.library.create_query(&name, &sql, collection_id.as_deref())
+    state
+        .library
+        .create_query(&name, &sql, collection_id.as_deref())
 }
 
 #[tauri::command]
@@ -360,10 +364,7 @@ pub fn open_tab(
 }
 
 #[tauri::command]
-pub fn activate_tab(
-    state: tauri::State<'_, AppState>,
-    id: String,
-) -> Result<Vec<Tab>, AppError> {
+pub fn activate_tab(state: tauri::State<'_, AppState>, id: String) -> Result<Vec<Tab>, AppError> {
     state.library.activate_tab(&id)?;
     state.library.tabs()
 }
@@ -384,11 +385,7 @@ pub fn save_scratch(
 }
 
 #[tauri::command]
-pub fn set_cursor(
-    state: tauri::State<'_, AppState>,
-    id: String,
-    pos: i64,
-) -> Result<(), AppError> {
+pub fn set_cursor(state: tauri::State<'_, AppState>, id: String, pos: i64) -> Result<(), AppError> {
     state.library.set_cursor(&id, pos)
 }
 
@@ -402,10 +399,7 @@ pub fn open_preview_tab(
 }
 
 #[tauri::command]
-pub fn promote_tab(
-    state: tauri::State<'_, AppState>,
-    id: String,
-) -> Result<Vec<Tab>, AppError> {
+pub fn promote_tab(state: tauri::State<'_, AppState>, id: String) -> Result<Vec<Tab>, AppError> {
     state.library.promote_tab(&id)?;
     state.library.tabs()
 }
@@ -435,9 +429,7 @@ pub fn set_tab_mode(
 use crate::library::model::{Connection, ConnectionInput};
 
 #[tauri::command]
-pub fn list_connections(
-    state: tauri::State<'_, AppState>,
-) -> Result<Vec<Connection>, AppError> {
+pub fn list_connections(state: tauri::State<'_, AppState>) -> Result<Vec<Connection>, AppError> {
     state.library.connections()
 }
 
@@ -624,8 +616,7 @@ pub async fn refresh_schema(
 /// Split from the `#[tauri::command]` wrapper so it can be tested
 /// without a Tauri app handle.
 pub fn write_text(path: &str, contents: &str) -> Result<(), AppError> {
-    std::fs::write(path, contents)
-        .map_err(|e| AppError::Export(format!("{path}: {e}")))
+    std::fs::write(path, contents).map_err(|e| AppError::Export(format!("{path}: {e}")))
 }
 
 #[tauri::command]

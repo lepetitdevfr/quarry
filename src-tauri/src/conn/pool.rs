@@ -2,12 +2,9 @@ use crate::conn::config::{ConnectionConfig, SslMode};
 use crate::error::AppError;
 use crate::guard::Policy;
 use deadpool_postgres::{
-    Config as PoolConfig, ManagerConfig, Pool, RecyclingMethod, Runtime,
-    SslMode as DeadpoolSslMode,
+    Config as PoolConfig, ManagerConfig, Pool, RecyclingMethod, Runtime, SslMode as DeadpoolSslMode,
 };
-use rustls::client::danger::{
-    HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier,
-};
+use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier};
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{DigitallySignedStruct, SignatureScheme};
 use std::sync::Arc;
@@ -284,9 +281,7 @@ mod tests {
             sslmode: SslMode::Disable,
         };
 
-        assert!(
-            startup_options(Policy::ReadOnly).contains("default_transaction_read_only=on")
-        );
+        assert!(startup_options(Policy::ReadOnly).contains("default_transaction_read_only=on"));
         assert!(!startup_options(Policy::Free).contains("default_transaction_read_only"));
 
         // Both still carry the statement timeout, which is not part of

@@ -71,11 +71,7 @@ fn statements_that_look_like_reads_but_write() {
 fn unparseable_sql_is_a_write() {
     // The spec's rule: what cannot be classified cannot be run on a
     // locked connection. Wrong in the safe direction.
-    for sql in [
-        "this is not sql",
-        "select * from",
-        "sel ect 1",
-    ] {
+    for sql in ["this is not sql", "select * from", "sel ect 1"] {
         assert_eq!(classify(sql), Access::Write, "should be a write: {sql}");
     }
 }

@@ -61,7 +61,10 @@ fn a_plain_single_table_select_is_editable() {
 
 #[test]
 fn a_primary_key_column_is_read_only_and_says_so() {
-    let info = decide_editability(&[col(1, "\"int4\""), col(2, "\"text\"")], Some(&users_table()));
+    let info = decide_editability(
+        &[col(1, "\"int4\""), col(2, "\"text\"")],
+        Some(&users_table()),
+    );
 
     assert!(!info.columns[0].editable);
     assert_eq!(info.columns[0].reason.as_deref(), Some("primary key"));
@@ -143,7 +146,10 @@ fn a_table_without_a_primary_key_is_not_editable() {
 fn a_missing_primary_key_column_names_what_to_add() {
     // `select email, plan from users` — no `id` in the result, so no
     // WHERE clause can be built.
-    let info = decide_editability(&[col(2, "\"text\""), col(3, "\"text\"")], Some(&users_table()));
+    let info = decide_editability(
+        &[col(2, "\"text\""), col(3, "\"text\"")],
+        Some(&users_table()),
+    );
 
     assert!(!info.editable);
     assert!(
@@ -157,7 +163,10 @@ fn a_missing_primary_key_column_names_what_to_add() {
 fn an_alias_edits_the_real_column_not_the_header() {
     // `select id, email as e from users`: the header is `e`, but the
     // attnum still points at `email`.
-    let info = decide_editability(&[col(1, "\"int4\""), col(2, "\"text\"")], Some(&users_table()));
+    let info = decide_editability(
+        &[col(1, "\"int4\""), col(2, "\"text\"")],
+        Some(&users_table()),
+    );
 
     assert!(info.editable, "reason was: {}", reason(&info));
     assert_eq!(info.columns[1].column_name.as_deref(), Some("email"));
@@ -206,7 +215,10 @@ fn a_partitioned_table_is_editable() {
     let mut partitioned = users_table();
     partitioned.relkind = "p".to_string();
 
-    let info = decide_editability(&[col(1, "\"int4\""), col(2, "\"text\"")], Some(&partitioned));
+    let info = decide_editability(
+        &[col(1, "\"int4\""), col(2, "\"text\"")],
+        Some(&partitioned),
+    );
 
     assert!(info.editable, "reason was: {}", reason(&info));
 }

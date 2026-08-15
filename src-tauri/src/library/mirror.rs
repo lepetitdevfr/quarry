@@ -155,7 +155,10 @@ mod tests {
         let home = dirs::home_dir().unwrap_or_default().join(".zshrc");
         if home.exists() {
             let content = std::fs::read_to_string(&home).unwrap_or_default();
-            assert_ne!(content, "select 1", "must not have overwritten a real dotfile");
+            assert_ne!(
+                content, "select 1",
+                "must not have overwritten a real dotfile"
+            );
         }
 
         // ...and exactly one sanitised file landed inside the root.
@@ -173,7 +176,12 @@ mod tests {
         write_query(dir.path(), &["..", "..", "etc"], "passwd", "select 1").unwrap();
 
         assert!(
-            !dir.path().join("..").join("..").join("etc").join("passwd.sql").exists(),
+            !dir.path()
+                .join("..")
+                .join("..")
+                .join("etc")
+                .join("passwd.sql")
+                .exists(),
             "must not write outside the mirror root"
         );
         // The sanitised path stays nested inside the temp dir.
@@ -188,12 +196,18 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         write_query(dir.path(), &[], "/etc/passwd", "select 1").unwrap();
 
-        assert!(!Path::new("/etc/passwd.sql").exists(), "must not touch a real absolute path");
+        assert!(
+            !Path::new("/etc/passwd.sql").exists(),
+            "must not touch a real absolute path"
+        );
         let entries: Vec<_> = std::fs::read_dir(dir.path())
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
             .collect();
-        assert!(entries.contains(&"-etc-passwd.sql".to_string()), "got {entries:?}");
+        assert!(
+            entries.contains(&"-etc-passwd.sql".to_string()),
+            "got {entries:?}"
+        );
     }
 
     #[test]
@@ -205,7 +219,10 @@ mod tests {
             .unwrap()
             .map(|e| e.unwrap().file_name().to_string_lossy().to_string())
             .collect();
-        assert!(entries.contains(&"evil-name.sql".to_string()), "got {entries:?}");
+        assert!(
+            entries.contains(&"evil-name.sql".to_string()),
+            "got {entries:?}"
+        );
     }
 
     #[test]

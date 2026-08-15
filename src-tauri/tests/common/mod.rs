@@ -1,6 +1,6 @@
+use deadpool_postgres::Pool;
 use quarry_lib::conn::{build_pool, ConnectionConfig};
 use quarry_lib::guard::Policy;
-use deadpool_postgres::Pool;
 use testcontainers_modules::postgres::Postgres;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use testcontainers_modules::testcontainers::ContainerAsync;

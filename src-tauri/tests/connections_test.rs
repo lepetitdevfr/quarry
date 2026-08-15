@@ -149,7 +149,9 @@ fn deleting_a_connection_removes_its_keychain_entry() {
 
     quarry_lib::secrets::save_password(&c.id, "hunter2").unwrap();
     assert_eq!(
-        quarry_lib::secrets::load_password(&c.id).unwrap().as_deref(),
+        quarry_lib::secrets::load_password(&c.id)
+            .unwrap()
+            .as_deref(),
         Some("hunter2"),
     );
 
@@ -207,7 +209,10 @@ fn a_keychain_failure_is_surfaced_when_nothing_was_typed() {
         Err(quarry_lib::error::AppError::Keychain("denied".into()))
     });
 
-    assert!(result.is_err(), "a bare Keychain denial must not be swallowed");
+    assert!(
+        result.is_err(),
+        "a bare Keychain denial must not be swallowed"
+    );
 }
 
 #[test]

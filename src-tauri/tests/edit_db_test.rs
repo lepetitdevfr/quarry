@@ -464,9 +464,13 @@ async fn setting_null_differs_from_setting_an_empty_string() {
 async fn a_bad_value_fails_with_the_postgres_message() {
     let db = common::start().await;
 
-    run_query(&db.pool, "create table nums (id int primary key, n int)", false)
-        .await
-        .expect("create table");
+    run_query(
+        &db.pool,
+        "create table nums (id int primary key, n int)",
+        false,
+    )
+    .await
+    .expect("create table");
     run_query(&db.pool, "insert into nums values (1, 5)", false)
         .await
         .expect("insert");

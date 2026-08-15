@@ -75,7 +75,10 @@ impl Store {
     pub fn rename_collection(&self, id: &str, name: &str) -> Result<(), AppError> {
         let name = validate_name(name)?;
         self.lock()
-            .execute("update collections set name = ?2 where id = ?1", params![id, name])
+            .execute(
+                "update collections set name = ?2 where id = ?1",
+                params![id, name],
+            )
             .map_err(sql_err)?;
         Ok(())
     }
@@ -117,8 +120,14 @@ impl Store {
                (id, collection_id, name, sql, draft_sql, position, created_at, updated_at)
              values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             params![
-                q.id, q.collection_id, q.name, q.sql, q.draft_sql,
-                q.position, q.created_at, q.updated_at
+                q.id,
+                q.collection_id,
+                q.name,
+                q.sql,
+                q.draft_sql,
+                q.position,
+                q.created_at,
+                q.updated_at
             ],
         )
         .map_err(sql_err)?;
@@ -174,7 +183,9 @@ impl Store {
         .map_err(sql_err)?;
 
         let name: String = conn
-            .query_row("select name from queries where id = ?1", params![id], |r| r.get(0))
+            .query_row("select name from queries where id = ?1", params![id], |r| {
+                r.get(0)
+            })
             .map_err(sql_err)?;
         let path = self.collection_path(&conn, id)?;
         let refs: Vec<&str> = path.iter().map(String::as_str).collect();
@@ -233,7 +244,9 @@ impl Store {
         // Read the location BEFORE deleting the row — afterwards the
         // collection path is unrecoverable.
         let name: Option<String> = conn
-            .query_row("select name from queries where id = ?1", params![id], |r| r.get(0))
+            .query_row("select name from queries where id = ?1", params![id], |r| {
+                r.get(0)
+            })
             .ok();
         let path = self.collection_path(&conn, id).unwrap_or_default();
 
@@ -298,7 +311,10 @@ impl Store {
             .collect::<Result<Vec<_>, _>>()
             .map_err(sql_err)?;
 
-        Ok(LibraryTree { collections, queries })
+        Ok(LibraryTree {
+            collections,
+            queries,
+        })
     }
 
     // ---- tabs --------------------------------------------------------
@@ -443,7 +459,15 @@ impl Store {
                        (id, query_id, scratch_sql, position, is_active, cursor_pos,
                         is_preview, title, target_schema, target_table, mode)
                      values (?1, null, null, ?2, 0, 0, ?3, ?4, ?5, ?6, ?7)",
-                    params![id, position, is_preview, table, schema, table, mode.as_str()],
+                    params![
+                        id,
+                        position,
+                        is_preview,
+                        table,
+                        schema,
+                        table,
+                        mode.as_str()
+                    ],
                 )
                 .map_err(sql_err)?;
                 id
@@ -503,7 +527,10 @@ impl Store {
 
     pub fn set_cursor(&self, id: &str, pos: i64) -> Result<(), AppError> {
         self.lock()
-            .execute("update tabs set cursor_pos = ?2 where id = ?1", params![id, pos])
+            .execute(
+                "update tabs set cursor_pos = ?2 where id = ?1",
+                params![id, pos],
+            )
             .map_err(sql_err)?;
         Ok(())
     }
@@ -526,9 +553,11 @@ impl Store {
             .ok();
 
         let position: Option<i64> = tx
-            .query_row("select position from tabs where id = ?1", params![id], |r| {
-                r.get(0)
-            })
+            .query_row(
+                "select position from tabs where id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
             .ok();
 
         tx.execute("delete from tabs where id = ?1", params![id])
@@ -549,14 +578,17 @@ impl Store {
             let target = match neighbour {
                 Some(id) => Some(id),
                 None => tx
-                    .query_row("select id from tabs order by position asc limit 1", [], |r| {
-                        r.get(0)
-                    })
+                    .query_row(
+                        "select id from tabs order by position asc limit 1",
+                        [],
+                        |r| r.get(0),
+                    )
                     .ok(),
             };
 
             if let Some(target_id) = target {
-                tx.execute("update tabs set is_active = 0", []).map_err(sql_err)?;
+                tx.execute("update tabs set is_active = 0", [])
+                    .map_err(sql_err)?;
                 tx.execute(
                     "update tabs set is_active = 1 where id = ?1",
                     params![target_id],
@@ -619,15 +651,21 @@ fn next_position(
 
 /// The one preview slot, if a tab currently holds it.
 fn preview_slot(conn: &Connection) -> Option<String> {
-    conn.query_row("select id from tabs where is_preview = 1 limit 1", [], |r| r.get(0))
-        .ok()
+    conn.query_row(
+        "select id from tabs where is_preview = 1 limit 1",
+        [],
+        |r| r.get(0),
+    )
+    .ok()
 }
 
 /// One gap past the rightmost tab. Tabs have no parent column, so this
 /// is simpler than `next_position`.
 fn next_tab_position(conn: &Connection) -> Result<i64, AppError> {
     let max: i64 = conn
-        .query_row("select coalesce(max(position), 0) from tabs", [], |r| r.get(0))
+        .query_row("select coalesce(max(position), 0) from tabs", [], |r| {
+            r.get(0)
+        })
         .map_err(sql_err)?;
     Ok(max + POSITION_GAP)
 }
@@ -649,7 +687,8 @@ fn read_query(row: &Row) -> Result<Query, AppError> {
 /// two statements inside the caller's lock, so no other thread can
 /// observe two active tabs.
 fn activate(conn: &Connection, id: &str) -> Result<(), AppError> {
-    conn.execute("update tabs set is_active = 0", []).map_err(sql_err)?;
+    conn.execute("update tabs set is_active = 0", [])
+        .map_err(sql_err)?;
     conn.execute("update tabs set is_active = 1 where id = ?1", params![id])
         .map_err(sql_err)?;
     Ok(())

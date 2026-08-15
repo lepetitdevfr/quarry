@@ -53,7 +53,10 @@ fn positions_siblings_with_a_gap() {
     let a = s.create_collection("A", None).unwrap();
     let b = s.create_collection("B", None).unwrap();
 
-    assert!(b.position > a.position, "later siblings sort after earlier ones");
+    assert!(
+        b.position > a.position,
+        "later siblings sort after earlier ones"
+    );
     assert_eq!(b.position - a.position, 100);
 }
 
@@ -77,7 +80,10 @@ fn saving_clears_the_draft() {
 
     let drafted = s.query(&q.id).unwrap().unwrap();
     assert_eq!(drafted.draft_sql.as_deref(), Some("select 2"));
-    assert_eq!(drafted.sql, "select 1", "draft must not overwrite saved text");
+    assert_eq!(
+        drafted.sql, "select 1",
+        "draft must not overwrite saved text"
+    );
     assert!(drafted.is_dirty());
     assert_eq!(drafted.effective_sql(), "select 2");
 
@@ -145,7 +151,11 @@ fn deleting_a_collection_removes_its_queries() {
 
     let tree = s.tree().unwrap();
     assert_eq!(tree.collections.len(), 0);
-    assert_eq!(tree.queries.len(), 0, "queries must not outlive their collection");
+    assert_eq!(
+        tree.queries.len(),
+        0,
+        "queries must not outlive their collection"
+    );
 }
 
 #[test]
@@ -181,7 +191,12 @@ fn only_one_tab_is_active_at_a_time() {
     s.open_tab(Some(&a.id)).unwrap();
     let second = s.open_tab(Some(&b.id)).unwrap();
 
-    let active: Vec<_> = s.tabs().unwrap().into_iter().filter(|t| t.is_active).collect();
+    let active: Vec<_> = s
+        .tabs()
+        .unwrap()
+        .into_iter()
+        .filter(|t| t.is_active)
+        .collect();
     assert_eq!(active.len(), 1, "exactly one active tab");
     assert_eq!(active[0].id, second.id);
 }
@@ -243,7 +258,10 @@ fn closing_a_tab_leaves_the_query_intact() {
     s.close_tab(&t.id).unwrap();
 
     assert_eq!(s.tabs().unwrap().len(), 0);
-    assert!(s.query(&q.id).unwrap().is_some(), "closing a tab must not delete the query");
+    assert!(
+        s.query(&q.id).unwrap().is_some(),
+        "closing a tab must not delete the query"
+    );
 }
 
 #[test]
@@ -284,7 +302,10 @@ fn closing_the_active_leftmost_tab_activates_the_new_leftmost() {
 
     let remaining = s.tabs().unwrap();
     assert_eq!(remaining.len(), 1);
-    assert!(remaining[0].is_active, "the only remaining tab becomes active");
+    assert!(
+        remaining[0].is_active,
+        "the only remaining tab becomes active"
+    );
     assert_eq!(remaining[0].id, tb.id);
 }
 
@@ -328,7 +349,11 @@ fn deleting_a_query_closes_its_tab() {
 
     s.delete_query(&q.id).unwrap();
 
-    assert_eq!(s.tabs().unwrap().len(), 0, "a tab pointing at nothing would crash the UI");
+    assert_eq!(
+        s.tabs().unwrap().len(),
+        0,
+        "a tab pointing at nothing would crash the UI"
+    );
 }
 
 #[test]
@@ -387,7 +412,10 @@ fn opens_a_preview_tab() {
     assert_eq!(tabs.len(), 1);
     assert!(tabs[0].is_preview);
     assert_eq!(tabs[0].title.as_deref(), Some("users"));
-    assert_eq!(tabs[0].scratch_sql.as_deref(), Some("select * from users limit 500"));
+    assert_eq!(
+        tabs[0].scratch_sql.as_deref(),
+        Some("select * from users limit 500")
+    );
     assert!(tabs[0].is_active, "a preview opens focused");
 }
 
@@ -395,7 +423,9 @@ fn opens_a_preview_tab() {
 fn a_second_preview_reuses_the_same_slot() {
     let (store, _dir) = store();
 
-    store.open_preview_tab("users", "select * from users limit 500").unwrap();
+    store
+        .open_preview_tab("users", "select * from users limit 500")
+        .unwrap();
     let tabs = store
         .open_preview_tab("events", "select * from events limit 500")
         .unwrap();
@@ -415,7 +445,9 @@ fn a_preview_does_not_disturb_ordinary_tabs() {
     let q = store.create_query("saved", "select 1", None).unwrap();
     store.open_tab(Some(&q.id)).unwrap();
 
-    let tabs = store.open_preview_tab("users", "select * from users").unwrap();
+    let tabs = store
+        .open_preview_tab("users", "select * from users")
+        .unwrap();
 
     assert_eq!(tabs.len(), 2);
     assert_eq!(tabs.iter().filter(|t| !t.is_preview).count(), 1);
@@ -424,7 +456,9 @@ fn a_preview_does_not_disturb_ordinary_tabs() {
 #[test]
 fn promoting_clears_the_preview_flag() {
     let (store, _dir) = store();
-    let tabs = store.open_preview_tab("users", "select * from users").unwrap();
+    let tabs = store
+        .open_preview_tab("users", "select * from users")
+        .unwrap();
     let id = tabs[0].id.clone();
 
     store.promote_tab(&id).unwrap();
@@ -443,15 +477,21 @@ fn a_promoted_tab_is_not_reused_by_the_next_preview() {
     // The whole point of promotion: a tab you have started editing must
     // never be destroyed by the next double-click.
     let (store, _dir) = store();
-    let first = store.open_preview_tab("users", "select * from users").unwrap();
+    let first = store
+        .open_preview_tab("users", "select * from users")
+        .unwrap();
     let id = first[0].id.clone();
     store.promote_tab(&id).unwrap();
 
-    let tabs = store.open_preview_tab("events", "select * from events").unwrap();
+    let tabs = store
+        .open_preview_tab("events", "select * from events")
+        .unwrap();
 
     assert_eq!(tabs.len(), 2, "the promoted tab survives");
     assert!(tabs.iter().any(|t| t.id == id && !t.is_preview));
-    assert!(tabs.iter().any(|t| t.is_preview && t.title.as_deref() == Some("events")));
+    assert!(tabs
+        .iter()
+        .any(|t| t.is_preview && t.title.as_deref() == Some("events")));
 }
 
 #[test]
@@ -461,7 +501,9 @@ fn preview_tabs_do_not_survive_reopening() {
 
     {
         let store = Store::open_at(&path).unwrap();
-        store.open_preview_tab("users", "select * from users").unwrap();
+        store
+            .open_preview_tab("users", "select * from users")
+            .unwrap();
         assert_eq!(store.tabs().unwrap().len(), 1);
     }
 
@@ -493,7 +535,11 @@ fn opens_a_table_tab_in_the_preview_slot() {
     assert_eq!(tab.target_schema.as_deref(), Some("public"));
     assert_eq!(tab.target_table.as_deref(), Some("users"));
     assert_eq!(tab.mode, Some(TableMode::Structure));
-    assert_eq!(tab.title.as_deref(), Some("users"), "the tab is labelled by its table");
+    assert_eq!(
+        tab.title.as_deref(),
+        Some("users"),
+        "the tab is labelled by its table"
+    );
     assert_eq!(tab.query_id, None);
     assert_eq!(tab.scratch_sql, None, "a table tab stores no SQL");
     assert!(tab.is_preview, "an unpinned table tab is a preview");
@@ -505,7 +551,8 @@ fn a_second_table_tab_reuses_the_preview_slot() {
     // Clicking down a long tree must not leave a tab per row.
     let (s, _dir) = store();
 
-    s.open_table_tab("public", "users", TableMode::Structure, false).unwrap();
+    s.open_table_tab("public", "users", TableMode::Structure, false)
+        .unwrap();
     let tabs = s
         .open_table_tab("public", "events", TableMode::Structure, false)
         .unwrap();
@@ -518,13 +565,17 @@ fn a_second_table_tab_reuses_the_preview_slot() {
 fn a_pinned_table_tab_is_not_reused() {
     let (s, _dir) = store();
 
-    s.open_table_tab("public", "users", TableMode::Data, true).unwrap();
+    s.open_table_tab("public", "users", TableMode::Data, true)
+        .unwrap();
     let tabs = s
         .open_table_tab("public", "events", TableMode::Structure, false)
         .unwrap();
 
     assert_eq!(tabs.len(), 2, "the pinned tab survives");
-    let pinned = tabs.iter().find(|t| t.target_table.as_deref() == Some("users")).unwrap();
+    let pinned = tabs
+        .iter()
+        .find(|t| t.target_table.as_deref() == Some("users"))
+        .unwrap();
     assert!(!pinned.is_preview);
     assert_eq!(pinned.mode, Some(TableMode::Data));
 }
@@ -536,8 +587,11 @@ fn a_query_preview_clears_a_table_target() {
     // look like a table tab to the UI.
     let (s, _dir) = store();
 
-    s.open_table_tab("public", "users", TableMode::Structure, false).unwrap();
-    let tabs = s.open_preview_tab("events", "select * from events").unwrap();
+    s.open_table_tab("public", "users", TableMode::Structure, false)
+        .unwrap();
+    let tabs = s
+        .open_preview_tab("events", "select * from events")
+        .unwrap();
 
     assert_eq!(tabs.len(), 1);
     assert_eq!(tabs[0].target_schema, None);
@@ -551,11 +605,17 @@ fn a_table_tab_clears_the_query_preview_it_replaces() {
     // The one preview slot serves both kinds, so taking it over must
     // drop the SQL the query preview left behind.
     let (s, _dir) = store();
-    s.open_preview_tab("events", "select * from events").unwrap();
-    let tabs = s.open_table_tab("public", "users", TableMode::Structure, false).unwrap();
+    s.open_preview_tab("events", "select * from events")
+        .unwrap();
+    let tabs = s
+        .open_table_tab("public", "users", TableMode::Structure, false)
+        .unwrap();
 
     assert_eq!(tabs.len(), 1, "the slot is reused, not added to");
-    assert_eq!(tabs[0].scratch_sql, None, "the previous preview's SQL is gone");
+    assert_eq!(
+        tabs[0].scratch_sql, None,
+        "the previous preview's SQL is gone"
+    );
     assert_eq!(tabs[0].query_id, None);
     assert_eq!(tabs[0].target_table.as_deref(), Some("users"));
 }
@@ -565,8 +625,11 @@ fn double_clicking_pins_the_tab_that_was_a_preview() {
     // Single-click then double-click: the pin has to stick even though
     // the row already existed as a preview.
     let (s, _dir) = store();
-    s.open_table_tab("public", "users", TableMode::Structure, false).unwrap();
-    let tabs = s.open_table_tab("public", "orders", TableMode::Data, true).unwrap();
+    s.open_table_tab("public", "users", TableMode::Structure, false)
+        .unwrap();
+    let tabs = s
+        .open_table_tab("public", "orders", TableMode::Data, true)
+        .unwrap();
 
     assert_eq!(tabs.len(), 1, "the preview slot is taken over");
     assert!(!tabs[0].is_preview, "a double-click pins the reused row");
@@ -584,7 +647,8 @@ fn a_table_tab_round_trips_its_schema_and_table() {
 
     {
         let s = Store::open_at(&path).unwrap();
-        s.open_table_tab("sales", "orders", TableMode::Data, true).unwrap();
+        s.open_table_tab("sales", "orders", TableMode::Data, true)
+            .unwrap();
 
         let tabs = s.tabs().unwrap();
         assert_eq!(tabs[0].target_schema.as_deref(), Some("sales"));
@@ -619,7 +683,8 @@ fn a_tab_with_a_target_but_no_stored_mode_reads_as_structure() {
     {
         let s = Store::open_at(&path).unwrap();
         // Pinned, so it survives the reopen below.
-        s.open_table_tab("sales", "orders", TableMode::Data, true).unwrap();
+        s.open_table_tab("sales", "orders", TableMode::Data, true)
+            .unwrap();
     }
 
     // Blank the mode behind the store's back — this state is not

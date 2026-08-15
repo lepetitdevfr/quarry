@@ -45,8 +45,7 @@ impl ConnectionConfig {
     /// Returns `Result<Self, AppError>`: the `?` operator below returns
     /// early on the `Err` branch, so the happy path stays flat.
     pub fn from_url(raw: &str) -> Result<Self, AppError> {
-        let url = Url::parse(raw.trim())
-            .map_err(|e| AppError::InvalidUrl(e.to_string()))?;
+        let url = Url::parse(raw.trim()).map_err(|e| AppError::InvalidUrl(e.to_string()))?;
 
         match url.scheme() {
             "postgres" | "postgresql" => {}
@@ -61,8 +60,7 @@ impl ConnectionConfig {
         let dbname = url.path().trim_start_matches('/').to_string();
         if dbname.is_empty() {
             return Err(AppError::InvalidUrl(
-                "URL is missing a database name (expected postgres://host/dbname)"
-                    .to_string(),
+                "URL is missing a database name (expected postgres://host/dbname)".to_string(),
             ));
         }
 
@@ -139,10 +137,8 @@ mod tests {
 
     #[test]
     fn parses_a_full_url() {
-        let c = ConnectionConfig::from_url(
-            "postgres://alice:s3cret@db.example.com:6432/kolecto",
-        )
-        .unwrap();
+        let c = ConnectionConfig::from_url("postgres://alice:s3cret@db.example.com:6432/kolecto")
+            .unwrap();
         assert_eq!(c.host, "db.example.com");
         assert_eq!(c.port, 6432);
         assert_eq!(c.user, "alice");
@@ -169,19 +165,13 @@ mod tests {
 
     #[test]
     fn reads_sslmode_from_the_query_string() {
-        let c = ConnectionConfig::from_url(
-            "postgres://localhost/mydb?sslmode=require",
-        )
-        .unwrap();
+        let c = ConnectionConfig::from_url("postgres://localhost/mydb?sslmode=require").unwrap();
         assert_eq!(c.sslmode, SslMode::Require);
     }
 
     #[test]
     fn percent_decodes_credentials() {
-        let c = ConnectionConfig::from_url(
-            "postgres://a%40b:p%40ss@localhost/mydb",
-        )
-        .unwrap();
+        let c = ConnectionConfig::from_url("postgres://a%40b:p%40ss@localhost/mydb").unwrap();
         assert_eq!(c.user, "a@b");
         assert_eq!(c.password.as_deref(), Some("p@ss"));
     }
@@ -228,16 +218,11 @@ mod tests {
 
     #[test]
     fn from_url_maps_verify_ca_and_verify_full_to_verify_full() {
-        let c = ConnectionConfig::from_url(
-            "postgres://localhost/mydb?sslmode=verify-ca",
-        )
-        .unwrap();
+        let c = ConnectionConfig::from_url("postgres://localhost/mydb?sslmode=verify-ca").unwrap();
         assert_eq!(c.sslmode, SslMode::VerifyFull);
 
-        let c = ConnectionConfig::from_url(
-            "postgres://localhost/mydb?sslmode=verify-full",
-        )
-        .unwrap();
+        let c =
+            ConnectionConfig::from_url("postgres://localhost/mydb?sslmode=verify-full").unwrap();
         assert_eq!(c.sslmode, SslMode::VerifyFull);
     }
 }

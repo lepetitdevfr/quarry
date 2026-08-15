@@ -35,8 +35,13 @@ const FIXTURE: &str = "
 async fn fixture_schema() -> (quarry_lib::schema::Schema, common::TestDb) {
     let db = common::start().await;
     let client = db.pool.get().await.expect("checkout");
-    client.batch_execute(FIXTURE).await.expect("fixture should apply");
-    let schema = introspect(&db.pool).await.expect("introspection should succeed");
+    client
+        .batch_execute(FIXTURE)
+        .await
+        .expect("fixture should apply");
+    let schema = introspect(&db.pool)
+        .await
+        .expect("introspection should succeed");
     (schema, db)
 }
 
@@ -65,7 +70,9 @@ async fn finds_user_schemas_and_hides_system_ones() {
     assert!(names.contains(&"public"));
     assert!(names.contains(&"analytics"));
     assert!(
-        !names.iter().any(|n| n.starts_with("pg_") || *n == "information_schema"),
+        !names
+            .iter()
+            .any(|n| n.starts_with("pg_") || *n == "information_schema"),
         "system schemas must be filtered out, got {names:?}",
     );
 }
@@ -129,7 +136,11 @@ async fn marks_primary_keys_including_composite_ones() {
         .filter(|c| c.is_primary_key)
         .map(|c| c.name.as_str())
         .collect();
-    assert_eq!(pk_columns, vec!["user_id", "seq"], "both halves of a composite key");
+    assert_eq!(
+        pk_columns,
+        vec!["user_id", "seq"],
+        "both halves of a composite key"
+    );
 }
 
 #[tokio::test]
@@ -138,7 +149,10 @@ async fn resolves_a_cross_schema_foreign_key() {
     let events = table(&schema, "analytics", "events");
 
     let user_id = events.columns.iter().find(|c| c.name == "user_id").unwrap();
-    let fk = user_id.references.as_ref().expect("user_id references users");
+    let fk = user_id
+        .references
+        .as_ref()
+        .expect("user_id references users");
 
     assert_eq!(fk.schema, "public");
     assert_eq!(fk.table, "users");
@@ -238,7 +252,11 @@ async fn renders_array_and_enum_column_types_readably() {
     let tags = users.columns.iter().find(|c| c.name == "tags").unwrap();
     assert_eq!(tags.type_name, "text[]", "not the internal _text spelling");
 
-    let temperament = users.columns.iter().find(|c| c.name == "temperament").unwrap();
+    let temperament = users
+        .columns
+        .iter()
+        .find(|c| c.name == "temperament")
+        .unwrap();
     assert_eq!(temperament.type_name, "mood");
 }
 

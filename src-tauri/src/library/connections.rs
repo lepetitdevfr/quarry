@@ -47,10 +47,7 @@ impl Store {
             .map_err(|_| AppError::Library(format!("no such connection: {id}")))
     }
 
-    pub fn create_connection(
-        &self,
-        input: ConnectionInput,
-    ) -> Result<Connection, AppError> {
+    pub fn create_connection(&self, input: ConnectionInput) -> Result<Connection, AppError> {
         let name = validate_name(&input.name)?;
         let colour = input
             .colour
@@ -95,11 +92,7 @@ impl Store {
         Ok(c)
     }
 
-    pub fn update_connection(
-        &self,
-        id: &str,
-        input: ConnectionInput,
-    ) -> Result<(), AppError> {
+    pub fn update_connection(&self, id: &str, input: ConnectionInput) -> Result<(), AppError> {
         let name = validate_name(&input.name)?;
         let colour = input
             .colour
@@ -164,11 +157,7 @@ impl Store {
     /// Lives on `Store` so every credential write goes through the same
     /// place as the record itself, rather than being scattered across
     /// command handlers.
-    pub fn save_connection_password(
-        &self,
-        id: &str,
-        password: &str,
-    ) -> Result<(), AppError> {
+    pub fn save_connection_password(&self, id: &str, password: &str) -> Result<(), AppError> {
         crate::secrets::save_password(id, password)
     }
 }

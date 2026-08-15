@@ -52,9 +52,7 @@ impl Serialize for AppError {
         let (kind, code, position) = match self {
             AppError::InvalidUrl(_) => ("invalid_url", None, None),
             AppError::Connection(_) => ("connection", None, None),
-            AppError::Query { code, position, .. } => {
-                ("query", code.clone(), *position)
-            }
+            AppError::Query { code, position, .. } => ("query", code.clone(), *position),
             AppError::Keychain(_) => ("keychain", None, None),
             AppError::Library(_) => ("library", None, None),
             AppError::PasswordRequired => ("password_required", None, None),

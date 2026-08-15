@@ -122,11 +122,14 @@ pub fn build_updates(info: &EditInfo, edits: &[RowEdit]) -> Result<Vec<Statement
         let mut returned = Vec::new();
 
         for cell in &edit.cells {
-            let column = info.columns.get(cell.column).ok_or_else(|| AppError::Query {
-                message: format!("column {} is not in this result", cell.column),
-                code: None,
-                position: None,
-            })?;
+            let column = info
+                .columns
+                .get(cell.column)
+                .ok_or_else(|| AppError::Query {
+                    message: format!("column {} is not in this result", cell.column),
+                    code: None,
+                    position: None,
+                })?;
 
             let (name, cast) = match (&column.column_name, &column.cast_type) {
                 (Some(name), Some(cast)) if column.editable => (name, cast),

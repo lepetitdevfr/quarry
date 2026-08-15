@@ -30,7 +30,9 @@ async fn converts_every_supported_type_and_pins_the_int_array_fallback() {
         'char10'::char(10)                       as a_bpchar,
         '{1,2,3}'::int4[]                        as an_int_array";
 
-    let result = run_query(&db.pool, sql, false).await.expect("query should succeed");
+    let result = run_query(&db.pool, sql, false)
+        .await
+        .expect("query should succeed");
 
     assert_eq!(result.row_count, 1);
     let row = &result.rows[0];
@@ -55,10 +57,7 @@ async fn converts_every_supported_type_and_pins_the_int_array_fallback() {
     assert_eq!(col("a_date"), json!("2026-01-04"));
     assert_eq!(col("a_timestamp"), json!("2026-01-04T10:30:00"));
     assert_eq!(col("a_jsonb"), json!({"k": 1}));
-    assert_eq!(
-        col("a_uuid"),
-        json!("00000000-0000-0000-0000-000000000001")
-    );
+    assert_eq!(col("a_uuid"), json!("00000000-0000-0000-0000-000000000001"));
 
     // The distinction the UI depends on: NULL and '' must not collapse.
     assert_eq!(col("a_null"), serde_json::Value::Null);
@@ -75,7 +74,9 @@ async fn converts_every_supported_type_and_pins_the_int_array_fallback() {
         chrono::DateTime::parse_from_rfc3339(timestamptz.as_str().unwrap())
             .unwrap()
             .with_timezone(&chrono::Utc),
-        "2026-01-04T08:30:00Z".parse::<chrono::DateTime<chrono::Utc>>().unwrap(),
+        "2026-01-04T08:30:00Z"
+            .parse::<chrono::DateTime<chrono::Utc>>()
+            .unwrap(),
         "must represent the same instant regardless of offset formatting"
     );
 
@@ -155,9 +156,9 @@ async fn an_aborted_transaction_does_not_leak_into_the_next_checkout() {
     // If the pool hands back that same stale, unreset connection, a
     // perfectly ordinary next query fails with 25P02 "current
     // transaction is aborted" — a bogus failure the user never caused.
-    let result = run_query(&db.pool, "SELECT 1 as n", false)
-        .await
-        .expect("query after an abandoned aborted transaction should succeed on a clean connection");
+    let result = run_query(&db.pool, "SELECT 1 as n", false).await.expect(
+        "query after an abandoned aborted transaction should succeed on a clean connection",
+    );
     assert_eq!(result.rows[0][0], json!(1));
 }
 
@@ -200,9 +201,13 @@ async fn timestamp_retains_fractional_seconds() {
 async fn whole_second_timestamp_has_no_trailing_dot() {
     let db = common::start().await;
 
-    let result = run_query(&db.pool, "SELECT '2026-01-04 10:30:00'::timestamp as ts", false)
-        .await
-        .expect("query should succeed");
+    let result = run_query(
+        &db.pool,
+        "SELECT '2026-01-04 10:30:00'::timestamp as ts",
+        false,
+    )
+    .await
+    .expect("query should succeed");
 
     assert_eq!(result.rows[0][0], json!("2026-01-04T10:30:00"));
 }
@@ -443,9 +448,13 @@ async fn column_headers_spell_array_types_the_way_users_write_them() {
     // tree shows `text[]` (via format_type), so the grid must agree —
     // the same column reading `_text` in one pane and `text[]` in the
     // other is just confusing.
-    let result = run_query(&db.pool, "select array['a']::text[] as tags, 1::int4 as n", false)
-        .await
-        .expect("query should succeed");
+    let result = run_query(
+        &db.pool,
+        "select array['a']::text[] as tags, 1::int4 as n",
+        false,
+    )
+    .await
+    .expect("query should succeed");
 
     assert_eq!(result.columns[0].type_name, "text[]");
     assert_eq!(result.columns[1].type_name, "int4", "scalars are unchanged");

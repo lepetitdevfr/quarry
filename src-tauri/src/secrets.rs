@@ -64,8 +64,7 @@ const ERR_SEC_AUTH_FAILED: i32 = -25293;
 pub fn load_password(account: &str) -> Result<Option<String>, AppError> {
     match get_generic_password(SERVICE, account) {
         Ok(bytes) => {
-            let s = String::from_utf8(bytes)
-                .map_err(|e| AppError::Keychain(e.to_string()))?;
+            let s = String::from_utf8(bytes).map_err(|e| AppError::Keychain(e.to_string()))?;
             Ok(Some(s))
         }
         // errSecItemNotFound: nothing saved under this account, which
