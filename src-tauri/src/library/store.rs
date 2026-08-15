@@ -351,32 +351,11 @@ impl Store {
     pub fn tabs(&self) -> Result<Vec<Tab>, AppError> {
         let conn = self.lock();
         let mut stmt = conn
-            .prepare(
-                "select id, query_id, scratch_sql, position, is_active, cursor_pos,
-                        is_preview, title, target_schema, target_table, mode
-                 from tabs order by position",
-            )
+            .prepare(&format!("select {TAB_COLUMNS} from tabs order by position"))
             .map_err(sql_err)?;
 
         let tabs = stmt
-            .query_map([], |row| {
-                Ok(Tab {
-                    id: row.get(0)?,
-                    query_id: row.get(1)?,
-                    scratch_sql: row.get(2)?,
-                    position: row.get(3)?,
-                    is_active: row.get::<_, i64>(4)? != 0,
-                    cursor_pos: row.get(5)?,
-                    is_preview: row.get::<_, i64>(6)? != 0,
-                    title: row.get(7)?,
-                    target_schema: row.get(8)?,
-                    target_table: row.get(9)?,
-                    mode: row
-                        .get::<_, Option<String>>(10)?
-                        .as_deref()
-                        .map(TableMode::from_stored),
-                })
-            })
+            .query_map([], tab_from_row)
             .map_err(sql_err)?
             .collect::<Result<Vec<_>, _>>()
             .map_err(sql_err)?;
@@ -599,30 +578,37 @@ fn activate(conn: &Connection, id: &str) -> Result<(), AppError> {
     Ok(())
 }
 
+/// The tab columns, in the order `tab_from_row` reads them. Both places
+/// that select a tab share this, so the column list and the indexes
+/// below can never drift apart.
+const TAB_COLUMNS: &str = "id, query_id, scratch_sql, position, is_active, cursor_pos,
+     is_preview, title, target_schema, target_table, mode";
+
+fn tab_from_row(row: &Row) -> rusqlite::Result<Tab> {
+    Ok(Tab {
+        id: row.get(0)?,
+        query_id: row.get(1)?,
+        scratch_sql: row.get(2)?,
+        position: row.get(3)?,
+        is_active: row.get::<_, i64>(4)? != 0,
+        cursor_pos: row.get(5)?,
+        is_preview: row.get::<_, i64>(6)? != 0,
+        title: row.get(7)?,
+        target_schema: row.get(8)?,
+        target_table: row.get(9)?,
+        // `mode` is NULL on an ordinary query tab, so the decode only
+        // runs when there is actually a mode stored.
+        mode: row
+            .get::<_, Option<String>>(10)?
+            .map(|s| TableMode::from_stored(&s)),
+    })
+}
+
 fn read_tab(conn: &Connection, id: &str) -> Result<Tab, AppError> {
     conn.query_row(
-        "select id, query_id, scratch_sql, position, is_active, cursor_pos,
-                is_preview, title, target_schema, target_table, mode
-         from tabs where id = ?1",
+        &format!("select {TAB_COLUMNS} from tabs where id = ?1"),
         params![id],
-        |row| {
-            Ok(Tab {
-                id: row.get(0)?,
-                query_id: row.get(1)?,
-                scratch_sql: row.get(2)?,
-                position: row.get(3)?,
-                is_active: row.get::<_, i64>(4)? != 0,
-                cursor_pos: row.get(5)?,
-                is_preview: row.get::<_, i64>(6)? != 0,
-                title: row.get(7)?,
-                target_schema: row.get(8)?,
-                target_table: row.get(9)?,
-                mode: row
-                    .get::<_, Option<String>>(10)?
-                    .as_deref()
-                    .map(TableMode::from_stored),
-            })
-        },
+        tab_from_row,
     )
     .map_err(sql_err)
 }
