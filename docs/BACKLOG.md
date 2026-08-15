@@ -233,3 +233,36 @@ not.
   depend on this table via a `pg_depend` walk.
 - **Copy `CREATE TABLE` DDL** (see above) belongs in this view once the
   assembly work is done.
+
+## Row editing extras
+
+**Deferred:** 2026-08-16, while designing inline row editing
+(`specs/2026-08-16-inline-row-editing-design.md`). The machinery all three need
+— identity from `table_oid`, generated SQL, the transaction with its rowcount
+assert — now exists, so each is much cheaper than it would have been before.
+
+- **Insert and delete rows from the grid.** Insert needs an empty pending row,
+  awareness of `NOT NULL` and defaults, and returning the generated key to
+  display. Delete needs its own affordance and a strikethrough rendering for
+  pending deletions.
+- **Editing a primary key.** Mechanically fine — the `WHERE` uses the original
+  value — but excluded from v1 because it is rare and it is the one edit that
+  can orphan a foreign key silently.
+- **Optimistic concurrency.** Today the last write wins: a concurrent change to
+  the same cell is overwritten without warning. Checking original values in the
+  `WHERE` was rejected because the `json` type has no equality operator, so it
+  would need a per-type carve-out that gives some columns weaker guarantees than
+  others. A row version or `xmin` check would avoid that and is the better shape
+  if this ever becomes a real problem.
+- **A bigint key past 2^53.** Key values reach the frontend as JSON numbers and
+  go back as text, so an `int8` key above 9,007,199,254,740,992 would round-trip
+  wrong. The grid already displays such a value wrong today, so this is
+  pre-existing rather than new — but editing is where it would do damage rather
+  than merely mislead.
+
+## The README's Status section was stale
+
+**Fixed:** 2026-08-16. It had claimed "Stage 1 of 6 is done ... no safety guard
+yet" since the first stage, through nine further stages. Rewritten this stage
+because inline editing was the last planned feature and the claim had become
+actively misleading — it told a reader the write-guard did not exist.

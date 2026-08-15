@@ -7,9 +7,22 @@ library and a production write-guard.
 
 ## Status
 
-Stage 1 of 6 is done: connect to a database, run SQL, browse results in a
-virtualized grid. No saved queries, no safety guard yet — **do not point this at
-a production database.**
+All planned stages are done: connect and run SQL, the query library with tabs,
+saved connections, the schema tree with autocomplete, preview and table-detail
+tabs, grid sort/resize, copy and export, the production write-guard, and inline
+row editing.
+
+**Inline row editing.** Double-click a cell to edit it, `⌘⌫` to set NULL.
+Changes stage as highlighted pending diffs with a bottom bar showing the count;
+Confirm applies them in one transaction, and `View SQL` shows the generated
+statements first if you want them. A result is editable only when it comes from
+one ordinary table whose primary key is in the result — a join, a view, an
+aggregate, or a table without a key says why it is read-only. Disabled entirely
+on a locked production connection.
+
+A connection tagged **Prod** is read-only until you unlock it by typing its name,
+and relocks after 30 minutes. Postgres enforces this itself as a second layer, so
+a bug in the classifier is not enough to write to production.
 
 ## Requirements
 
@@ -75,6 +88,9 @@ npm run tauri build
 |-----|--------|
 | `⌘↵` | Run the statement under the cursor |
 | `⇧⌘↵` | Run the whole buffer |
+| `↵` / double-click | Edit the focused grid cell |
+| `⌘⌫` | Stage SQL `NULL` in the focused cell |
+| `esc` | Cancel the cell edit in progress |
 
 ## Layout
 
@@ -84,6 +100,8 @@ npm run tauri build
 | `src/lib/ipc.ts` | The only module that talks to Tauri |
 | `src-tauri/src/conn/` | Connection config and pooling |
 | `src-tauri/src/exec/` | Query execution and value conversion |
+| `src-tauri/src/guard/` | Statement classification and the lock |
+| `src-tauri/src/edit/` | Row-editing decisions, SQL generation, apply |
 | `src-tauri/src/secrets.rs` | Keychain access |
 | `docs/superpowers/specs/` | Design spec |
 | `docs/superpowers/plans/` | Per-stage implementation plans |
