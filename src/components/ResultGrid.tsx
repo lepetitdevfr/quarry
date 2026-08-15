@@ -1,8 +1,9 @@
-import { useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { formatCell } from "../lib/format";
 import { isTruncated, nextSort, sortedIndices } from "../lib/gridSort";
 import type { SortState } from "../lib/gridSort";
+import { MIN_WIDTH, fitWidth, initialWidths, resized } from "../lib/gridWidths";
 import type { QueryResult } from "../types";
 
 interface Props {
@@ -40,6 +41,48 @@ export function ResultGrid({
     overscan: 12,
   });
 
+  const [widths, setWidths] = useState<number[]>(() =>
+    initialWidths(result.columns, result.rows),
+  );
+
+  // A new result may have entirely different columns, so measured
+  // widths from the previous one mean nothing. `result` is a fresh
+  // object per run, so identity is the right trigger.
+  useEffect(() => {
+    setWidths(initialWidths(result.columns, result.rows));
+  }, [result]);
+
+  // Drag state lives in a ref, not state: it changes on every
+  // pointermove and re-rendering a virtualized grid at that rate is
+  // what makes a resize feel laggy.
+  const drag = useRef<{ index: number; startX: number; startWidth: number } | null>(
+    null,
+  );
+
+  function onHandleDown(e: React.PointerEvent, index: number) {
+    // Stop the click reaching the header, or every resize also sorts.
+    e.stopPropagation();
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    drag.current = { index, startX: e.clientX, startWidth: widths[index] };
+  }
+
+  function onHandleMove(e: React.PointerEvent) {
+    const d = drag.current;
+    if (!d) return;
+    // Measured from where the drag started, never from the previous
+    // frame: accumulating per-frame deltas drifts away from the pointer
+    // as soon as one frame is dropped.
+    const width = Math.max(MIN_WIDTH, d.startWidth + (e.clientX - d.startX));
+    setWidths((current) => current.map((w, i) => (i === d.index ? width : w)));
+  }
+
+  function onHandleUp(e: React.PointerEvent) {
+    if (drag.current === null) return;
+    e.currentTarget.releasePointerCapture(e.pointerId);
+    drag.current = null;
+  }
+
   if (result.columns.length === 0) {
     return <div className="grid-empty">Statement returned no columns.</div>;
   }
@@ -66,6 +109,7 @@ export function ResultGrid({
               <th
                 key={i}
                 title={c.type_name}
+                style={{ width: `${widths[i]}px` }}
                 className={sort?.column === i ? "sorted" : undefined}
                 onClick={() => onSortChange(nextSort(sort, i))}
               >
@@ -84,6 +128,34 @@ export function ResultGrid({
                     !
                   </span>
                 )}
+                <span
+                  className="col-resize"
+                  onPointerDown={(e) => onHandleDown(e, i)}
+                  onPointerMove={onHandleMove}
+                  onPointerUp={onHandleUp}
+                  onDoubleClick={(e) => {
+                    // Without this the double-click also cycles the sort
+                    // twice on its way through the header.
+                    e.stopPropagation();
+                    setWidths((current) =>
+                      current.map((w, index) =>
+                        index === i
+                          ? fitWidth(i, result.columns, result.rows)
+                          : w,
+                      ),
+                    );
+                  }}
+                  onKeyDown={(e) => {
+                    // Keyboard-first app: a column must be resizable
+                    // without a pointer.
+                    if (e.key === "ArrowLeft") setWidths((c) => resized(c, i, -16));
+                    if (e.key === "ArrowRight") setWidths((c) => resized(c, i, 16));
+                  }}
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label={`Resize ${c.name}`}
+                  tabIndex={0}
+                />
               </th>
             ))}
           </tr>
@@ -104,7 +176,12 @@ export function ResultGrid({
                 {row.map((cell, i) => {
                   const { text, kind } = formatCell(cell);
                   return (
-                    <td key={i} className={`cell-${kind}`} title={text}>
+                    <td
+                      key={i}
+                      className={`cell-${kind}`}
+                      style={{ width: `${widths[i]}px` }}
+                      title={text}
+                    >
                       {text}
                     </td>
                   );
