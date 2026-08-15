@@ -119,6 +119,35 @@ impl Tag {
     }
 }
 
+/// Which face of a table a table tab is showing.
+///
+/// `Structure` renders from the cached schema and runs no SQL; `Data`
+/// runs the preview `SELECT`.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TableMode {
+    Structure,
+    Data,
+}
+
+impl TableMode {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            TableMode::Structure => "structure",
+            TableMode::Data => "data",
+        }
+    }
+
+    /// Unrecognised values become `Structure`, following `Tag::from_stored`:
+    /// a corrupted row resolves to the mode that touches no database.
+    pub fn from_stored(s: &str) -> Self {
+        match s {
+            "data" => TableMode::Data,
+            _ => TableMode::Structure,
+        }
+    }
+}
+
 /// A saved connection. The password is NOT here — it lives in the
 /// Keychain under this record's id.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -150,4 +179,25 @@ pub struct ConnectionInput {
     pub tag: Tag,
     pub colour: Option<String>,
     pub password: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn table_mode_round_trips_through_storage() {
+        assert_eq!(TableMode::from_stored("structure"), TableMode::Structure);
+        assert_eq!(TableMode::from_stored("data"), TableMode::Data);
+        assert_eq!(TableMode::Structure.as_str(), "structure");
+        assert_eq!(TableMode::Data.as_str(), "data");
+    }
+
+    #[test]
+    fn an_unknown_mode_is_structure() {
+        // Structure runs no SQL. A corrupted row must not be able to
+        // make the app execute a query on open.
+        assert_eq!(TableMode::from_stored("nonsense"), TableMode::Structure);
+        assert_eq!(TableMode::from_stored(""), TableMode::Structure);
+    }
 }
