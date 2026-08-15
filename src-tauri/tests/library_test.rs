@@ -547,6 +547,33 @@ fn a_query_preview_clears_a_table_target() {
 }
 
 #[test]
+fn a_table_tab_clears_the_query_preview_it_replaces() {
+    // The one preview slot serves both kinds, so taking it over must
+    // drop the SQL the query preview left behind.
+    let (s, _dir) = store();
+    s.open_preview_tab("events", "select * from events").unwrap();
+    let tabs = s.open_table_tab("public", "users", TableMode::Structure, false).unwrap();
+
+    assert_eq!(tabs.len(), 1, "the slot is reused, not added to");
+    assert_eq!(tabs[0].scratch_sql, None, "the previous preview's SQL is gone");
+    assert_eq!(tabs[0].query_id, None);
+    assert_eq!(tabs[0].target_table.as_deref(), Some("users"));
+}
+
+#[test]
+fn double_clicking_pins_the_tab_that_was_a_preview() {
+    // Single-click then double-click: the pin has to stick even though
+    // the row already existed as a preview.
+    let (s, _dir) = store();
+    s.open_table_tab("public", "users", TableMode::Structure, false).unwrap();
+    let tabs = s.open_table_tab("public", "orders", TableMode::Data, true).unwrap();
+
+    assert_eq!(tabs.len(), 1, "the preview slot is taken over");
+    assert!(!tabs[0].is_preview, "a double-click pins the reused row");
+    assert_eq!(tabs[0].mode, Some(TableMode::Data));
+}
+
+#[test]
 fn a_table_tab_round_trips_its_schema_and_table() {
     // The schema and the table are deliberately different words here.
     // Both columns are nullable text, so swapping them on the write or
