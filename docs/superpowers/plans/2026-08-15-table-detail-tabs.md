@@ -14,13 +14,13 @@
 
 ## Session state — resume here
 
-**As of 2026-08-15, on branch `stage-7-table-detail-tabs`, 24 commits in, working tree clean.**
+**As of 2026-08-15, on branch `stage-7-table-detail-tabs`, working tree clean.**
 
-**Done and reviewed:** Tasks 1-9. Storage, store methods, Tauri commands, frontend IPC and types, the `tableDetail` view model, and the `TableView` component. Rust is 141 passed / 0 failed / 6 ignored. TypeScript is 57 passed, `tsc` clean.
+**Done: Tasks 1-12 — the whole implementation.** Storage, store methods, Tauri commands, frontend IPC and types, the `tableDetail` view model, `TableView`, and all the wiring. Rust is 141 passed / 0 failed / 6 ignored. TypeScript is 57 passed; `tsc --noEmit` and `npm run build` both clean.
 
-**Not started:** Tasks 10, 11, 12 — the wiring. `TableView` exists but nothing renders it, so the feature does **not** work in the app yet. Nothing has been smoke tested, and the app has not been launched this session.
+**Outstanding: Task 13, and only the parts a machine cannot do.** The app has never been launched on this branch and nothing has been smoke tested. **The real workspace database has not been backed up, and the first launch migrates it to v4** — run the `sqlite3 … ".backup" …` from "Before you start" first, never `cp`.
 
-**Then:** Task 13 (verification), including the `sqlite3 .backup` of the real workspace database, which has **not** been done. The first launch after this branch runs will migrate that database to v4. Back it up first.
+Smoke test: single-click a table (structure tab, reused by the next click), single-click another (same tab), double-click one (pinned data tab, rows in the grid), toggle Structure/Data, restart and confirm the pinned tab survived while the unpinned preview did not.
 
 Three corrections were made to this plan during execution, so it is ahead of what was originally written: the v4 migration test now builds a real v3 table (the original passed with the migration deleted), Task 8's `groupConstraints` now aggregates unknown constraint kinds (the original produced duplicate React keys), and Task 13 no longer expects `cargo clippy`/`cargo fmt` to be clean, because neither passes at baseline. See `docs/BACKLOG.md`.
 
