@@ -114,6 +114,49 @@ makes every launch fail with `no such column`.
 deleting the migration and watching the test fail. A migration test that
 passes without the migration is worse than no test.
 
+## Tab storage cleanups
+
+**Found:** 2026-08-15, in code review of the table-detail stage. All three
+touch pre-existing code or are preference calls, so they were kept out of that
+stage deliberately.
+
+- **Read rows by column name, not index.** `tab_from_row` in
+  `src-tauri/src/library/store.rs` reads eleven columns by position, and two
+  `params!` lists bind `table` twice with `schema` between them — a swap
+  compiles, runs, and silently mislabels a tab. `rusqlite`'s `Row::get` accepts
+  a column name, and `named_params!` does the same for writes. `TAB_COLUMNS`
+  names every column, so the names are guaranteed present. That removes the
+  whole class of bug instead of testing for it.
+- **A `TabPin` enum instead of `pin: bool`.** Call sites currently end in a
+  bare `..., TableMode::Structure, false)` whose trailing bool means nothing
+  without opening the signature. `Tag`, `SslMode`, and `TableMode` are all
+  two-variant enums; `TabPin::{Preview, Pinned}` would match.
+- **`activate` should be one statement.** It clears `is_active` on every tab
+  and then sets it on one, so between the two autocommitted statements there is
+  a durable state with no tab active — a crash there leaves it. The mutex
+  prevents interleaving but not a crash, which is exactly the case `close_tab`
+  wraps in a transaction and says so. One statement closes it for the whole
+  family: `update tabs set is_active = (id = ?1)`. Blast radius is UI state,
+  not saved queries, and clicking a tab recovers it.
+
+## Split `store.rs` along the tabs seam
+
+**Deferred:** 2026-08-15, raised in code review.
+
+`store.rs` is ~700 lines holding four concerns: collections, queries, tabs, and
+mirror-file side effects. Tabs is now the largest at roughly 200 lines, and it
+is the part that keeps growing — recent stages add tab behaviour, not
+collection behaviour.
+
+The split is unusually cheap because half of it is already done: `lock()`,
+`new_id()`, `sql_err()`, and `validate_name()` are `pub(crate)`, so moving the
+tab methods into a second `impl Store` block in `library/store/tabs.rs` (making
+`store.rs` into `store/mod.rs`) is a pure move — no signature changes, no
+visibility churn.
+
+Do it as the first task of whichever stage next grows the tab code, not inside
+one: a 400-line move would bury that stage's actual diff.
+
 ## `cargo clippy` and `cargo fmt` do not pass at baseline
 
 **Found:** 2026-08-15, confirmed at commit `6af8a67` by two independent
