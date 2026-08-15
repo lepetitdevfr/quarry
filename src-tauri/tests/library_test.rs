@@ -547,6 +547,39 @@ fn a_query_preview_clears_a_table_target() {
 }
 
 #[test]
+fn a_table_tab_round_trips_its_schema_and_table() {
+    // The schema and the table are deliberately different words here.
+    // Both columns are nullable text, so swapping them on the write or
+    // the read path compiles and runs without complaint — only values
+    // that can be told apart catch it.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("test.db");
+
+    {
+        let s = Store::open_at(&path).unwrap();
+        s.open_table_tab("sales", "orders", TableMode::Data, true).unwrap();
+
+        let tabs = s.tabs().unwrap();
+        assert_eq!(tabs[0].target_schema.as_deref(), Some("sales"));
+        assert_eq!(tabs[0].target_table.as_deref(), Some("orders"));
+        assert_eq!(
+            tabs[0].title.as_deref(),
+            Some("orders"),
+            "the label is the table, not the schema",
+        );
+    }
+
+    // A pinned tab outlives a restart, so the same check has to hold
+    // after the row has been through storage and back.
+    let reopened = Store::open_at(&path).unwrap();
+    let tabs = reopened.tabs().unwrap();
+    assert_eq!(tabs.len(), 1);
+    assert_eq!(tabs[0].target_schema.as_deref(), Some("sales"));
+    assert_eq!(tabs[0].target_table.as_deref(), Some("orders"));
+    assert_eq!(tabs[0].mode, Some(TableMode::Data));
+}
+
+#[test]
 fn switching_mode_pins_the_tab() {
     // Toggling to Data is a deliberate act on a specific table, so the
     // tab stops being disposable — same rule as editing a query preview.
