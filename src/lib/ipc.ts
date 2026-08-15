@@ -1,12 +1,16 @@
 import { invoke } from "@tauri-apps/api/core";
 import type {
+  AppliedRow,
   Connection,
   ConnectionInfo,
   ConnectionInput,
+  EditInfo,
+  EditStatement,
   GuardStatus,
   LibraryTree,
   Query,
   QueryResult,
+  RowEdit,
   Schema,
   Tab,
   TableMode,
@@ -19,6 +23,23 @@ import type {
 
 export async function execute(sql: string): Promise<QueryResult> {
   return invoke<QueryResult>("execute", { sql });
+}
+
+/// Shows the statements an apply would run, without running them.
+export async function previewEdits(
+  edit: EditInfo,
+  rows: RowEdit[],
+): Promise<EditStatement[]> {
+  return invoke<EditStatement[]>("preview_edits", { edit, rows });
+}
+
+/// Applies staged cell edits in one transaction, returning what the
+/// database stored for each edited cell.
+export async function applyRowEdits(
+  edit: EditInfo,
+  rows: RowEdit[],
+): Promise<AppliedRow[]> {
+  return invoke<AppliedRow[]>("apply_row_edits", { edit, rows });
 }
 
 export async function disconnect(): Promise<void> {

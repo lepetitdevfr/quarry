@@ -7,10 +7,73 @@ export interface ColumnMeta {
 /** Mirrors Rust `QueryResult`. Rows are positional, matching `columns`. */
 export interface QueryResult {
   columns: ColumnMeta[];
+  edit: EditInfo;
   rows: CellValue[][];
   row_count: number;
   affected_rows: number | null;
   duration_ms: number;
+}
+
+/** Mirrors Rust `PkColumn`. */
+export interface PkColumn {
+  name: string;
+  result_index: number;
+}
+
+/** Mirrors Rust `ColumnEdit`: one result column's verdict. */
+export interface ColumnEdit {
+  editable: boolean;
+  column_name: string | null;
+  cast_type: string | null;
+  /** Why this cell cannot be edited. */
+  reason: string | null;
+}
+
+/**
+ * Mirrors Rust `EditInfo`. Decided in Rust from the metadata Postgres
+ * sent about the result; the frontend never works it out itself.
+ */
+export interface EditInfo {
+  editable: boolean;
+  /** Why the whole result cannot be edited. */
+  reason: string | null;
+  schema: string | null;
+  table: string | null;
+  pk: PkColumn[];
+  columns: ColumnEdit[];
+}
+
+/** Mirrors Rust `CellEdit`. `value: null` is an explicit SQL NULL. */
+export interface CellEdit {
+  column: number;
+  value: string | null;
+}
+
+/** Mirrors Rust `RowEdit`. */
+export interface RowEdit {
+  row: number;
+  pk: string[];
+  cells: CellEdit[];
+}
+
+/** Mirrors Rust `Statement`, for the View SQL panel. */
+export interface EditStatement {
+  sql: string;
+  params: (string | null)[];
+  row: number;
+  returned: number[];
+}
+
+/** Mirrors Rust `AppliedCell`. The value is what the database stored. */
+export interface AppliedCell {
+  column: number;
+  value: CellValue;
+}
+
+/** Mirrors Rust `AppliedRow`. */
+export interface AppliedRow {
+  row: number;
+  cells: AppliedCell[];
 }
 
 export type CellValue =
