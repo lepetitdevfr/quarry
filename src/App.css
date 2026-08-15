@@ -923,3 +923,46 @@ button.link {
   background: var(--accent);
   outline: none;
 }
+
+/* ---- grid selection and export --------------------------------- */
+
+.result-grid td.selected {
+  /* Tinted rather than filled: the value must stay readable, since
+     selecting is how you check what you are about to copy. */
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.result-grid:focus {
+  outline: none;
+}
+
+.grid-toolbar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-3);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+
+.grid-toolbar-label {
+  color: var(--muted);
+  font-size: var(--t-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.grid-toolbar button {
+  height: 22px;
+  padding: 0 var(--s-2);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: var(--t-sm);
+}
+
+.grid-toolbar button:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--accent);
+}
