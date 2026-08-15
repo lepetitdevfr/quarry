@@ -208,14 +208,15 @@ describe("sortedIndices", () => {
   });
 
   it("puts nulls last ascending and first descending, like Postgres", () => {
-    // Row 1 holds the null in column 1. Matching Postgres matters:
-    // a Data tab sorts server-side, a query tab sorts here, and the
-    // two must not disagree about the same data.
+    // Column 1 holds 30, null, 9, 10. Ascending: 9, 10, 30, then the
+    // null. Descending: the null, then 30, 10, 9. Matching Postgres
+    // matters because a Data tab sorts server-side and a query tab
+    // sorts here — the two must not disagree about the same data.
     expect(sortedIndices(ROWS, { column: 1, direction: "asc" })).toEqual([
-      2, 0, 3, 1,
+      2, 3, 0, 1,
     ]);
     expect(sortedIndices(ROWS, { column: 1, direction: "desc" })).toEqual([
-      1, 3, 0, 2,
+      1, 0, 3, 2,
     ]);
   });
 
@@ -302,11 +303,14 @@ export function sortedIndices(
     const a = rows[left][sort.column];
     const b = rows[right][sort.column];
 
-    // Nulls sort last ascending and first descending, so they are
-    // pinned before the direction flip rather than after it.
+    // Nulls sort last ascending and first descending, so the pin
+    // itself flips with `sign` rather than being fixed at one end.
+    // Returning a bare 1/-1 here would pin nulls last in BOTH
+    // directions, contradicting Postgres — and this is exactly the
+    // place the design says the two sort paths must agree.
     if (a === null && b === null) return 0;
-    if (a === null) return 1;
-    if (b === null) return -1;
+    if (a === null) return sign;
+    if (b === null) return -sign;
 
     return sign * compareCells(a, b);
   });
