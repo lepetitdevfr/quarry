@@ -10,14 +10,17 @@ import { SidebarResizer } from "./components/SidebarResizer";
 import { SqlEditor } from "./components/SqlEditor";
 import { StatusBar } from "./components/StatusBar";
 import { TabBar } from "./components/TabBar";
+import { TableView } from "./components/TableView";
 import { useConnections } from "./hooks/useConnections";
 import { useLibrary } from "./hooks/useLibrary";
 import { useSchema } from "./hooks/useSchema";
 import { asAppError, execute } from "./lib/ipc";
 import { DEFAULT_SIDEBAR_WIDTH } from "./lib/layout";
 import { buildCompletionSchema, previewSql } from "./lib/schema";
+import { tableDetail } from "./lib/tableDetail";
 import { effectiveSql } from "./lib/tree";
 import type { AppErrorPayload, Connection, ConnectionInput, LibraryTree, QueryResult } from "./types";
+import type { TableMode } from "./types";
 import "./App.css";
 
 /** How long the "Saved" indicator stays visible after a save. */
@@ -88,6 +91,18 @@ export default function App() {
     [dbSchema],
   );
 
+  // A tab either targets a table or holds a query buffer, never both.
+  const tableTarget =
+    activeTab?.target_schema && activeTab.target_table
+      ? { schema: activeTab.target_schema, table: activeTab.target_table }
+      : null;
+
+  const detail = useMemo(
+    () =>
+      tableTarget ? tableDetail(dbSchema, tableTarget.schema, tableTarget.table) : null,
+    [dbSchema, tableTarget?.schema, tableTarget?.table],
+  );
+
   // The editor's text is local while typing; autosave persists it.
   const [text, setText] = useState("");
 
@@ -123,6 +138,8 @@ export default function App() {
       setText("");
       return;
     }
+    // A table tab has no editor buffer; leave the editor's text alone.
+    if (activeTab.target_table) return;
     const query = queryById(activeTab.query_id);
     setText(query ? effectiveSql(query) : (activeTab.scratch_sql ?? ""));
     // Only re-run when the tab identity changes, not on every keystroke.
@@ -166,17 +183,31 @@ export default function App() {
 
   const run = useCallback(() => void runSql(text), [runSql, text]);
 
-  const previewTable = useCallback(
+  // Single-click in the tree: a disposable structure tab, reused by the
+  // next click so navigating the tree does not open a tab per row.
+  const openTableStructure = useCallback(
     async (schemaName: string, tableName: string) => {
-      const sql = previewSql(schemaName, tableName);
-      // Open the tab first: the effect keyed on the active tab id loads
-      // its text into the editor, so creating the tab before running
-      // keeps the editor and the results showing the same query.
-      await actions.openPreview(tableName, sql);
-      setText(sql);
-      await runSql(sql);
+      await actions.openTableTab(schemaName, tableName, "structure", false);
+    },
+    [actions],
+  );
+
+  // Double-click: data, pinned — an explicit "keep this one".
+  const openTableData = useCallback(
+    async (schemaName: string, tableName: string) => {
+      await actions.openTableTab(schemaName, tableName, "data", true);
+      await runSql(previewSql(schemaName, tableName));
     },
     [actions, runSql],
+  );
+
+  const changeTableMode = useCallback(
+    async (next: TableMode) => {
+      if (!activeTab || !tableTarget) return;
+      await actions.setTabMode(activeTab.id, next);
+      if (next === "data") await runSql(previewSql(tableTarget.schema, tableTarget.table));
+    },
+    [activeTab, tableTarget, actions, runSql],
   );
 
   // Cmd+S saves the active tab. If it is untitled, this opens the
@@ -411,7 +442,8 @@ export default function App() {
           schemaError={schemaError}
           connected={connection !== null}
           onRefreshSchema={() => void refreshDbSchema()}
-          onPreviewTable={(s, t) => void previewTable(s, t)}
+          onOpenTableStructure={(s, t) => void openTableStructure(s, t)}
+          onPreviewTable={(s, t) => void openTableData(s, t)}
         />
       </div>
       <SidebarResizer onResize={setSidebarWidth} />
@@ -487,14 +519,29 @@ export default function App() {
           onCancelName={() => setNamingTabId(null)}
         />
 
-        <SqlEditor
-          value={text}
-          onChange={onChange}
-          onRun={run}
-          busy={busy}
-          completionSchema={completionSchema}
-        />
-        {result && <ResultGrid result={result} />}
+        {tableTarget ? (
+          <TableView
+            schemaName={tableTarget.schema}
+            tableName={tableTarget.table}
+            detail={detail}
+            mode={activeTab?.mode ?? "structure"}
+            onModeChange={(next) => void changeTableMode(next)}
+            onRefreshSchema={() => void refreshDbSchema()}
+          >
+            {result && <ResultGrid result={result} />}
+          </TableView>
+        ) : (
+          <>
+            <SqlEditor
+              value={text}
+              onChange={onChange}
+              onRun={run}
+              busy={busy}
+              completionSchema={completionSchema}
+            />
+            {result && <ResultGrid result={result} />}
+          </>
+        )}
         <StatusBar result={result} error={error} saved={showSaved} />
       </div>
 
