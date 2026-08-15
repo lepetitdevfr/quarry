@@ -580,6 +580,34 @@ fn a_table_tab_round_trips_its_schema_and_table() {
 }
 
 #[test]
+fn a_tab_with_a_target_but_no_stored_mode_reads_as_structure() {
+    // `Tab` documents that a tab with a target always has a mode, and
+    // the UI relies on it to decide what to render. Nothing stops a row
+    // from having a target and a NULL mode — a hand-edited database, or
+    // a future write path that forgets — so the decode fills the gap
+    // with Structure, the face that runs no SQL against the server.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("test.db");
+
+    {
+        let s = Store::open_at(&path).unwrap();
+        // Pinned, so it survives the reopen below.
+        s.open_table_tab("sales", "orders", TableMode::Data, true).unwrap();
+    }
+
+    // Blank the mode behind the store's back — this state is not
+    // reachable through the API, which is the point of testing it.
+    rusqlite::Connection::open(&path)
+        .unwrap()
+        .execute("update tabs set mode = null", [])
+        .unwrap();
+
+    let tabs = Store::open_at(&path).unwrap().tabs().unwrap();
+    assert_eq!(tabs[0].target_table.as_deref(), Some("orders"));
+    assert_eq!(tabs[0].mode, Some(TableMode::Structure));
+}
+
+#[test]
 fn switching_mode_pins_the_tab() {
     // Toggling to Data is a deliberate act on a specific table, so the
     // tab stops being disposable — same rule as editing a query preview.

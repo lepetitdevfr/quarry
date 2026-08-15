@@ -668,6 +668,10 @@ const TAB_COLUMNS: &str = "id, query_id, scratch_sql, position, is_active, curso
      is_preview, title, target_schema, target_table, mode";
 
 fn tab_from_row(row: &Row) -> rusqlite::Result<Tab> {
+    // Read out early: whether there is a target decides how a missing
+    // mode is filled in below.
+    let target_table: Option<String> = row.get(9)?;
+
     Ok(Tab {
         id: row.get(0)?,
         query_id: row.get(1)?,
@@ -678,12 +682,18 @@ fn tab_from_row(row: &Row) -> rusqlite::Result<Tab> {
         is_preview: row.get::<_, i64>(6)? != 0,
         title: row.get(7)?,
         target_schema: row.get(8)?,
-        target_table: row.get(9)?,
         // `mode` is NULL on an ordinary query tab, so the decode only
-        // runs when there is actually a mode stored.
-        mode: row
-            .get::<_, Option<String>>(10)?
-            .map(|s| TableMode::from_stored(&s)),
+        // runs when there is actually a mode stored. A tab that DOES
+        // have a target but no stored mode is a broken row rather than a
+        // real state — `Tab` says the two go together — so rather than
+        // hand the UI a target it cannot render, fall back to Structure,
+        // which reads the cached schema and runs no SQL.
+        mode: match row.get::<_, Option<String>>(10)? {
+            Some(stored) => Some(TableMode::from_stored(&stored)),
+            None if target_table.is_some() => Some(TableMode::Structure),
+            None => None,
+        },
+        target_table,
     })
 }
 
