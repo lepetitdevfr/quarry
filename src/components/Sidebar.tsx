@@ -22,6 +22,7 @@ interface Props {
   connected: boolean;
   onRefreshSchema: () => void;
   onPreviewTable: (schema: string, table: string) => void;
+  onOpenTableStructure: (schema: string, table: string) => void;
 }
 
 export function Sidebar(props: Props) {
@@ -38,6 +39,7 @@ export function Sidebar(props: Props) {
           connected={props.connected}
           onRefresh={props.onRefreshSchema}
           onPreviewTable={props.onPreviewTable}
+          onOpenTableStructure={props.onOpenTableStructure}
         />
       </section>
 

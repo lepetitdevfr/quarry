@@ -11,6 +11,8 @@ interface Props {
   connected: boolean;
   onRefresh: () => void;
   onPreviewTable: (schema: string, table: string) => void;
+  /** Single-click on a table row. */
+  onOpenTableStructure: (schema: string, table: string) => void;
 }
 
 /** Must match --h-row in App.css: the virtualizer positions rows by this
@@ -47,6 +49,7 @@ export function SchemaTree({
   connected,
   onRefresh,
   onPreviewTable,
+  onOpenTableStructure,
 }: Props) {
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [filter, setFilter] = useState("");
@@ -130,7 +133,15 @@ export function SchemaTree({
                   transform: `translateY(${item.start}px)`,
                   paddingLeft: 8 + row.depth * 12,
                 }}
-                onClick={() => row.expandable && toggle(row.id)}
+                onClick={() => {
+                  // Both, deliberately: expanding and inspecting are the
+                  // same intent, and a click that only did one of them
+                  // would make the other need a second gesture.
+                  if (row.expandable) toggle(row.id);
+                  if (row.kind === "table" && row.tableSchema && row.tableName) {
+                    onOpenTableStructure(row.tableSchema, row.tableName);
+                  }
+                }}
                 onDoubleClick={() => {
                   if (row.kind === "table" && row.tableSchema && row.tableName) {
                     onPreviewTable(row.tableSchema, row.tableName);
