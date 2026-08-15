@@ -8,10 +8,12 @@
 //! gives us `pg_get_indexdef` and `pg_get_constraintdef`, which return
 //! the real definitions instead of a reconstruction.
 
+use crate::edit::TableFacts;
 use crate::error::AppError;
 use crate::schema::model::{Column, Constraint, ForeignKey, Index, Schema, SchemaNode, Table};
 use deadpool_postgres::Pool;
 use std::collections::BTreeMap;
+use tokio_postgres::types::Oid;
 
 /// Schemas that are never interesting to browse.
 const SYSTEM_SCHEMA_FILTER: &str = "
@@ -194,4 +196,72 @@ pub async fn introspect(pool: &Pool) -> Result<Schema, AppError> {
     }
 
     Ok(Schema { schemas: nodes })
+}
+
+/// Resolve one table oid into the facts editing needs: what kind of
+/// relation it is, its qualified name, and its columns with their
+/// primary-key flags.
+///
+/// Returns `Ok(None)` when the oid names nothing — a table dropped
+/// between running the query and asking about it, which is a refusal to
+/// edit rather than an error to show.
+///
+/// The `is_pk` subquery is the same one the schema tree uses above, so
+/// the two cannot disagree about what a primary key is.
+pub async fn lookup_table(pool: &Pool, oid: u32) -> Result<Option<TableFacts>, AppError> {
+    let client = pool
+        .get()
+        .await
+        .map_err(|e| AppError::Connection(e.to_string()))?;
+
+    // Postgres oids are unsigned, and Rust's postgres types are signed —
+    // plain `u32` has no `ToSql`. `tokio_postgres::types::Oid` is a `u32`
+    // alias that does, so bind through it rather than casting to i32
+    // (oids above 2^31 exist).
+    let oid: Oid = oid;
+
+    let rows = client
+        .query(
+            "select c.relkind::text        as relkind,
+                    n.nspname               as schema,
+                    c.relname               as table_name,
+                    a.attnum                as attnum,
+                    a.attname::text         as column_name,
+                    exists (
+                      select 1 from pg_constraint pc
+                      where pc.conrelid = c.oid
+                        and pc.contype = 'p'
+                        and a.attnum = any (pc.conkey)
+                    )                       as is_pk
+             from   pg_class c
+             join   pg_namespace n on n.oid = c.relnamespace
+             join   pg_attribute a on a.attrelid = c.oid
+             where  c.oid = $1
+               and  a.attnum > 0
+               and  not a.attisdropped
+             order by a.attnum",
+            &[&oid],
+        )
+        .await?;
+
+    if rows.is_empty() {
+        return Ok(None);
+    }
+
+    let first = &rows[0];
+    Ok(Some(TableFacts {
+        relkind: first.get("relkind"),
+        schema: first.get("schema"),
+        table: first.get("table_name"),
+        columns: rows
+            .iter()
+            .map(|row| {
+                (
+                    row.get::<_, i16>("attnum"),
+                    row.get::<_, String>("column_name"),
+                    row.get::<_, bool>("is_pk"),
+                )
+            })
+            .collect(),
+    }))
 }
