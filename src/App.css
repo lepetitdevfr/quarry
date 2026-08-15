@@ -876,3 +876,50 @@ button.link {
   color: var(--muted);
   font-size: 13px;
 }
+
+/* ---- grid sort and resize -------------------------------------- */
+
+.result-grid thead th {
+  /* The resize handle is positioned against this. */
+  position: sticky;
+  cursor: pointer;
+  user-select: none;
+}
+
+.result-grid thead th.row-num {
+  cursor: default;
+}
+
+.result-grid thead th.sorted {
+  color: var(--accent);
+}
+
+.sort-arrow {
+  margin-left: var(--s-1);
+  font-size: var(--t-xs);
+}
+
+/* The sort covered only the rows already fetched, not the table. */
+.sort-partial {
+  margin-left: var(--s-1);
+  color: var(--error);
+  font-weight: 700;
+  cursor: help;
+}
+
+.col-resize {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 7px;
+  height: 100%;
+  cursor: col-resize;
+  /* Sits above the header's own click target so a drag never sorts. */
+  z-index: 2;
+}
+
+.col-resize:hover,
+.col-resize:focus-visible {
+  background: var(--accent);
+  outline: none;
+}
