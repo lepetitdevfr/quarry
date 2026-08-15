@@ -164,6 +164,15 @@ button:disabled {
 
 .error {
   color: var(--error);
+  /* A long message must wrap inside the window. Without a cap it sizes
+     the flex line past the viewport, and because the connect screen
+     centres its children the overflow spills off BOTH edges — losing
+     the start of the sentence, which is the half naming what broke. */
+  max-width: 60ch;
+}
+
+.app.centered .error {
+  text-align: center;
 }
 
 .app.with-sidebar {

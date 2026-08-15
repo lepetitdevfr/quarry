@@ -161,3 +161,57 @@ fn deleting_a_connection_removes_its_keychain_entry() {
         "a deleted connection must not leave a credential behind",
     );
 }
+
+// ---- password resolution ---------------------------------------------
+//
+// `connect_saved` must prefer a password the user just typed over
+// whatever the Keychain holds, and must not consult the Keychain at all
+// in that case. The Keychain read is exactly what fails after a rebuild
+// (macOS ties entries to the signing identity that created them), so a
+// read that runs anyway makes the "enter the password again" retry
+// impossible to complete.
+
+#[test]
+fn a_typed_password_wins_without_reading_the_keychain() {
+    let mut consulted = false;
+    let resolved = quarry_lib::commands::resolve_password(Some("typed".into()), || {
+        consulted = true;
+        Err(quarry_lib::error::AppError::Keychain("denied".into()))
+    })
+    .unwrap();
+
+    assert_eq!(resolved.as_deref(), Some("typed"));
+    assert!(
+        !consulted,
+        "a supplied password must not trigger a Keychain read, which is the \
+         thing that fails after a rebuild"
+    );
+}
+
+#[test]
+fn an_empty_typed_password_falls_back_to_the_keychain() {
+    // The field submits "" when the user just hits return; that is not
+    // a password, it is the absence of one.
+    let resolved =
+        quarry_lib::commands::resolve_password(Some("".into()), || Ok(Some("stored".into())))
+            .unwrap();
+
+    assert_eq!(resolved.as_deref(), Some("stored"));
+}
+
+#[test]
+fn a_keychain_failure_is_surfaced_when_nothing_was_typed() {
+    // With no password to fall back on, the Keychain error is the whole
+    // story and must reach the user.
+    let result = quarry_lib::commands::resolve_password(None, || {
+        Err(quarry_lib::error::AppError::Keychain("denied".into()))
+    });
+
+    assert!(result.is_err(), "a bare Keychain denial must not be swallowed");
+}
+
+#[test]
+fn no_password_anywhere_is_not_an_error() {
+    let resolved = quarry_lib::commands::resolve_password(None, || Ok(None)).unwrap();
+    assert_eq!(resolved, None);
+}

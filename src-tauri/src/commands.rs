@@ -351,6 +351,32 @@ pub fn delete_connection(
     state.library.connections()
 }
 
+/// Decide which password to connect with: the one the user just typed,
+/// or failing that whatever the Keychain holds.
+///
+/// The Keychain is consulted **only** when nothing was typed, and that
+/// ordering is the whole point rather than an optimisation. Reading the
+/// Keychain is precisely what fails after a rebuild — macOS ties entries
+/// to the signing identity that created them — and the error tells the
+/// user to enter the password again. Reading it anyway made that
+/// instruction impossible to follow: the read failed, the failure was
+/// returned, and the password the user had just typed was never looked
+/// at. Every retry hit the same wall.
+///
+/// `load` is a closure rather than a value so the read genuinely does
+/// not happen in the supplied-password case, which is what the test
+/// asserts.
+pub fn resolve_password(
+    supplied: Option<String>,
+    load: impl FnOnce() -> Result<Option<String>, AppError>,
+) -> Result<Option<String>, AppError> {
+    // An empty field is the absence of a password, not a password.
+    match supplied.filter(|p| !p.is_empty()) {
+        Some(typed) => Ok(Some(typed)),
+        None => load(),
+    }
+}
+
 /// Connect to a saved connection, replacing any current one.
 ///
 /// `password` is only for the case where the Keychain has no entry —
@@ -364,8 +390,7 @@ pub async fn connect_saved(
 ) -> Result<ConnectionInfo, AppError> {
     let record = state.library.connection(&id)?;
 
-    let stored = crate::secrets::load_password(&id)?;
-    let password = password.filter(|p| !p.is_empty()).or(stored);
+    let password = resolve_password(password, || crate::secrets::load_password(&id))?;
 
     let cfg = ConnectionConfig {
         host: record.host.clone(),
@@ -407,8 +432,15 @@ pub async fn connect_saved(
         info: info.clone(),
     }));
 
+    // Saving the password is a convenience, and by this point the
+    // connection is already live and installed. Propagating a save
+    // failure here would report a working connection as a failed one —
+    // and it is reachable: after a rebuild macOS can deny the delete
+    // inside `save_password`, leaving the old entry in place so the
+    // write that follows collides with it. The user stays connected;
+    // they are simply asked for the password again next time.
     if let Some(pw) = password {
-        state.library.save_connection_password(&id, &pw)?;
+        let _ = state.library.save_connection_password(&id, &pw);
     }
     state.library.touch_connection(&id)?;
 
