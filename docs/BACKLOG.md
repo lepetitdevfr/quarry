@@ -94,9 +94,18 @@ can be deleted whenever convenient.
 never `cp`. A plain copy of a WAL database captures a file with no tables in
 it — which is exactly what happened on the first attempt that night.
 
-## A migration test that passes without the migration
+## A migration test that passes without the migration — RESOLVED
 
 **Found:** 2026-08-15, in code review of the table-detail stage.
+**Closed:** 2026-08-16.
+
+The defect was reproduced before being fixed — with both
+`add_column_if_missing` calls for `is_preview` and `title` deleted, the
+test still passed. It now builds the v2 `tabs` table with raw SQL, the
+way the v4 test does, and fails when those calls are removed
+(`panicked at src/library/db.rs:292` — `no such column: is_preview`).
+
+The original entry follows.
 
 `adds_preview_columns_to_an_existing_tabs_table` in `src-tauri/src/library/db.rs`
 builds its "old" database by calling `open()` — which creates `tabs` with
@@ -285,3 +294,25 @@ assert — now exists, so each is much cheaper than it would have been before.
 yet" since the first stage, through nine further stages. Rewritten this stage
 because inline editing was the last planned feature and the claim had become
 actively misleading — it told a reader the write-guard did not exist.
+
+## An unidentified flake in the Rust suite
+
+**Seen once:** 2026-08-16, during the migration-test fix. One full
+`cargo test` reported `203 passed, 1 failed` where every run either side
+reported `209 passed, 0 failed`. Four consecutive runs since have been
+clean.
+
+The failing test's name was lost — the run was filtered through `awk` for
+counts only, so the failure line was never captured. That is the real
+mistake worth not repeating: **capture full output to a file when running
+the suite, and grep the file**, rather than piping the run itself through
+a filter.
+
+Note the arithmetic: 203 + 1 = 204, five short of 209. So five tests did
+not report at all, which points at a test binary dying rather than an
+assertion failing — consistent with a testcontainers container failing to
+start under parallel load, since several binaries each boot their own
+Postgres simultaneously. That is a hypothesis, not a diagnosis.
+
+Not chased further because it has not recurred. If it comes back, the
+first move is `cargo test 2>&1 | tee /tmp/run.txt` and reading the file.

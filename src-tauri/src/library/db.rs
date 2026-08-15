@@ -264,15 +264,31 @@ mod tests {
         let path = dir.path().join("w.db");
 
         {
-            let conn = open(&path).unwrap();
-            conn.execute(
-                "insert into tabs (id, query_id, scratch_sql, position, is_active, cursor_pos)
-                 values ('t1', null, 'select 1', 100, 1, 0)",
-                [],
+            // The v2 tabs table exactly as it shipped, built with raw
+            // SQL. Going through open() would create `is_preview` and
+            // `title` from the `create table if not exists` block, so
+            // `add_column_if_missing` would find them already present
+            // and never run — the test would then cover the
+            // fresh-database path while claiming to cover the upgrade.
+            // It did exactly that until 2026-08-16, and passed with both
+            // migration calls deleted.
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "create table tabs (
+                    id          text primary key,
+                    query_id    text,
+                    scratch_sql text,
+                    position    integer not null,
+                    is_active   integer not null default 0,
+                    cursor_pos  integer not null default 0
+                 );
+                 insert into tabs (id, query_id, scratch_sql, position, is_active, cursor_pos)
+                 values ('t1', null, 'select 1', 100, 1, 0);",
             )
             .unwrap();
         }
 
+        // The real upgrade.
         let conn = open(&path).unwrap();
 
         let sql: String = conn
