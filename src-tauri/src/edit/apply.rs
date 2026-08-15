@@ -1,0 +1,120 @@
+//! Running generated `UPDATE`s in one transaction.
+//!
+//! The impure half of the module. Everything it runs was built by
+//! `edit::sql`, which is pure and tested separately.
+
+use crate::edit::sql::Statement;
+use crate::error::AppError;
+use crate::exec::value::cell_to_json;
+use deadpool_postgres::Pool;
+use serde::Serialize;
+use tokio_postgres::types::ToSql;
+
+/// One cell as the database now holds it.
+#[derive(Debug, Serialize)]
+pub struct AppliedCell {
+    pub column: usize,
+    pub value: serde_json::Value,
+}
+
+/// What one statement did, so the grid can patch that row.
+#[derive(Debug, Serialize)]
+pub struct AppliedRow {
+    pub row: usize,
+    pub cells: Vec<AppliedCell>,
+}
+
+/// Apply every statement in one transaction.
+///
+/// Each must affect exactly one row. Anything else — zero because the
+/// row was deleted, more than one because the key is not what we think
+/// it is, or an error from the server — rolls the whole batch back.
+/// A partial apply would leave the grid asserting values the database
+/// does not hold, which is the worst outcome available here.
+///
+/// `read_write` mirrors `exec::run_query`: on a read-only connection
+/// the session default is `default_transaction_read_only=on`, and an
+/// unlocked write has to opt out of it explicitly.
+pub async fn apply_edits(
+    pool: &Pool,
+    statements: &[Statement],
+    read_write: bool,
+) -> Result<Vec<AppliedRow>, AppError> {
+    if statements.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let client = pool.get().await?;
+
+    let begin = if read_write {
+        "begin read write"
+    } else {
+        "begin"
+    };
+    client.batch_execute(begin).await?;
+
+    let mut applied = Vec::new();
+
+    for statement in statements {
+        match run_one(&client, statement).await {
+            Ok(row) => applied.push(row),
+            Err(e) => {
+                // Leave no transaction open on the pooled connection:
+                // `RecyclingMethod::Clean` would roll it back on
+                // return, but not before another checkout could see it.
+                // Same reasoning as `exec::run_query`.
+                let _ = client.batch_execute("rollback").await;
+                return Err(e);
+            }
+        }
+    }
+
+    client.batch_execute("commit").await?;
+    Ok(applied)
+}
+
+async fn run_one(
+    client: &deadpool_postgres::Client,
+    statement: &Statement,
+) -> Result<AppliedRow, AppError> {
+    // `query` wants `&[&(dyn ToSql + Sync)]`, and what we hold is
+    // `Vec<Option<String>>`. `Option<String>` implements `ToSql` —
+    // `None` binds a real SQL NULL — so this borrows each element and
+    // widens it to a trait object. The intermediate `Vec` has to exist
+    // as a named binding: building it inline would drop it while the
+    // slice still borrowed from it.
+    let params: Vec<&(dyn ToSql + Sync)> = statement
+        .params
+        .iter()
+        .map(|p| p as &(dyn ToSql + Sync))
+        .collect();
+
+    let rows = client.query(&statement.sql, &params).await?;
+
+    if rows.len() != 1 {
+        return Err(AppError::Query {
+            message: format!(
+                "row {} no longer matches one row in the table — it was changed or deleted \
+                 by someone else. Nothing was applied.",
+                statement.row + 1
+            ),
+            code: None,
+            position: None,
+        });
+    }
+
+    let cells = statement
+        .returned
+        .iter()
+        .enumerate()
+        .map(|(i, column)| AppliedCell {
+            column: *column,
+            value: cell_to_json(&rows[0], i),
+        })
+        .collect();
+
+    Ok(AppliedRow {
+        row: statement.row,
+        cells,
+    })
+}

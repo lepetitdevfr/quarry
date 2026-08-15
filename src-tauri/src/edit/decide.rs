@@ -211,7 +211,14 @@ pub fn decide_editability(columns: &[SourceColumn], facts: Option<&TableFacts>) 
                 return ColumnEdit {
                     editable: false,
                     column_name: None,
-                    cast_type: None,
+                    // A key is never written, but it is always *matched*
+                    // on, and `build_updates` casts the bound key value
+                    // through this. Leaving it empty falls back to text,
+                    // and `"id" = $2::text::text` against an integer
+                    // column is `operator does not exist: integer =
+                    // text`. `editable: false` is what stops a write;
+                    // the cast is orthogonal to that.
+                    cast_type: Some(c.cast_type.clone()),
                     reason: Some("primary key".to_string()),
                 };
             }

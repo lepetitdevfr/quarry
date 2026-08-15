@@ -1,5 +1,6 @@
 mod common;
 
+use quarry_lib::edit::{apply_edits, build_updates, CellEdit, RowEdit};
 use quarry_lib::exec::run_query;
 use quarry_lib::schema::lookup_table;
 
@@ -221,4 +222,385 @@ async fn a_table_without_a_key_comes_back_not_editable() {
             .contains("no primary key"),
         "expected a no-primary-key reason"
     );
+}
+
+#[tokio::test]
+async fn an_edit_lands_and_returns_the_stored_value() {
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table people (id int primary key, email text)",
+        false,
+    )
+    .await
+    .expect("create table");
+    run_query(&db.pool, "insert into people values (1, 'old@x.co')", false)
+        .await
+        .expect("insert");
+
+    let result = run_query(&db.pool, "select id, email from people", false)
+        .await
+        .expect("select");
+
+    let statements = build_updates(
+        &result.edit,
+        &[RowEdit {
+            row: 0,
+            pk: vec!["1".to_string()],
+            cells: vec![CellEdit {
+                column: 1,
+                value: Some("new@x.co".to_string()),
+            }],
+        }],
+    )
+    .expect("should build");
+
+    let applied = apply_edits(&db.pool, &statements, false)
+        .await
+        .expect("apply should succeed");
+
+    assert_eq!(applied.len(), 1);
+    assert_eq!(applied[0].row, 0);
+    assert_eq!(applied[0].cells[0].column, 1);
+    assert_eq!(applied[0].cells[0].value, serde_json::json!("new@x.co"));
+
+    let after = run_query(&db.pool, "select email from people", false)
+        .await
+        .expect("select");
+    assert_eq!(after.rows[0][0], serde_json::json!("new@x.co"));
+}
+
+#[tokio::test]
+async fn a_trigger_rewrite_comes_back_through_returning() {
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table people (id int primary key, email text)",
+        false,
+    )
+    .await
+    .expect("create table");
+    run_query(&db.pool, "insert into people values (1, 'old@x.co')", false)
+        .await
+        .expect("insert");
+    // A BEFORE UPDATE trigger that lowercases what you typed. The grid
+    // must show what the database stored, not what you typed.
+    run_query(
+        &db.pool,
+        "create function lower_email() returns trigger as $$
+         begin new.email = lower(new.email); return new; end;
+         $$ language plpgsql",
+        false,
+    )
+    .await
+    .expect("create function");
+    run_query(
+        &db.pool,
+        "create trigger t before update on people for each row execute function lower_email()",
+        false,
+    )
+    .await
+    .expect("create trigger");
+
+    let result = run_query(&db.pool, "select id, email from people", false)
+        .await
+        .expect("select");
+
+    let statements = build_updates(
+        &result.edit,
+        &[RowEdit {
+            row: 0,
+            pk: vec!["1".to_string()],
+            cells: vec![CellEdit {
+                column: 1,
+                value: Some("SHOUTY@X.CO".to_string()),
+            }],
+        }],
+    )
+    .expect("should build");
+
+    let applied = apply_edits(&db.pool, &statements, false)
+        .await
+        .expect("apply should succeed");
+
+    assert_eq!(applied[0].cells[0].value, serde_json::json!("shouty@x.co"));
+}
+
+#[tokio::test]
+async fn a_vanished_row_rolls_back_the_whole_batch() {
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table people (id int primary key, email text)",
+        false,
+    )
+    .await
+    .expect("create table");
+    run_query(
+        &db.pool,
+        "insert into people values (1, 'a@x.co'), (2, 'b@x.co')",
+        false,
+    )
+    .await
+    .expect("insert");
+
+    let result = run_query(&db.pool, "select id, email from people order by id", false)
+        .await
+        .expect("select");
+
+    // Row 2 is deleted behind our back, exactly as a concurrent session
+    // would.
+    run_query(&db.pool, "delete from people where id = 2", false)
+        .await
+        .expect("delete");
+
+    let statements = build_updates(
+        &result.edit,
+        &[
+            RowEdit {
+                row: 0,
+                pk: vec!["1".to_string()],
+                cells: vec![CellEdit {
+                    column: 1,
+                    value: Some("changed@x.co".to_string()),
+                }],
+            },
+            RowEdit {
+                row: 1,
+                pk: vec!["2".to_string()],
+                cells: vec![CellEdit {
+                    column: 1,
+                    value: Some("gone@x.co".to_string()),
+                }],
+            },
+        ],
+    )
+    .expect("should build");
+
+    let error = apply_edits(&db.pool, &statements, false)
+        .await
+        .expect_err("a missing row must fail the batch");
+    assert!(
+        format!("{error}").contains("no longer"),
+        "error was: {error}"
+    );
+
+    // The edit that *would* have worked must be rolled back too.
+    // A partial apply leaves the grid claiming things the database
+    // does not agree with.
+    let after = run_query(&db.pool, "select email from people where id = 1", false)
+        .await
+        .expect("select");
+    assert_eq!(after.rows[0][0], serde_json::json!("a@x.co"));
+}
+
+#[tokio::test]
+async fn setting_null_differs_from_setting_an_empty_string() {
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table people (id int primary key, email text)",
+        false,
+    )
+    .await
+    .expect("create table");
+    run_query(
+        &db.pool,
+        "insert into people values (1, 'a@x.co'), (2, 'b@x.co')",
+        false,
+    )
+    .await
+    .expect("insert");
+
+    let result = run_query(&db.pool, "select id, email from people order by id", false)
+        .await
+        .expect("select");
+
+    let statements = build_updates(
+        &result.edit,
+        &[
+            RowEdit {
+                row: 0,
+                pk: vec!["1".to_string()],
+                cells: vec![CellEdit {
+                    column: 1,
+                    value: None,
+                }],
+            },
+            RowEdit {
+                row: 1,
+                pk: vec!["2".to_string()],
+                cells: vec![CellEdit {
+                    column: 1,
+                    value: Some(String::new()),
+                }],
+            },
+        ],
+    )
+    .expect("should build");
+
+    apply_edits(&db.pool, &statements, false)
+        .await
+        .expect("apply should succeed");
+
+    let after = run_query(
+        &db.pool,
+        "select id, email is null as is_null, email from people order by id",
+        false,
+    )
+    .await
+    .expect("select");
+
+    assert_eq!(after.rows[0][1], serde_json::json!(true));
+    assert_eq!(after.rows[1][1], serde_json::json!(false));
+    assert_eq!(after.rows[1][2], serde_json::json!(""));
+}
+
+#[tokio::test]
+async fn a_bad_value_fails_with_the_postgres_message() {
+    let db = common::start().await;
+
+    run_query(&db.pool, "create table nums (id int primary key, n int)", false)
+        .await
+        .expect("create table");
+    run_query(&db.pool, "insert into nums values (1, 5)", false)
+        .await
+        .expect("insert");
+
+    let result = run_query(&db.pool, "select id, n from nums", false)
+        .await
+        .expect("select");
+
+    let statements = build_updates(
+        &result.edit,
+        &[RowEdit {
+            row: 0,
+            pk: vec!["1".to_string()],
+            cells: vec![CellEdit {
+                column: 1,
+                value: Some("not a number".to_string()),
+            }],
+        }],
+    )
+    .expect("should build");
+
+    let error = apply_edits(&db.pool, &statements, false)
+        .await
+        .expect_err("a bad value must fail");
+    assert!(
+        format!("{error}").contains("invalid input syntax"),
+        "error was: {error}"
+    );
+
+    // And the old value survives.
+    let after = run_query(&db.pool, "select n from nums", false)
+        .await
+        .expect("select");
+    assert_eq!(after.rows[0][0], serde_json::json!(5));
+}
+#[tokio::test]
+async fn postgres_refuses_an_edit_on_a_read_only_pool() {
+    // Layer two, standing alone for the *editing* path specifically.
+    // `guard_db_test` proves this for `run_query`; this proves it for
+    // `apply_edits`, which is a different code path — and being a
+    // different code path is the entire reason the write-guard spec
+    // built two layers.
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table people (id int primary key, email text)",
+        false,
+    )
+    .await
+    .expect("create table");
+    run_query(&db.pool, "insert into people values (1, 'a@x.co')", false)
+        .await
+        .expect("insert");
+
+    let result = run_query(&db.pool, "select id, email from people", false)
+        .await
+        .expect("select");
+
+    let statements = build_updates(
+        &result.edit,
+        &[RowEdit {
+            row: 0,
+            pk: vec!["1".to_string()],
+            cells: vec![CellEdit {
+                column: 1,
+                value: Some("b@x.co".to_string()),
+            }],
+        }],
+    )
+    .expect("should build");
+
+    // A second pool at the same database, read-only — and
+    // `read_write: false`, which is what a future code path that
+    // forgot the guard would produce.
+    let cfg = common::config_for(db.port);
+    let locked_pool = quarry_lib::conn::build_pool(&cfg, quarry_lib::guard::Policy::ReadOnly)
+        .expect("pool should build");
+
+    let error = apply_edits(&locked_pool, &statements, false)
+        .await
+        .expect_err("a read-only connection must refuse an edit");
+    let message = format!("{error}");
+    assert!(
+        message.contains("read-only") || message.contains("read only"),
+        "expected a read-only refusal from the server, got: {message}"
+    );
+}
+
+#[tokio::test]
+async fn an_unlocked_connection_can_apply_an_edit() {
+    // The other half: `BEGIN READ WRITE` must override the session
+    // default for the editing path too, or unlocking could never let
+    // an edit through.
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table people (id int primary key, email text)",
+        false,
+    )
+    .await
+    .expect("create table");
+    run_query(&db.pool, "insert into people values (1, 'a@x.co')", false)
+        .await
+        .expect("insert");
+
+    let result = run_query(&db.pool, "select id, email from people", false)
+        .await
+        .expect("select");
+
+    let statements = build_updates(
+        &result.edit,
+        &[RowEdit {
+            row: 0,
+            pk: vec!["1".to_string()],
+            cells: vec![CellEdit {
+                column: 1,
+                value: Some("b@x.co".to_string()),
+            }],
+        }],
+    )
+    .expect("should build");
+
+    let cfg = common::config_for(db.port);
+    let locked_pool = quarry_lib::conn::build_pool(&cfg, quarry_lib::guard::Policy::ReadOnly)
+        .expect("pool should build");
+
+    apply_edits(&locked_pool, &statements, true)
+        .await
+        .expect("an unlocked edit should be permitted");
+
+    let after = run_query(&db.pool, "select email from people", false)
+        .await
+        .expect("select");
+    assert_eq!(after.rows[0][0], serde_json::json!("b@x.co"));
 }
