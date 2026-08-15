@@ -1,11 +1,13 @@
 use crate::conn::{build_pool, ping, ConnectionConfig};
 use crate::error::AppError;
 use crate::exec::{run_query, QueryResult};
+use crate::guard::{decide, Decision, Policy};
 use crate::library::model::{LibraryTree, Query, Tab, TableMode};
 use crate::library::store::Store;
 use deadpool_postgres::Pool;
 use serde::Serialize;
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 /// The one live database connection, if any.
 ///
@@ -17,6 +19,13 @@ pub struct ActiveConnection {
     pub id: String,
     pub pool: Pool,
     pub info: ConnectionInfo,
+    pub policy: Policy,
+    /// When the current unlock expires. `None` means locked.
+    ///
+    /// Deliberately not persisted: restarting relocks, which is the
+    /// point. An `Instant` rather than a wall clock, so changing the
+    /// system time cannot extend an unlock.
+    pub unlocked_until: Option<Instant>,
 }
 
 pub struct AppState {
@@ -50,6 +59,16 @@ impl AppState {
         active
             .as_ref()
             .map(|a| a.pool.clone())
+            .ok_or_else(|| AppError::Connection("not connected to a database".into()))
+    }
+
+    /// The pool plus the guard state, read under one lock so the policy
+    /// cannot change between the check and the execution.
+    fn pool_and_guard(&self) -> Result<(Pool, Policy, Option<Instant>), AppError> {
+        let active = self.active.lock().expect("state lock poisoned");
+        active
+            .as_ref()
+            .map(|a| (a.pool.clone(), a.policy, a.unlocked_until))
             .ok_or_else(|| AppError::Connection("not connected to a database".into()))
     }
 
@@ -87,8 +106,97 @@ pub async fn execute(
     state: tauri::State<'_, AppState>,
     sql: String,
 ) -> Result<QueryResult, AppError> {
-    let pool = state.pool()?;
-    run_query(&pool, &sql).await
+    let (pool, policy, unlocked_until) = state.pool_and_guard()?;
+
+    // The one chokepoint. Every statement the user runs passes here.
+    let read_write = match decide(policy, unlocked_until, Instant::now(), &sql) {
+        Decision::Allow { read_write } => read_write,
+        Decision::Deny => return Err(AppError::WriteBlocked(sql.trim().to_string())),
+    };
+
+    run_query(&pool, &sql, read_write).await
+}
+
+/// How long an unlock lasts. Fixed from the moment of unlocking rather
+/// than sliding: a sliding window can be kept alive indefinitely, which
+/// is the state this feature exists to prevent.
+const UNLOCK_MINUTES: u64 = 30;
+
+/// What the UI needs to render the guard's state.
+#[derive(Clone, Serialize)]
+pub struct GuardStatus {
+    /// "free" or "read_only".
+    pub policy: String,
+    /// Seconds left on the unlock, or None when locked.
+    pub unlocked_seconds_remaining: Option<u64>,
+}
+
+#[tauri::command]
+pub fn guard_status(state: tauri::State<'_, AppState>) -> Result<Option<GuardStatus>, AppError> {
+    let active = state.active.lock().expect("state lock poisoned");
+    Ok(active.as_ref().map(|a| GuardStatus {
+        policy: match a.policy {
+            Policy::Free => "free".to_string(),
+            Policy::ReadOnly => "read_only".to_string(),
+        },
+        unlocked_seconds_remaining: a.unlocked_until.and_then(|deadline| {
+            deadline
+                .checked_duration_since(Instant::now())
+                .map(|left| left.as_secs())
+        }),
+    }))
+}
+
+/// Unlock the active connection for a fixed window.
+///
+/// `typed_name` must match the connection's name exactly. The point is
+/// not authentication — anyone at the keyboard can read the name — but
+/// deliberateness: typing it is impossible to do by reflex, which a
+/// confirmation button is not.
+#[tauri::command]
+pub fn unlock(state: tauri::State<'_, AppState>, typed_name: String) -> Result<(), AppError> {
+    // Read the id and release the lock before touching the library:
+    // holding the `active` mutex across a SQLite call would nest two
+    // locks for no reason, and nested locks are how ordering bugs start.
+    let id = {
+        let active = state.active.lock().expect("state lock poisoned");
+        active
+            .as_ref()
+            .map(|a| a.id.clone())
+            .ok_or_else(|| AppError::Connection("not connected to a database".into()))?
+    };
+
+    let record = state.library.connection(&id)?;
+    if typed_name.trim() != record.name {
+        return Err(AppError::WriteBlocked(format!(
+            "type the connection name exactly to unlock: {}",
+            record.name
+        )));
+    }
+
+    let mut active = state.active.lock().expect("state lock poisoned");
+    // Re-check identity: the user could have switched connections while
+    // the dialog was open, and unlocking a different database than the
+    // one they named is exactly the accident this feature prevents.
+    match active.as_mut() {
+        Some(connection) if connection.id == id => {
+            connection.unlocked_until =
+                Some(Instant::now() + Duration::from_secs(UNLOCK_MINUTES * 60));
+            Ok(())
+        }
+        _ => Err(AppError::Connection(
+            "the connection changed while unlocking".into(),
+        )),
+    }
+}
+
+#[tauri::command]
+pub fn relock(state: tauri::State<'_, AppState>) -> Result<(), AppError> {
+    let mut active = state.active.lock().expect("state lock poisoned");
+    if let Some(connection) = active.as_mut() {
+        connection.unlocked_until = None;
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -403,9 +511,11 @@ pub async fn connect_saved(
 
     let attempted_without_password = password.is_none();
 
+    let policy = Policy::for_tag(record.tag);
+
     // Build and verify BEFORE touching the active slot: a failed
     // connect must leave the user disconnected, never half-switched.
-    let pool = build_pool(&cfg)?;
+    let pool = build_pool(&cfg, policy)?;
     let server_version = match ping(&pool).await {
         Ok(v) => v,
         // A failure with no password is almost always the missing
@@ -430,6 +540,10 @@ pub async fn connect_saved(
         id: id.clone(),
         pool,
         info: info.clone(),
+        policy,
+        // A fresh connection is always locked, whatever the previous
+        // one was.
+        unlocked_until: None,
     }));
 
     // Saving the password is a convenience, and by this point the
