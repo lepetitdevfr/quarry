@@ -13,6 +13,8 @@ import {
   initialWidths,
   resized,
 } from "../lib/gridWidths";
+import { cellText, isPending, pendingValue } from "../lib/pendingEdits";
+import type { Pending } from "../lib/pendingEdits";
 import type { QueryResult } from "../types";
 
 interface Props {
@@ -28,6 +30,12 @@ interface Props {
    * wrong.
    */
   serverSorted: boolean;
+  /**
+   * Staged edits, or null when editing is off entirely — a locked
+   * connection, or a result that cannot be edited.
+   */
+  pending: Pending | null;
+  onStage: (row: number, col: number, value: string | null) => void;
 }
 
 const ROW_HEIGHT = 28;
@@ -38,6 +46,8 @@ export function ResultGrid({
   sort,
   onSortChange,
   serverSorted,
+  pending,
+  onStage,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -70,11 +80,39 @@ export function ResultGrid({
   const [focus, setFocus] = useState<CellRef | null>(null);
   const [selectedAll, setSelectedAll] = useState<SelectionRange | null>(null);
 
+  // Which cell is open for editing, and the text currently in it.
+  const [editing, setEditing] = useState<{ row: number; col: number } | null>(
+    null,
+  );
+  const [draft, setDraft] = useState("");
+
+  const columnEdits = result.edit.columns;
+
+  function canEdit(col: number): boolean {
+    return pending !== null && (columnEdits[col]?.editable ?? false);
+  }
+
+  function openEditor(row: number, col: number) {
+    if (!canEdit(col)) return;
+    const staged = pendingValue(pending!, row, col);
+    setDraft(
+      staged !== undefined ? (staged ?? "") : cellText(result.rows[row][col]),
+    );
+    setEditing({ row, col });
+  }
+
+  function commit() {
+    if (editing === null) return;
+    onStage(editing.row, editing.col, draft);
+    setEditing(null);
+  }
+
   // A rectangle into a result that no longer exists means nothing.
   useEffect(() => {
     setAnchor(null);
     setFocus(null);
     setSelectedAll(null);
+    setEditing(null);
     // `shape` is the same trigger the widths use.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shape]);
@@ -269,28 +307,100 @@ export function ResultGrid({
               >
                 <td className="row-num">{item.index + 1}</td>
                 {row.map((cell, i) => {
-                  const { text, kind } = formatCell(cell);
+                  // `item.index` is the display position; `rowIndex` is
+                  // the position in `result.rows`. Staging uses the
+                  // latter — sorting the grid must not redirect an edit
+                  // to a different row — while the selection rectangle
+                  // deliberately keeps using the display position.
+                  const rowIndex = order[item.index];
+                  const staged = pending
+                    ? pendingValue(pending, rowIndex, i)
+                    : undefined;
+                  const shown = staged !== undefined ? staged : cell;
+                  const { text, kind } = formatCell(shown);
+                  const isEditingCell =
+                    editing?.row === rowIndex && editing?.col === i;
+                  const columnEdit = columnEdits[i];
+                  const notEditable = pending !== null && !canEdit(i);
+
                   return (
                     <td
                       key={i}
-                      className={`cell-${kind}${
-                        isSelected(range, item.index, i) ? " selected" : ""
-                      }`}
+                      className={[
+                        `cell-${kind}`,
+                        isSelected(range, item.index, i) ? "selected" : "",
+                        pending && isPending(pending, rowIndex, i)
+                          ? "pending"
+                          : "",
+                        notEditable ? "not-editable" : "",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
                       style={{ width: `${widths[i]}px` }}
-                      title={text}
+                      title={
+                        notEditable ? (columnEdit?.reason ?? undefined) : text
+                      }
+                      onDoubleClick={() => openEditor(rowIndex, i)}
                       onClick={(e) => {
                         setSelectedAll(null);
-                        const cell = { row: item.index, col: i };
+                        const cellRef = { row: item.index, col: i };
                         // Shift extends from the existing anchor; a plain
                         // click starts a new selection.
-                        if (e.shiftKey && anchor) setFocus(cell);
+                        if (e.shiftKey && anchor) setFocus(cellRef);
                         else {
-                          setAnchor(cell);
-                          setFocus(cell);
+                          setAnchor(cellRef);
+                          setFocus(cellRef);
                         }
                       }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !isEditingCell) {
+                          e.preventDefault();
+                          openEditor(rowIndex, i);
+                        }
+                        // Cmd+Backspace stages an explicit SQL NULL.
+                        // Typing nothing means the empty string, which
+                        // is a different value — the grid has always
+                        // rendered the two differently and editing must
+                        // keep them apart.
+                        if (
+                          (e.metaKey || e.ctrlKey) &&
+                          e.key === "Backspace" &&
+                          canEdit(i)
+                        ) {
+                          e.preventDefault();
+                          onStage(rowIndex, i, null);
+                        }
+                      }}
+                      tabIndex={canEdit(i) ? 0 : undefined}
                     >
-                      {text}
+                      {isEditingCell ? (
+                        <input
+                          className="cell-editor"
+                          autoFocus
+                          value={draft}
+                          onChange={(e) => setDraft(e.target.value)}
+                          onBlur={commit}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter") {
+                              e.preventDefault();
+                              commit();
+                            }
+                            if (e.key === "Escape") {
+                              e.preventDefault();
+                              setEditing(null);
+                            }
+                            if (e.key === "Tab") {
+                              e.preventDefault();
+                              commit();
+                            }
+                            // The grid's document-level Cmd+C/Cmd+A
+                            // handler already skips inputs, so nothing
+                            // more is needed here.
+                          }}
+                        />
+                      ) : (
+                        text
+                      )}
                     </td>
                   );
                 })}

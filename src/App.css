@@ -6,6 +6,9 @@
   --muted: #8b93a1;
   --accent: #4f8ef7;
   --error: #f26d6d;
+  /* Unapplied edits. Amber rather than the accent: the accent already
+     means "selected" in the grid, and a cell can be both at once. */
+  --pending: #d9a400;
 
   /* Tertiary text: twisties, badges, section headers. Splitting this out
      of --muted is what gives the UI hierarchy — one grey for six roles
@@ -1063,4 +1066,35 @@ button.link {
 
 .modal button.danger {
   background: var(--error);
+}
+
+/* ---- inline row editing ----------------------------------------- */
+
+/* A cell with an unapplied edit. Deliberately loud: the grid is
+   otherwise showing database truth, and this is the one state where it
+   is not. */
+.result-grid td.pending {
+  background: color-mix(in srgb, var(--pending) 22%, transparent);
+  box-shadow: inset 2px 0 0 var(--pending);
+}
+
+/* A cell that cannot be edited while the rest of the row can. Not an
+   error state, so it stays quiet — the reason is in the tooltip. */
+.result-grid td.not-editable {
+  color: var(--muted);
+}
+
+.result-grid .cell-editor {
+  width: 100%;
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+  padding: 0 var(--s-1);
+}
+
+.result-grid td:focus {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
 }

@@ -708,6 +708,8 @@ export default function App() {
                   sort={sort}
                   onSortChange={(next) => void changeSort(next)}
                   serverSorted={serverSorted}
+                  pending={null}
+                  onStage={() => {}}
                 />
               </>
             )}
@@ -734,6 +736,8 @@ export default function App() {
                   sort={sort}
                   onSortChange={(next) => void changeSort(next)}
                   serverSorted={serverSorted}
+                  pending={null}
+                  onStage={() => {}}
                 />
               </>
             )}
