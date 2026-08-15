@@ -97,12 +97,14 @@ function groupConstraints(
   })).filter((g) => g.items.length > 0);
 
   const seen = new Set(CONSTRAINT_KINDS.map(([kind]) => kind));
-  const others = constraints
-    .filter((c) => !seen.has(c.kind))
-    .map((c) => ({
-      kind: c.kind,
-      label: c.kind,
-      items: [{ name: c.name, definition: c.definition }],
+  const others = [...new Set(constraints.map((c) => c.kind))]
+    .filter((kind) => !seen.has(kind))
+    .map((kind) => ({
+      kind,
+      label: kind,
+      items: constraints
+        .filter((c) => c.kind === kind)
+        .map((c) => ({ name: c.name, definition: c.definition })),
     }));
 
   return [...known, ...others];
