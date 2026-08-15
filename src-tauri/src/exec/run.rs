@@ -1,5 +1,7 @@
+use crate::edit::{cast_target, decide_editability, EditInfo, SourceColumn};
 use crate::error::AppError;
 use crate::exec::value::cell_to_json;
+use crate::schema::lookup_table;
 use deadpool_postgres::Pool;
 use serde::Serialize;
 use std::time::Instant;
@@ -16,6 +18,9 @@ pub struct ColumnMeta {
 #[derive(Debug, Serialize)]
 pub struct QueryResult {
     pub columns: Vec<ColumnMeta>,
+    /// Whether this result can be edited in the grid, and why not when
+    /// it cannot. Decided in Rust so the frontend never has to.
+    pub edit: EditInfo,
     pub rows: Vec<Vec<serde_json::Value>>,
     /// Rows returned, e.g. by a `SELECT`. Always 0 for a statement with
     /// no result columns (see `affected_rows`).
@@ -75,6 +80,37 @@ pub async fn run_query(pool: &Pool, sql: &str, read_write: bool) -> Result<Query
         })
         .collect();
 
+    // What Postgres said about where each column came from. `table_oid`
+    // and `attnum` are empty for expressions and aggregates — that is
+    // the server telling us the column has no row to update, which is
+    // more reliable than parsing the SQL back.
+    let sources: Vec<SourceColumn> = stmt
+        .columns()
+        .iter()
+        .map(|c| SourceColumn {
+            table_oid: c.table_oid(),
+            attnum: c.column_id(),
+            cast_type: cast_target(c.type_()),
+        })
+        .collect();
+
+    // One catalog round-trip, and only when every sourced column agrees
+    // on one table. A join or an aggregate is refused from the metadata
+    // alone and pays nothing.
+    let mut oids: Vec<u32> = sources.iter().filter_map(|s| s.table_oid).collect();
+    oids.sort_unstable();
+    oids.dedup();
+    let facts = if oids.len() == 1 {
+        // A failed lookup is not a failed query: the rows are fine,
+        // they just cannot be edited. `decide_editability` turns `None`
+        // into the right refusal.
+        lookup_table(pool, oids[0]).await.unwrap_or(None)
+    } else {
+        None
+    };
+
+    let edit = decide_editability(&sources, facts.as_ref());
+
     let started = Instant::now();
 
     if columns.is_empty() {
@@ -100,6 +136,7 @@ pub async fn run_query(pool: &Pool, sql: &str, read_write: bool) -> Result<Query
         let duration_ms = started.elapsed().as_millis() as u64;
         return Ok(QueryResult {
             columns,
+            edit,
             rows: Vec::new(),
             row_count: 0,
             affected_rows: Some(affected),
@@ -130,6 +167,7 @@ pub async fn run_query(pool: &Pool, sql: &str, read_write: bool) -> Result<Query
         row_count: converted.len(),
         rows: converted,
         columns,
+        edit,
         affected_rows: None,
         duration_ms,
     })

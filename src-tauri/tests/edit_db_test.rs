@@ -102,3 +102,123 @@ async fn lookup_table_returns_none_for_an_unknown_oid() {
     let facts = lookup_table(&db.pool, 1).await.expect("lookup should run");
     assert!(facts.is_none());
 }
+
+#[tokio::test]
+async fn a_single_table_select_comes_back_editable() {
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table people (id int primary key, email text)",
+        false,
+    )
+    .await
+    .expect("create table");
+
+    let result = run_query(&db.pool, "select id, email from people", false)
+        .await
+        .expect("select should run");
+
+    assert!(result.edit.editable, "reason: {:?}", result.edit.reason);
+    assert_eq!(result.edit.table.as_deref(), Some("people"));
+    assert_eq!(result.edit.pk[0].result_index, 0);
+    assert!(result.edit.columns[1].editable);
+}
+
+#[tokio::test]
+async fn an_aggregate_comes_back_not_editable() {
+    let db = common::start().await;
+
+    run_query(&db.pool, "create table people (id int primary key)", false)
+        .await
+        .expect("create table");
+
+    let result = run_query(&db.pool, "select count(*) from people", false)
+        .await
+        .expect("select should run");
+
+    assert!(!result.edit.editable);
+    assert!(
+        result.edit.reason.unwrap_or_default().contains("computed"),
+        "expected a computed-values reason"
+    );
+}
+
+#[tokio::test]
+async fn a_join_comes_back_not_editable() {
+    let db = common::start().await;
+
+    run_query(&db.pool, "create table a (id int primary key)", false)
+        .await
+        .expect("create a");
+    run_query(&db.pool, "create table b (id int primary key)", false)
+        .await
+        .expect("create b");
+
+    let result = run_query(
+        &db.pool,
+        "select a.id, b.id from a join b on a.id = b.id",
+        false,
+    )
+    .await
+    .expect("select should run");
+
+    assert!(!result.edit.editable);
+    assert!(
+        result
+            .edit
+            .reason
+            .unwrap_or_default()
+            .contains("joins 2 tables"),
+        "expected a join reason"
+    );
+}
+
+#[tokio::test]
+async fn a_view_comes_back_not_editable() {
+    let db = common::start().await;
+
+    run_query(&db.pool, "create table people (id int primary key)", false)
+        .await
+        .expect("create table");
+    run_query(
+        &db.pool,
+        "create view people_v as select * from people",
+        false,
+    )
+    .await
+    .expect("create view");
+
+    let result = run_query(&db.pool, "select id from people_v", false)
+        .await
+        .expect("select should run");
+
+    assert!(!result.edit.editable);
+    assert!(
+        result.edit.reason.unwrap_or_default().contains("view"),
+        "expected a view reason"
+    );
+}
+
+#[tokio::test]
+async fn a_table_without_a_key_comes_back_not_editable() {
+    let db = common::start().await;
+
+    run_query(&db.pool, "create table notes (body text)", false)
+        .await
+        .expect("create table");
+
+    let result = run_query(&db.pool, "select body from notes", false)
+        .await
+        .expect("select should run");
+
+    assert!(!result.edit.editable);
+    assert!(
+        result
+            .edit
+            .reason
+            .unwrap_or_default()
+            .contains("no primary key"),
+        "expected a no-primary-key reason"
+    );
+}
