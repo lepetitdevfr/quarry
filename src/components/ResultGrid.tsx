@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
+import { toTsv } from "../lib/exportRows";
 import { formatCell } from "../lib/format";
+import { isSelected, selectAll, selectionRange } from "../lib/gridSelection";
+import type { CellRef, SelectionRange } from "../lib/gridSelection";
 import { isTruncated, nextSort, sortedIndices } from "../lib/gridSort";
 import type { SortState } from "../lib/gridSort";
 import {
@@ -63,6 +66,55 @@ export function ResultGrid({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shape]);
 
+  const [anchor, setAnchor] = useState<CellRef | null>(null);
+  const [focus, setFocus] = useState<CellRef | null>(null);
+  const [selectedAll, setSelectedAll] = useState<SelectionRange | null>(null);
+
+  // A rectangle into a result that no longer exists means nothing.
+  useEffect(() => {
+    setAnchor(null);
+    setFocus(null);
+    setSelectedAll(null);
+    // `shape` is the same trigger the widths use.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shape]);
+
+  const range =
+    selectedAll ??
+    (anchor && focus ? selectionRange(anchor, focus) : null);
+
+  // Cmd+C copies the selection as TSV; Cmd+A selects everything. Both
+  // are on the grid container rather than the window so they do not
+  // steal the shortcuts while the user is typing in the editor.
+  function onKeyDown(e: React.KeyboardEvent) {
+    const meta = e.metaKey || e.ctrlKey;
+    if (!meta) return;
+
+    if (e.key === "a") {
+      e.preventDefault();
+      setSelectedAll(selectAll(result.rows.length, result.columns.length));
+      return;
+    }
+
+    if (e.key === "c") {
+      e.preventDefault();
+      const copied = range
+        ? result.columns.slice(range.left, range.right + 1)
+        : result.columns;
+      const rows = range
+        ? order
+            .slice(range.top, range.bottom + 1)
+            .map((r) => result.rows[r].slice(range.left, range.right + 1))
+        : order.map((r) => result.rows[r]);
+      // Headers only when whole columns are covered — a header above a
+      // three-row fragment is noise.
+      const wholeColumns =
+        range === null ||
+        (range.top === 0 && range.bottom === result.rows.length - 1);
+      void navigator.clipboard.writeText(toTsv(copied, rows, wholeColumns));
+    }
+  }
+
   // Drag state lives in a ref, not state: it changes on every
   // pointermove and re-rendering a virtualized grid at that rate is
   // what makes a resize feel laggy.
@@ -107,7 +159,7 @@ export function ResultGrid({
   const partial = !serverSorted && sort !== null && isTruncated(result.rows.length, sql);
 
   return (
-    <div className="result-grid" ref={scrollRef}>
+    <div className="result-grid" ref={scrollRef} onKeyDown={onKeyDown} tabIndex={0}>
       <table>
         <thead>
           <tr>
@@ -199,9 +251,22 @@ export function ResultGrid({
                   return (
                     <td
                       key={i}
-                      className={`cell-${kind}`}
+                      className={`cell-${kind}${
+                        isSelected(range, item.index, i) ? " selected" : ""
+                      }`}
                       style={{ width: `${widths[i]}px` }}
                       title={text}
+                      onClick={(e) => {
+                        setSelectedAll(null);
+                        const cell = { row: item.index, col: i };
+                        // Shift extends from the existing anchor; a plain
+                        // click starts a new selection.
+                        if (e.shiftKey && anchor) setFocus(cell);
+                        else {
+                          setAnchor(cell);
+                          setFocus(cell);
+                        }
+                      }}
                     >
                       {text}
                     </td>
