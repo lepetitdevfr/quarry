@@ -8,6 +8,14 @@ use testcontainers_modules::testcontainers::ContainerAsync;
 /// A running Postgres container plus a pool pointed at it.
 ///
 /// Hold onto `_container`: when it drops, Docker kills the database.
+///
+/// `allow(dead_code)` because every file in `tests/` compiles as its own
+/// binary with its own private copy of this module. No single binary
+/// uses all of the harness — `exec_test` wants `pool`, `guard_db_test`
+/// wants `port` and `config_for` — so each one can truthfully report
+/// the parts it does not touch as dead. The alternative is a `cfg`
+/// maze that says less than this comment does.
+#[allow(dead_code)]
 pub struct TestDb {
     pub pool: Pool,
     pub port: u16,
@@ -48,6 +56,10 @@ pub async fn start() -> TestDb {
 
 /// The same connection config `start` used, so a test can build a second
 /// pool — with a different policy — against the same container.
+///
+/// `allow(dead_code)` for the same reason as `TestDb`: only the guard
+/// and editing test binaries build a second pool.
+#[allow(dead_code)]
 pub fn config_for(port: u16) -> ConnectionConfig {
     let url = format!("postgres://postgres:postgres@localhost:{port}/postgres?sslmode=disable");
     ConnectionConfig::from_url(&url).expect("test URL should parse")
