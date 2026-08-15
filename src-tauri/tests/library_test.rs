@@ -467,3 +467,14 @@ fn preview_tabs_do_not_survive_reopening() {
     let store = Store::open_at(&path).unwrap();
     assert!(store.tabs().unwrap().is_empty(), "previews are transient");
 }
+
+#[test]
+fn an_ordinary_tab_targets_no_table() {
+    let (s, _dir) = store();
+
+    let tab = s.open_tab(None).unwrap();
+
+    assert_eq!(tab.target_schema, None);
+    assert_eq!(tab.target_table, None);
+    assert_eq!(tab.mode, None);
+}

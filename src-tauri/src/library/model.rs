@@ -60,6 +60,14 @@ pub struct Tab {
     /// for a preview. `None` for ordinary tabs, which take their label
     /// from their query.
     pub title: Option<String>,
+    /// Schema and table this tab targets. Both are `None` on an
+    /// ordinary query tab; both are `Some` on a table tab. They move
+    /// together — one set without the other is a bug, not a state.
+    pub target_schema: Option<String>,
+    pub target_table: Option<String>,
+    /// Which face of the target is showing. `None` when there is no
+    /// target.
+    pub mode: Option<TableMode>,
 }
 
 /// The whole sidebar in one payload — cheaper than the UI walking the

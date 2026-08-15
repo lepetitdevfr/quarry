@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::library::db;
 use crate::library::mirror;
-use crate::library::model::{Collection, LibraryTree, Query, Tab, POSITION_GAP};
+use crate::library::model::{Collection, LibraryTree, Query, Tab, TableMode, POSITION_GAP};
 use crate::library::paths;
 use rusqlite::{params, Connection, Row};
 use std::path::{Path, PathBuf};
@@ -353,7 +353,7 @@ impl Store {
         let mut stmt = conn
             .prepare(
                 "select id, query_id, scratch_sql, position, is_active, cursor_pos,
-                        is_preview, title
+                        is_preview, title, target_schema, target_table, mode
                  from tabs order by position",
             )
             .map_err(sql_err)?;
@@ -369,6 +369,12 @@ impl Store {
                     cursor_pos: row.get(5)?,
                     is_preview: row.get::<_, i64>(6)? != 0,
                     title: row.get(7)?,
+                    target_schema: row.get(8)?,
+                    target_table: row.get(9)?,
+                    mode: row
+                        .get::<_, Option<String>>(10)?
+                        .as_deref()
+                        .map(TableMode::from_stored),
                 })
             })
             .map_err(sql_err)?
@@ -596,7 +602,7 @@ fn activate(conn: &Connection, id: &str) -> Result<(), AppError> {
 fn read_tab(conn: &Connection, id: &str) -> Result<Tab, AppError> {
     conn.query_row(
         "select id, query_id, scratch_sql, position, is_active, cursor_pos,
-                is_preview, title
+                is_preview, title, target_schema, target_table, mode
          from tabs where id = ?1",
         params![id],
         |row| {
@@ -609,6 +615,12 @@ fn read_tab(conn: &Connection, id: &str) -> Result<Tab, AppError> {
                 cursor_pos: row.get(5)?,
                 is_preview: row.get::<_, i64>(6)? != 0,
                 title: row.get(7)?,
+                target_schema: row.get(8)?,
+                target_table: row.get(9)?,
+                mode: row
+                    .get::<_, Option<String>>(10)?
+                    .as_deref()
+                    .map(TableMode::from_stored),
             })
         },
     )
