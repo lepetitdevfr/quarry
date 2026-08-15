@@ -111,3 +111,32 @@ describe("sortedIndices", () => {
     ]);
   });
 });
+
+import { isTruncated } from "./gridSort";
+
+describe("isTruncated", () => {
+  it("flags a result that exactly fills its own LIMIT", () => {
+    // 500 rows back from `limit 500` almost certainly means there are
+    // more. Sorting these in memory is not sorting the table.
+    expect(isTruncated(500, "select * from users limit 500")).toBe(true);
+  });
+
+  it("does not flag a result short of its LIMIT", () => {
+    expect(isTruncated(12, "select * from users limit 500")).toBe(false);
+  });
+
+  it("does not flag a statement with no LIMIT", () => {
+    expect(isTruncated(500, "select * from users")).toBe(false);
+  });
+
+  it("treats SQL it cannot read as complete", () => {
+    // Conservative on purpose: a spurious "this is truncated" warning
+    // on every ordinary query would train the user to ignore it.
+    expect(isTruncated(500, "")).toBe(false);
+    expect(isTruncated(500, "select * from t limit $1")).toBe(false);
+  });
+
+  it("is case-insensitive and tolerates trailing whitespace and a semicolon", () => {
+    expect(isTruncated(500, "SELECT * FROM users LIMIT 500;  ")).toBe(true);
+  });
+});

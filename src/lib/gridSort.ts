@@ -84,3 +84,18 @@ export function sortedIndices(
     return sign * compareCells(a, b);
   });
 }
+
+/**
+ * Whether the result looks like only part of what the query would
+ * return — a row count that exactly fills a `LIMIT` in the statement.
+ *
+ * Deliberately conservative. This drives a warning marker, and a
+ * warning that appears on ordinary queries is a warning the user learns
+ * to ignore, so anything unreadable (a parameter, no limit, SQL this
+ * regex does not match) counts as complete.
+ */
+export function isTruncated(rowCount: number, sql: string): boolean {
+  const match = /\blimit\s+(\d+)\s*;?\s*$/i.exec(sql);
+  if (!match) return false;
+  return rowCount === Number(match[1]);
+}
