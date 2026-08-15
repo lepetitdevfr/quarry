@@ -306,7 +306,7 @@ describe("toCsv", () => {
 
   it("serializes json as its JSON text", () => {
     const cols: ColumnMeta[] = [{ name: "meta", type_name: "jsonb" }];
-    expect(toCsv(cols, [[{ a: 1 }]])).toBe('meta,"{""a"":1}"');
+    expect(toCsv(cols, [[{ a: 1 }]])).toBe('meta\n"{""a"":1}"');
   });
 
   it("writes only headers for no rows", () => {
@@ -457,8 +457,10 @@ describe("toSqlInsert", () => {
     expect(sql).toBe(
       `insert into "public"."users" ("id", "name") values (1, '''); drop table users; --');`,
     );
-    // One statement, one terminator: the payload stayed inside the literal.
-    expect(sql.match(/;/g)).toHaveLength(2);
+    // Three semicolons: two are inside the string literal (part of the
+    // payload text) and one terminates the statement. The point is that
+    // the payload never escaped the literal to become SQL of its own.
+    expect(sql.match(/;/g)).toHaveLength(3);
   });
 
   it("quotes an identifier that needs it", () => {
@@ -591,7 +593,7 @@ export function toSqlInsert(
 npm test -- exportRows
 ```
 
-Expected: 25 passed (12 from Task 2, 13 here).
+Expected: 24 passed (12 from Task 2, 12 here).
 
 - [ ] **Step 5: Prove the SQL escaping actually bites**
 
@@ -1072,7 +1074,7 @@ Above each `<ResultGrid …>` — both call sites — add:
 npx tsc --noEmit && npm test && npm run build
 ```
 
-Expected: clean, and **129 tests passing** — 95 baseline, plus 9 from Task 1, plus 25 from Tasks 2 and 3. Report the real number; a mismatch means a task's tests did not all land.
+Expected: clean, and **128 tests passing** — 95 baseline, plus 9 from Task 1, plus 24 from Tasks 2 and 3. Report the real number; a mismatch means a task's tests did not all land.
 
 - [ ] **Step 5: Commit**
 
