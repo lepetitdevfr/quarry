@@ -35,11 +35,18 @@ pub struct QueryResult {
 /// runaway query is still killed by Postgres even if the UI never sends
 /// a cancel.
 ///
-/// Stage 3 inserts the safety guard immediately above the `query` call.
-/// Stage 1 has no policy enforcement — do not connect this to a
-/// production database yet.
-pub async fn run_query(pool: &Pool, sql: &str) -> Result<QueryResult, AppError> {
+/// The guard decides `read_write` before this is called; this function
+/// only carries it out. See `guard::decide`.
+pub async fn run_query(pool: &Pool, sql: &str, read_write: bool) -> Result<QueryResult, AppError> {
     let client = pool.get().await?;
+
+    // On a read-only connection the guard has decided this statement may
+    // write, so opt this one transaction out of the session default.
+    // Anything that does not need it stays read-only, which keeps the
+    // second layer armed for every other path.
+    if read_write {
+        client.batch_execute("begin read write").await?;
+    }
 
     // Prepare once, up front: this gives us column metadata before
     // running anything, so we know whether the statement returns rows
@@ -47,7 +54,18 @@ pub async fn run_query(pool: &Pool, sql: &str) -> Result<QueryResult, AppError> 
     // second round-trip, and without ever needing to re-prepare a
     // statement that already executed — which would otherwise let a
     // metadata-only failure be mistaken for the mutation itself failing.
-    let stmt = client.prepare(sql).await?;
+    let stmt = match client.prepare(sql).await {
+        Ok(stmt) => stmt,
+        Err(e) => {
+            // Leave no transaction open on the pooled connection.
+            // `RecyclingMethod::Clean` would roll it back on return, but
+            // not before another checkout could see it.
+            if read_write {
+                let _ = client.batch_execute("rollback").await;
+            }
+            return Err(e.into());
+        }
+    };
     let columns: Vec<ColumnMeta> = stmt
         .columns()
         .iter()
@@ -64,7 +82,21 @@ pub async fn run_query(pool: &Pool, sql: &str) -> Result<QueryResult, AppError> 
         // DELETE/DDL, not a SELECT. `query` would report 0 rows
         // regardless of how many were touched; `execute` returns the
         // real affected-row count.
-        let affected = client.execute(&stmt, &[]).await?;
+        let affected = match client.execute(&stmt, &[]).await {
+            Ok(affected) => affected,
+            Err(e) => {
+                // Leave no transaction open on the pooled connection.
+                // `RecyclingMethod::Clean` would roll it back on return,
+                // but not before another checkout could see it.
+                if read_write {
+                    let _ = client.batch_execute("rollback").await;
+                }
+                return Err(e.into());
+            }
+        };
+        if read_write {
+            client.batch_execute("commit").await?;
+        }
         let duration_ms = started.elapsed().as_millis() as u64;
         return Ok(QueryResult {
             columns,
@@ -75,7 +107,18 @@ pub async fn run_query(pool: &Pool, sql: &str) -> Result<QueryResult, AppError> 
         });
     }
 
-    let rows = client.query(&stmt, &[]).await?;
+    let rows = match client.query(&stmt, &[]).await {
+        Ok(rows) => rows,
+        Err(e) => {
+            if read_write {
+                let _ = client.batch_execute("rollback").await;
+            }
+            return Err(e.into());
+        }
+    };
+    if read_write {
+        client.batch_execute("commit").await?;
+    }
     let duration_ms = started.elapsed().as_millis() as u64;
 
     let converted: Vec<Vec<serde_json::Value>> = rows

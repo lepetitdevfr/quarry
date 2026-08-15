@@ -2,6 +2,7 @@ mod common;
 
 use quarry_lib::conn::{build_pool, ping, ConnectionConfig};
 use quarry_lib::exec::run_query;
+use quarry_lib::guard::Policy;
 use serde_json::json;
 
 #[tokio::test]
@@ -29,7 +30,7 @@ async fn converts_every_supported_type_and_pins_the_int_array_fallback() {
         'char10'::char(10)                       as a_bpchar,
         '{1,2,3}'::int4[]                        as an_int_array";
 
-    let result = run_query(&db.pool, sql).await.expect("query should succeed");
+    let result = run_query(&db.pool, sql, false).await.expect("query should succeed");
 
     assert_eq!(result.row_count, 1);
     let row = &result.rows[0];
@@ -97,7 +98,7 @@ async fn converts_every_supported_type_and_pins_the_int_array_fallback() {
 async fn reports_column_names_and_types() {
     let db = common::start().await;
 
-    let result = run_query(&db.pool, "SELECT 1 as n, 'x' as s")
+    let result = run_query(&db.pool, "SELECT 1 as n, 'x' as s", false)
         .await
         .expect("query should succeed");
 
@@ -112,7 +113,7 @@ async fn reports_column_names_and_types() {
 async fn returns_an_empty_result_without_error() {
     let db = common::start().await;
 
-    let result = run_query(&db.pool, "SELECT 1 WHERE false")
+    let result = run_query(&db.pool, "SELECT 1 WHERE false", false)
         .await
         .expect("query should succeed");
 
@@ -125,7 +126,7 @@ async fn returns_an_empty_result_without_error() {
 async fn surfaces_postgres_errors_with_code_and_position() {
     let db = common::start().await;
 
-    let err = run_query(&db.pool, "SELECT * FROM table_that_does_not_exist")
+    let err = run_query(&db.pool, "SELECT * FROM table_that_does_not_exist", false)
         .await
         .expect_err("query should fail");
 
@@ -144,17 +145,17 @@ async fn an_aborted_transaction_does_not_leak_into_the_next_checkout() {
     // by zero) and abandon it: the client returns to the pool sitting
     // inside a transaction block in the aborted state, without COMMIT
     // or ROLLBACK ever being run.
-    run_query(&db.pool, "BEGIN")
+    run_query(&db.pool, "BEGIN", false)
         .await
         .expect("BEGIN should succeed");
-    run_query(&db.pool, "SELECT 1/0")
+    run_query(&db.pool, "SELECT 1/0", false)
         .await
         .expect_err("division by zero should fail and abort the transaction");
 
     // If the pool hands back that same stale, unreset connection, a
     // perfectly ordinary next query fails with 25P02 "current
     // transaction is aborted" — a bogus failure the user never caused.
-    let result = run_query(&db.pool, "SELECT 1 as n")
+    let result = run_query(&db.pool, "SELECT 1 as n", false)
         .await
         .expect("query after an abandoned aborted transaction should succeed on a clean connection");
     assert_eq!(result.rows[0][0], json!(1));
@@ -166,11 +167,11 @@ async fn a_session_level_statement_timeout_override_does_not_leak_to_the_next_ch
 
     // A user statement that disables the timeout for the rest of the
     // session must not affect connections handed to later queries.
-    run_query(&db.pool, "SET statement_timeout = 0")
+    run_query(&db.pool, "SET statement_timeout = 0", false)
         .await
         .expect("SET should succeed");
 
-    let result = run_query(&db.pool, "SHOW statement_timeout")
+    let result = run_query(&db.pool, "SHOW statement_timeout", false)
         .await
         .expect("SHOW should succeed");
     assert_ne!(
@@ -187,6 +188,7 @@ async fn timestamp_retains_fractional_seconds() {
     let result = run_query(
         &db.pool,
         "SELECT '2026-01-04 10:30:00.123456'::timestamp as ts",
+        false,
     )
     .await
     .expect("query should succeed");
@@ -198,7 +200,7 @@ async fn timestamp_retains_fractional_seconds() {
 async fn whole_second_timestamp_has_no_trailing_dot() {
     let db = common::start().await;
 
-    let result = run_query(&db.pool, "SELECT '2026-01-04 10:30:00'::timestamp as ts")
+    let result = run_query(&db.pool, "SELECT '2026-01-04 10:30:00'::timestamp as ts", false)
         .await
         .expect("query should succeed");
 
@@ -212,6 +214,7 @@ async fn non_finite_float8_values_render_as_strings_not_null() {
     let result = run_query(
         &db.pool,
         "SELECT 'NaN'::float8 as a, 'Infinity'::float8 as b, '-Infinity'::float8 as c",
+        false,
     )
     .await
     .expect("query should succeed");
@@ -228,6 +231,7 @@ async fn non_finite_float4_values_render_as_strings_not_null() {
     let result = run_query(
         &db.pool,
         "SELECT 'NaN'::float4 as a, 'Infinity'::float4 as b, '-Infinity'::float4 as c",
+        false,
     )
     .await
     .expect("query should succeed");
@@ -241,14 +245,14 @@ async fn non_finite_float4_values_render_as_strings_not_null() {
 async fn update_reports_affected_row_count() {
     let db = common::start().await;
 
-    run_query(&db.pool, "CREATE TABLE widgets (id int)")
+    run_query(&db.pool, "CREATE TABLE widgets (id int)", false)
         .await
         .expect("create table should succeed");
-    run_query(&db.pool, "INSERT INTO widgets VALUES (1), (2), (3)")
+    run_query(&db.pool, "INSERT INTO widgets VALUES (1), (2), (3)", false)
         .await
         .expect("insert should succeed");
 
-    let result = run_query(&db.pool, "UPDATE widgets SET id = id + 1")
+    let result = run_query(&db.pool, "UPDATE widgets SET id = id + 1", false)
         .await
         .expect("update should succeed");
 
@@ -261,11 +265,11 @@ async fn update_reports_affected_row_count() {
 async fn insert_reports_affected_row_count() {
     let db = common::start().await;
 
-    run_query(&db.pool, "CREATE TABLE gadgets (id int)")
+    run_query(&db.pool, "CREATE TABLE gadgets (id int)", false)
         .await
         .expect("create table should succeed");
 
-    let result = run_query(&db.pool, "INSERT INTO gadgets VALUES (1), (2)")
+    let result = run_query(&db.pool, "INSERT INTO gadgets VALUES (1), (2)", false)
         .await
         .expect("insert should succeed");
 
@@ -277,7 +281,7 @@ async fn insert_reports_affected_row_count() {
 async fn select_reports_rows_returned_and_no_affected_count() {
     let db = common::start().await;
 
-    let result = run_query(&db.pool, "SELECT 1 as n")
+    let result = run_query(&db.pool, "SELECT 1 as n", false)
         .await
         .expect("select should succeed");
 
@@ -289,7 +293,7 @@ async fn select_reports_rows_returned_and_no_affected_count() {
 async fn numeric_nan_renders_as_a_string_not_null() {
     let db = common::start().await;
 
-    let result = run_query(&db.pool, "SELECT 'NaN'::numeric as n")
+    let result = run_query(&db.pool, "SELECT 'NaN'::numeric as n", false)
         .await
         .expect("query should succeed");
 
@@ -305,7 +309,7 @@ async fn numeric_beyond_decimal_precision_survives_intact() {
     // "<unreadable: ...>". Postgres NUMERIC is arbitrary precision and
     // handles this natively.
     let big = "1234567890123456789012345678901234567890";
-    let result = run_query(&db.pool, &format!("SELECT '{big}'::numeric as n"))
+    let result = run_query(&db.pool, &format!("SELECT '{big}'::numeric as n"), false)
         .await
         .expect("query should succeed");
 
@@ -323,7 +327,7 @@ async fn a_wrong_password_reports_its_sqlstate() {
         db.port
     );
     let cfg = ConnectionConfig::from_url(&url).expect("test URL should parse");
-    let pool = build_pool(&cfg).expect("pool should build");
+    let pool = build_pool(&cfg, Policy::Free).expect("pool should build");
 
     let err = ping(&pool).await.expect_err("wrong password should fail");
 
@@ -342,7 +346,7 @@ async fn unsupported_types_do_not_crash_the_query() {
     let db = common::start().await;
 
     // point has no Rust mapping in our conversion table.
-    let result = run_query(&db.pool, "SELECT '(1,2)'::point as p")
+    let result = run_query(&db.pool, "SELECT '(1,2)'::point as p", false)
         .await
         .expect("query should still succeed");
 
@@ -364,6 +368,7 @@ async fn renders_arrays_as_json_arrays() {
                 array[]::int4[]                as empty,
                 array[1,null,3]::int4[]        as with_null,
                 array[true,false]::bool[]      as bools",
+        false,
     )
     .await
     .expect("query should succeed");
@@ -389,7 +394,7 @@ async fn renders_enum_values_as_their_labels() {
         .await
         .expect("type should be created");
 
-    let result = run_query(&db.pool, "select 'happy'::mood as m")
+    let result = run_query(&db.pool, "select 'happy'::mood as m", false)
         .await
         .expect("query should succeed");
 
@@ -403,7 +408,7 @@ async fn an_unrenderable_type_still_shows_a_visible_placeholder() {
     // A multi-dimensional array is deliberately NOT flattened into a
     // lying one-dimensional list: better a visible placeholder than
     // silently wrong data.
-    let result = run_query(&db.pool, "select '{{1,2},{3,4}}'::int4[][] as grid")
+    let result = run_query(&db.pool, "select '{{1,2},{3,4}}'::int4[][] as grid", false)
         .await
         .expect("query should succeed");
 
@@ -419,7 +424,7 @@ async fn an_unrenderable_type_still_shows_a_visible_placeholder() {
 async fn a_null_array_is_null_not_an_empty_array() {
     let db = common::start().await;
 
-    let result = run_query(&db.pool, "select null::int4[] as arr")
+    let result = run_query(&db.pool, "select null::int4[] as arr", false)
         .await
         .expect("query should succeed");
 
@@ -438,7 +443,7 @@ async fn column_headers_spell_array_types_the_way_users_write_them() {
     // tree shows `text[]` (via format_type), so the grid must agree —
     // the same column reading `_text` in one pane and `text[]` in the
     // other is just confusing.
-    let result = run_query(&db.pool, "select array['a']::text[] as tags, 1::int4 as n")
+    let result = run_query(&db.pool, "select array['a']::text[] as tags, 1::int4 as n", false)
         .await
         .expect("query should succeed");
 
