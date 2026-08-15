@@ -1,3 +1,4 @@
+use quarry_lib::library::model::TableMode;
 use quarry_lib::library::store::Store;
 
 /// Each test gets its own database in a temp dir, so tests never share
@@ -477,4 +478,70 @@ fn an_ordinary_tab_targets_no_table() {
     assert_eq!(tab.target_schema, None);
     assert_eq!(tab.target_table, None);
     assert_eq!(tab.mode, None);
+}
+
+#[test]
+fn opens_a_table_tab_in_the_preview_slot() {
+    let (s, _dir) = store();
+
+    let tabs = s
+        .open_table_tab("public", "users", TableMode::Structure, false)
+        .unwrap();
+
+    assert_eq!(tabs.len(), 1);
+    let tab = &tabs[0];
+    assert_eq!(tab.target_schema.as_deref(), Some("public"));
+    assert_eq!(tab.target_table.as_deref(), Some("users"));
+    assert_eq!(tab.mode, Some(TableMode::Structure));
+    assert_eq!(tab.title.as_deref(), Some("users"), "the tab is labelled by its table");
+    assert_eq!(tab.query_id, None);
+    assert_eq!(tab.scratch_sql, None, "a table tab stores no SQL");
+    assert!(tab.is_preview, "an unpinned table tab is a preview");
+    assert!(tab.is_active);
+}
+
+#[test]
+fn a_second_table_tab_reuses_the_preview_slot() {
+    // Clicking down a long tree must not leave a tab per row.
+    let (s, _dir) = store();
+
+    s.open_table_tab("public", "users", TableMode::Structure, false).unwrap();
+    let tabs = s
+        .open_table_tab("public", "events", TableMode::Structure, false)
+        .unwrap();
+
+    assert_eq!(tabs.len(), 1, "the preview slot is reused, not added to");
+    assert_eq!(tabs[0].target_table.as_deref(), Some("events"));
+}
+
+#[test]
+fn a_pinned_table_tab_is_not_reused() {
+    let (s, _dir) = store();
+
+    s.open_table_tab("public", "users", TableMode::Data, true).unwrap();
+    let tabs = s
+        .open_table_tab("public", "events", TableMode::Structure, false)
+        .unwrap();
+
+    assert_eq!(tabs.len(), 2, "the pinned tab survives");
+    let pinned = tabs.iter().find(|t| t.target_table.as_deref() == Some("users")).unwrap();
+    assert!(!pinned.is_preview);
+    assert_eq!(pinned.mode, Some(TableMode::Data));
+}
+
+#[test]
+fn a_query_preview_clears_a_table_target() {
+    // One preview slot serves both kinds. Reusing it must not leave the
+    // previous kind's fields behind, or a query preview would still
+    // look like a table tab to the UI.
+    let (s, _dir) = store();
+
+    s.open_table_tab("public", "users", TableMode::Structure, false).unwrap();
+    let tabs = s.open_preview_tab("events", "select * from events").unwrap();
+
+    assert_eq!(tabs.len(), 1);
+    assert_eq!(tabs[0].target_schema, None);
+    assert_eq!(tabs[0].target_table, None);
+    assert_eq!(tabs[0].mode, None);
+    assert_eq!(tabs[0].scratch_sql.as_deref(), Some("select * from events"));
 }

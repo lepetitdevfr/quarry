@@ -381,8 +381,10 @@ impl Store {
         let id = match existing {
             Some(id) => {
                 conn.execute(
-                    "update tabs set title = ?2, scratch_sql = ?3, cursor_pos = 0
-                     where id = ?1",
+                    "update tabs
+                        set title = ?2, scratch_sql = ?3, cursor_pos = 0,
+                            target_schema = null, target_table = null, mode = null
+                      where id = ?1",
                     params![id, title, sql],
                 )
                 .map_err(sql_err)?;
@@ -409,6 +411,71 @@ impl Store {
         };
 
         activate(&conn, &id)?;
+        drop(conn);
+        self.tabs()
+    }
+
+    /// Open a tab targeting a table, reusing the preview slot unless
+    /// `pin` is set.
+    ///
+    /// `pin` is what a double-click passes: an explicit "keep this one",
+    /// so the next single-click in the tree opens elsewhere instead of
+    /// overwriting it. The preview slot is shared with query previews,
+    /// so this clears `scratch_sql` on the reuse path — otherwise a
+    /// table tab would still be carrying the previous preview's SQL.
+    pub fn open_table_tab(
+        &self,
+        schema: &str,
+        table: &str,
+        mode: TableMode,
+        pin: bool,
+    ) -> Result<Vec<Tab>, AppError> {
+        let conn = self.lock();
+
+        let existing: Option<String> = conn
+            .query_row("select id from tabs where is_preview = 1 limit 1", [], |r| {
+                r.get(0)
+            })
+            .ok();
+
+        let is_preview = if pin { 0 } else { 1 };
+
+        let id = match existing {
+            Some(id) => {
+                conn.execute(
+                    "update tabs
+                        set title = ?2, target_schema = ?3, target_table = ?4,
+                            mode = ?5, scratch_sql = null, query_id = null,
+                            cursor_pos = 0, is_preview = ?6
+                      where id = ?1",
+                    params![id, table, schema, table, mode.as_str(), is_preview],
+                )
+                .map_err(sql_err)?;
+                id
+            }
+            None => {
+                let id = new_id();
+                let position: i64 = conn
+                    .query_row("select coalesce(max(position), 0) + 100 from tabs", [], |r| {
+                        r.get(0)
+                    })
+                    .map_err(sql_err)?;
+
+                conn.execute(
+                    "insert into tabs
+                       (id, query_id, scratch_sql, position, is_active, cursor_pos,
+                        is_preview, title, target_schema, target_table, mode)
+                     values (?1, null, null, ?2, 0, 0, ?3, ?4, ?5, ?6, ?7)",
+                    params![id, position, is_preview, table, schema, table, mode.as_str()],
+                )
+                .map_err(sql_err)?;
+                id
+            }
+        };
+
+        activate(&conn, &id)?;
+        // `self.tabs()` takes the same lock this guard holds, so it must
+        // be released first or the call would deadlock.
         drop(conn);
         self.tabs()
     }
