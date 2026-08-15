@@ -6,9 +6,51 @@
 use crate::edit::sql::Statement;
 use crate::error::AppError;
 use crate::exec::value::cell_to_json;
+use crate::guard::{decide, Decision, Policy};
 use deadpool_postgres::Pool;
 use serde::Serialize;
+use std::time::Instant;
 use tokio_postgres::types::ToSql;
+
+/// Decide whether this batch may run, and whether it needs to opt out
+/// of the read-only session default.
+///
+/// Generated `UPDATE`s cross the same chokepoint as everything the user
+/// types. The write-guard spec predicted this path: "Inline editing,
+/// two stages away, will issue UPDATEs through a path that does not
+/// exist yet." This is that path, and it does not get its own rules.
+///
+/// Pure so it can be tested without a Tauri `State`. The command only
+/// carries out what this returns.
+pub fn plan_apply(
+    policy: Policy,
+    unlocked_until: Option<Instant>,
+    now: Instant,
+    statements: &[Statement],
+) -> Result<bool, AppError> {
+    // An empty batch is still asked: the gate must not depend on the
+    // payload being non-empty.
+    let sql = statements
+        .iter()
+        .map(|s| s.sql.as_str())
+        .collect::<Vec<_>>()
+        .join(";\n");
+    // With no statements there is nothing for the classifier to read,
+    // and an empty buffer classifies as a read — which would let a
+    // locked connection through. Name the intent instead.
+    let sql = if sql.is_empty() {
+        "update".to_string()
+    } else {
+        sql
+    };
+
+    match decide(policy, unlocked_until, now, &sql) {
+        Decision::Allow { read_write } => Ok(read_write),
+        Decision::Deny => Err(AppError::WriteBlocked(
+            "this connection is locked — unlock it to edit rows".to_string(),
+        )),
+    }
+}
 
 /// One cell as the database now holds it.
 #[derive(Debug, Serialize)]
