@@ -31,8 +31,10 @@ Three corrections were made to this plan during execution, so it is ahead of wha
 The migration touches the developer's real workspace database the first time the app runs. Back it up first — **`cp` is not acceptable**, it misses the WAL and can capture a file with no tables in it:
 
 ```bash
-sqlite3 "$HOME/Library/Application Support/com.quarry.app/workspace.db" ".backup $HOME/Library/Application Support/com.quarry.app/workspace-backup-$(date +%Y%m%d-%H%M%S).db"
+sqlite3 "$HOME/Library/Application Support/com.quarry.app/workspace.db" ".backup '$HOME/Library/Application Support/com.quarry.app/workspace-backup-$(date +%Y%m%d-%H%M%S).db'"
 ```
+
+**The inner single quotes are load-bearing.** `sqlite3`'s dot-commands split their arguments on whitespace, and this path contains a space in "Application Support". Without them, `.backup` reads the path as two arguments — a database name ending in `…/Application` and a file starting `Support/…` — and fails with `Error: cannot open "Support/com.quarry.app/…"`. Shell-level double quotes do not help, because the splitting happens inside `sqlite3`, after the shell is done.
 
 Commands you will use throughout:
 
