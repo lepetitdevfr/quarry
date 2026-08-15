@@ -850,7 +850,12 @@ export default function App() {
             <button onClick={() => setUnlockOpen(true)}>Unlock…</button>
           </div>
         )}
-        <StatusBar result={result} error={error} saved={showSaved} />
+        <StatusBar
+          result={result}
+          error={error}
+          saved={showSaved}
+          locked={locked}
+        />
       </div>
 
       {confirmRequest && (

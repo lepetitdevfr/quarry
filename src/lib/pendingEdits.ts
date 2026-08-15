@@ -1,4 +1,10 @@
-import type { AppliedRow, CellValue, QueryResult, RowEdit } from "../types";
+import type {
+  AppliedRow,
+  CellValue,
+  EditInfo,
+  QueryResult,
+  RowEdit,
+} from "../types";
 
 /**
  * Staged cell edits, keyed by row and column.
@@ -131,4 +137,25 @@ export function applyPatches(
   }
 
   return { ...result, rows };
+}
+
+/**
+ * Why editing is unavailable, or `null` when it is available.
+ *
+ * Two different things can switch editing off — the result itself
+ * (a join, a view, no primary key) and the connection lock — and a
+ * refusal without a reason is the failure this whole surface is
+ * supposed to avoid.
+ *
+ * The result's own reason is reported first when both apply. The other
+ * order would send someone to unlock a production connection only for
+ * them to discover the join was never editable in the first place.
+ */
+export function editingBlockedReason(
+  edit: EditInfo,
+  locked: boolean,
+): string | null {
+  if (!edit.editable) return edit.reason;
+  if (locked) return "this connection is locked — unlock it to edit rows";
+  return null;
 }

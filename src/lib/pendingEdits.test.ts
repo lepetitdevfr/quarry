@@ -8,6 +8,7 @@ import {
   pendingValue,
   stage,
   toRowEdits,
+  editingBlockedReason,
 } from "./pendingEdits";
 import type { QueryResult } from "../types";
 
@@ -136,5 +137,35 @@ describe("applyPatches", () => {
     const original = result();
     applyPatches(original, [{ row: 0, cells: [{ column: 1, value: "x@x.co" }] }]);
     expect(original.rows[0][1]).toBe("a@x.co");
+  });
+});
+
+describe("editingBlockedReason", () => {
+  const editable = result().edit;
+  const notEditable = {
+    ...editable,
+    editable: false,
+    reason: "this result joins 2 tables — an UPDATE cannot tell which row to change",
+  };
+
+  it("is null when the result is editable and the connection is unlocked", () => {
+    expect(editingBlockedReason(editable, false)).toBe(null);
+  });
+
+  it("names the lock when only the connection blocks editing", () => {
+    // The case that made this function necessary: a perfectly editable
+    // result on a locked prod connection, where nothing on screen
+    // explained why double-clicking a cell did nothing.
+    expect(editingBlockedReason(editable, true)).toMatch(/locked/);
+  });
+
+  it("gives the result's own reason when the result is not editable", () => {
+    expect(editingBlockedReason(notEditable, false)).toMatch(/joins 2 tables/);
+  });
+
+  it("prefers the result's reason over the lock when both apply", () => {
+    // Reporting the lock first would send someone to unlock production
+    // only to find the join was never editable anyway.
+    expect(editingBlockedReason(notEditable, true)).toMatch(/joins 2 tables/);
   });
 });

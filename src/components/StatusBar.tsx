@@ -1,3 +1,4 @@
+import { editingBlockedReason } from "../lib/pendingEdits";
 import type { AppErrorPayload, QueryResult } from "../types";
 
 interface Props {
@@ -5,9 +6,11 @@ interface Props {
   error: AppErrorPayload | null;
   /** True for a couple of seconds right after a successful save. */
   saved: boolean;
+  /** True on a read-only connection that has not been unlocked. */
+  locked: boolean;
 }
 
-export function StatusBar({ result, error, saved }: Props) {
+export function StatusBar({ result, error, saved, locked }: Props) {
   const savedBadge = saved && <span className="saved-indicator">Saved</span>;
 
   if (error) {
@@ -47,10 +50,14 @@ export function StatusBar({ result, error, saved }: Props) {
       {result.row_count} {result.row_count === 1 ? "row" : "rows"} ·{" "}
       {result.duration_ms} ms
       {/* "Why can't I edit this?" must always be answerable without
-          having to hunt for it. */}
-      {!result.edit.editable && result.edit.reason && (
-        <span className="status-readonly" title={result.edit.reason}>
-          {" · "}read-only · {result.edit.reason}
+          having to hunt for it — including when the result is perfectly
+          editable and it is the connection that is locked. */}
+      {editingBlockedReason(result.edit, locked) && (
+        <span
+          className="status-readonly"
+          title={editingBlockedReason(result.edit, locked) ?? undefined}
+        >
+          {" · "}read-only · {editingBlockedReason(result.edit, locked)}
         </span>
       )}
       {savedBadge}
