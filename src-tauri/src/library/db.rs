@@ -297,15 +297,28 @@ mod tests {
         let path = dir.path().join("w.db");
 
         {
-            let conn = open(&path).unwrap();
-            conn.execute(
-                "insert into tabs (id, query_id, scratch_sql, position, is_active, cursor_pos)
-                 values ('t1', null, 'select 1', 100, 1, 0)",
-                [],
+            // The v3 tabs table exactly as it shipped, built with raw SQL:
+            // going through open() would create the new columns for us and
+            // the migration under test would never run.
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "create table tabs (
+                    id          text primary key,
+                    query_id    text,
+                    scratch_sql text,
+                    position    integer not null,
+                    is_active   integer not null default 0,
+                    cursor_pos  integer not null default 0,
+                    is_preview  integer not null default 0,
+                    title       text
+                 );
+                 insert into tabs (id, query_id, scratch_sql, position, is_active, cursor_pos)
+                 values ('t1', null, 'select 1', 100, 1, 0);",
             )
             .unwrap();
         }
 
+        // The real upgrade.
         let conn = open(&path).unwrap();
 
         let sql: String = conn
