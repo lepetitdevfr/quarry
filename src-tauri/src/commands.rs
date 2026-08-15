@@ -1,7 +1,7 @@
 use crate::conn::{build_pool, ping, ConnectionConfig};
 use crate::error::AppError;
 use crate::exec::{run_query, QueryResult};
-use crate::library::model::{LibraryTree, Query, Tab};
+use crate::library::model::{LibraryTree, Query, Tab, TableMode};
 use crate::library::store::Store;
 use deadpool_postgres::Pool;
 use serde::Serialize;
@@ -264,6 +264,26 @@ pub fn promote_tab(
 ) -> Result<Vec<Tab>, AppError> {
     state.library.promote_tab(&id)?;
     state.library.tabs()
+}
+
+#[tauri::command]
+pub fn open_table_tab(
+    state: tauri::State<'_, AppState>,
+    schema: String,
+    table: String,
+    mode: TableMode,
+    pin: bool,
+) -> Result<Vec<Tab>, AppError> {
+    state.library.open_table_tab(&schema, &table, mode, pin)
+}
+
+#[tauri::command]
+pub fn set_tab_mode(
+    state: tauri::State<'_, AppState>,
+    id: String,
+    mode: TableMode,
+) -> Result<Vec<Tab>, AppError> {
+    state.library.set_tab_mode(&id, mode)
 }
 
 // ---- connection commands ----------------------------------------------
