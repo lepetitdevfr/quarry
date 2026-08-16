@@ -65,6 +65,12 @@
         background: var(--bg); font-size: 12px;
       }
       .note { margin: 10px 0 0; color: var(--muted); font-size: 12px; }
+      h2 + .beta-list { margin-top: 0; }
+      .beta-list { margin: 0; padding: 0; list-style: none; }
+      .beta-list li { margin-bottom: 6px; }
+      .beta-list a { color: var(--accent); font-size: 13px; text-decoration: none; }
+      .beta-list a:hover { text-decoration: underline; }
+      .beta-list .size { color: var(--muted); font-size: 11px; }
       footer { margin-top: 20px; color: var(--muted); font-size: 12px; }
       footer a { color: var(--accent); }
     </style>
@@ -88,6 +94,15 @@
           The build is unsigned, so macOS quarantines it and refuses the first
           open until that flag is cleared. Drag Quarry to Applications first.
         </p>
+
+        <div id="beta" hidden>
+          <h2>Linux and Windows — beta</h2>
+          <ul class="beta-list" id="beta-list"></ul>
+          <p class="note">
+            Never run on a real machine. They build in CI and that is all that
+            is known about them — saved passwords in particular may not work.
+          </p>
+        </div>
       </div>
 
       <footer id="footer"></footer>
@@ -103,18 +118,61 @@
       const meta = document.getElementById("meta");
       const footer = document.getElementById("footer");
 
+      // What each file extension means to someone choosing a download.
+      // Anything not listed still appears, under its own extension.
+      const PLATFORMS = {
+        deb: "Linux · Debian/Ubuntu (.deb)",
+        AppImage: "Linux · AppImage",
+        msi: "Windows · installer (.msi)",
+        exe: "Windows · setup (.exe)",
+        zip: "macOS · app bundle (.zip)",
+      };
+
+      const mb = (bytes) => (bytes / 1024 / 1024).toFixed(1) + " MB";
+
       fetch(API)
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
         .then((release) => {
-          const dmg = (release.assets || []).find((a) => a.name.endsWith(".dmg"));
-          if (!dmg) throw new Error("no .dmg in the latest release");
+          const assets = release.assets || [];
+          if (assets.length === 0) throw new Error("release has no files");
 
-          link.href = dmg.browser_download_url;
-          link.textContent = "Download " + release.tag_name;
+          const primary =
+            assets.find((a) => a.name.endsWith(".dmg")) ||
+            assets.find((a) => a.name.endsWith(".app.zip"));
 
-          const mb = (dmg.size / 1024 / 1024).toFixed(1);
-          const date = new Date(release.published_at).toLocaleDateString();
-          meta.textContent = "Apple Silicon · macOS · " + mb + " MB · " + date;
+          if (primary) {
+            link.href = primary.browser_download_url;
+            link.textContent = "Download " + release.tag_name + " for macOS";
+            const date = new Date(release.published_at).toLocaleDateString();
+            meta.textContent =
+              "Apple Silicon · " + mb(primary.size) + " · " + date;
+          } else {
+            // Every platform is optional: a macOS packaging failure should not
+            // make the page claim there is nothing to download.
+            link.textContent = "No macOS build in " + release.tag_name;
+            link.removeAttribute("href");
+            meta.textContent = "Other platforms are listed below.";
+          }
+
+          const others = assets.filter((a) => a !== primary);
+          if (others.length > 0) {
+            const list = document.getElementById("beta-list");
+            for (const asset of others) {
+              const ext = asset.name.endsWith(".app.zip")
+                ? "zip"
+                : asset.name.split(".").pop();
+              const li = document.createElement("li");
+              const a = document.createElement("a");
+              a.href = asset.browser_download_url;
+              a.textContent = PLATFORMS[ext] || asset.name;
+              const size = document.createElement("span");
+              size.className = "size";
+              size.textContent = " · " + mb(asset.size);
+              li.append(a, size);
+              list.append(li);
+            }
+            document.getElementById("beta").hidden = false;
+          }
 
           footer.innerHTML =
             '<a href="' + release.html_url + '">Release notes</a>';
@@ -126,6 +184,7 @@
           link.removeAttribute("href");
           meta.textContent = "Check back once a version is tagged.";
         });
+
     </script>
   </body>
 </html>
