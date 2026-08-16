@@ -91,6 +91,8 @@ npm run tauri build
 | `↵` / double-click | Edit the focused grid cell |
 | `⌘⌫` | Stage SQL `NULL` in the focused cell |
 | `esc` | Cancel the cell edit in progress |
+| `⌘W` | Close the active tab (the window, once no tabs are left) |
+| `⇧⌘W` | Close the window |
 
 ## Layout
 
@@ -102,6 +104,7 @@ npm run tauri build
 | `src-tauri/src/exec/` | Query execution and value conversion |
 | `src-tauri/src/guard/` | Statement classification and the lock |
 | `src-tauri/src/edit/` | Row-editing decisions, SQL generation, apply |
+| `src-tauri/src/menu.rs` | The app menu, so ⌘W closes a tab |
 | `src-tauri/src/secrets.rs` | Keychain access |
 | `docs/superpowers/specs/` | Design spec |
 | `docs/superpowers/plans/` | Per-stage implementation plans |

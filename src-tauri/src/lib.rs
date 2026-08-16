@@ -5,6 +5,7 @@ pub mod error;
 pub mod exec;
 pub mod guard;
 pub mod library;
+pub mod menu;
 pub mod schema;
 pub mod secrets;
 
@@ -19,6 +20,11 @@ pub fn run() {
         .expect("failed to install rustls crypto provider");
 
     tauri::Builder::default()
+        // A custom menu, only so that ⌘W closes a tab instead of the
+        // window. See `menu.rs` — the rest of it mirrors Tauri's
+        // default.
+        .menu(menu::build)
+        .on_menu_event(|app, event| menu::on_event(app, event.id().as_ref()))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .manage(commands::AppState::new().expect("could not open the query library database"))

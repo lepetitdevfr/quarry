@@ -1,4 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 // Aliased: this module already has a `save` callback for Cmd+S.
 import { save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
@@ -117,6 +119,34 @@ export default function App() {
 
   const { library, tabs, activeTab, loaded, queryById, autosave, actions } =
     useLibrary();
+
+  // ⌘W. The menu owns the accelerator — on macOS a menu key equivalent
+  // never reaches the webview, so this cannot be a keydown listener
+  // (see `src-tauri/src/menu.rs`). The menu forwards the intent and the
+  // decision of what to close is made here, where tab state lives.
+  //
+  // Held in a ref and subscribed once. Depending on `activeTab` and
+  // `actions` directly would resubscribe on every render — `actions` is
+  // a fresh object literal each time — and every resubscribe is an
+  // async round trip to Rust with a gap in the middle where a ⌘W would
+  // land on nothing.
+  const onCloseTab = useRef<() => void>(() => {});
+  useEffect(() => {
+    onCloseTab.current = () => {
+      // With no tabs left there is nothing to close but the window,
+      // which is what ⌘W does everywhere else once the last tab is
+      // gone.
+      if (!activeTab) void getCurrentWindow().close();
+      else void actions.closeTab(activeTab.id);
+    };
+  });
+
+  useEffect(() => {
+    const pending = listen("menu://close-tab", () => onCloseTab.current());
+    return () => {
+      void pending.then((unlisten) => unlisten());
+    };
+  }, []);
 
   const {
     schema: dbSchema,
