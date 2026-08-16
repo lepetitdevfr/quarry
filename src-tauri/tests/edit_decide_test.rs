@@ -1,4 +1,19 @@
-use quarry_lib::edit::{decide_editability, EditInfo, SourceColumn, TableFacts};
+use quarry_lib::edit::{
+    decide_editability, EditInfo, Identity, SourceColumn, TableColumn, TableFacts,
+};
+
+/// An ordinary nullable column with no default.
+fn tc(attnum: i16, name: &str, is_pk: bool) -> TableColumn {
+    TableColumn {
+        attnum,
+        name: name.to_string(),
+        is_pk,
+        not_null: false,
+        has_default: false,
+        identity: Identity::None,
+        generated: false,
+    }
+}
 
 /// A `users` table with `id` as its primary key, as the catalog
 /// lookup would report it.
@@ -8,9 +23,9 @@ fn users_table() -> TableFacts {
         schema: "public".to_string(),
         table: "users".to_string(),
         columns: vec![
-            (1, "id".to_string(), true),
-            (2, "email".to_string(), false),
-            (3, "plan".to_string(), false),
+            tc(1, "id", true),
+            tc(2, "email", false),
+            tc(3, "plan", false),
         ],
     }
 }
@@ -130,7 +145,7 @@ fn a_view_is_not_editable() {
 fn a_table_without_a_primary_key_is_not_editable() {
     let mut events = users_table();
     events.table = "events".to_string();
-    events.columns = vec![(1, "id".to_string(), false), (2, "body".to_string(), false)];
+    events.columns = vec![tc(1, "id", false), tc(2, "body", false)];
 
     let info = decide_editability(&[col(1, "\"int4\""), col(2, "\"text\"")], Some(&events));
 
@@ -228,9 +243,9 @@ fn a_composite_primary_key_records_both_columns() {
     let mut memberships = users_table();
     memberships.table = "memberships".to_string();
     memberships.columns = vec![
-        (1, "user_id".to_string(), true),
-        (2, "group_id".to_string(), true),
-        (3, "role".to_string(), false),
+        tc(1, "user_id", true),
+        tc(2, "group_id", true),
+        tc(3, "role", false),
     ];
 
     let info = decide_editability(

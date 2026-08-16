@@ -8,7 +8,7 @@
 //! gives us `pg_get_indexdef` and `pg_get_constraintdef`, which return
 //! the real definitions instead of a reconstruction.
 
-use crate::edit::TableFacts;
+use crate::edit::{Identity, TableColumn, TableFacts};
 use crate::error::AppError;
 use crate::schema::model::{Column, Constraint, ForeignKey, Index, Schema, SchemaNode, Table};
 use deadpool_postgres::Pool;
@@ -235,7 +235,11 @@ pub async fn lookup_table(pool: &Pool, oid: u32) -> Result<Option<TableFacts>, A
                       where pc.conrelid = c.oid
                         and pc.contype = 'p'
                         and a.attnum = any (pc.conkey)
-                    )                       as is_pk
+                    )                       as is_pk,
+                    a.attnotnull            as not_null,
+                    a.atthasdef             as has_default,
+                    a.attidentity::text     as identity,
+                    a.attgenerated::text    as generated
              from   pg_class c
              join   pg_namespace n on n.oid = c.relnamespace
              join   pg_attribute a on a.attrelid = c.oid
@@ -258,12 +262,16 @@ pub async fn lookup_table(pool: &Pool, oid: u32) -> Result<Option<TableFacts>, A
         table: first.get("table_name"),
         columns: rows
             .iter()
-            .map(|row| {
-                (
-                    row.get::<_, i16>("attnum"),
-                    row.get::<_, String>("column_name"),
-                    row.get::<_, bool>("is_pk"),
-                )
+            .map(|row| TableColumn {
+                attnum: row.get::<_, i16>("attnum"),
+                name: row.get::<_, String>("column_name"),
+                is_pk: row.get::<_, bool>("is_pk"),
+                not_null: row.get::<_, bool>("not_null"),
+                has_default: row.get::<_, bool>("has_default"),
+                identity: Identity::from_catalog(&row.get::<_, String>("identity")),
+                // 's' is STORED; Postgres has no other generated kind
+                // today, and an empty string means "not generated".
+                generated: row.get::<_, String>("generated") == "s",
             })
             .collect(),
     }))

@@ -26,15 +26,56 @@ pub struct SourceColumn {
     pub cast_type: String,
 }
 
-/// One table, as the catalog lookup reports it.
+/// How Postgres generates a column's values, if it does.
 ///
-/// `columns` is `(attnum, name, is_primary_key)`.
+/// A three-variant enum rather than the raw `char` Postgres reports,
+/// so every match on it is exhaustive: add a variant later and the
+/// compiler names every place that has to handle it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Identity {
+    None,
+    Always,
+    ByDefault,
+}
+
+impl Identity {
+    /// Map `pg_attribute.attidentity`, which is the empty string when
+    /// the column is not an identity column.
+    pub fn from_catalog(value: &str) -> Identity {
+        match value {
+            "a" => Identity::Always,
+            "d" => Identity::ByDefault,
+            _ => Identity::None,
+        }
+    }
+}
+
+/// One column of one table, as the catalog lookup reports it.
+///
+/// A struct rather than the tuple this used to be: seven positional
+/// fields cannot be read at a glance, and a swapped pair compiles
+/// silently — the same defect `docs/BACKLOG.md` records for
+/// `tab_from_row`.
+#[derive(Debug, Clone)]
+pub struct TableColumn {
+    pub attnum: i16,
+    pub name: String,
+    pub is_pk: bool,
+    pub not_null: bool,
+    pub has_default: bool,
+    pub identity: Identity,
+    /// A `GENERATED ALWAYS AS (…) STORED` column, which cannot be
+    /// written at all.
+    pub generated: bool,
+}
+
+/// One table, as the catalog lookup reports it.
 #[derive(Debug, Clone)]
 pub struct TableFacts {
     pub relkind: String,
     pub schema: String,
     pub table: String,
-    pub columns: Vec<(i16, String, bool)>,
+    pub columns: Vec<TableColumn>,
 }
 
 /// A primary-key column and where its value sits in each result row.
@@ -146,8 +187,8 @@ pub fn decide_editability(columns: &[SourceColumn], facts: Option<&TableFacts>) 
     let pk_names: Vec<(i16, String)> = facts
         .columns
         .iter()
-        .filter(|(_, _, is_pk)| *is_pk)
-        .map(|(attnum, name, _)| (*attnum, name.clone()))
+        .filter(|c| c.is_pk)
+        .map(|c| (c.attnum, c.name.clone()))
         .collect();
 
     if pk_names.is_empty() {
@@ -223,10 +264,10 @@ pub fn decide_editability(columns: &[SourceColumn], facts: Option<&TableFacts>) 
                 };
             }
 
-            match facts.columns.iter().find(|(n, _, _)| *n == attnum) {
-                Some((_, name, _)) => ColumnEdit {
+            match facts.columns.iter().find(|c| c.attnum == attnum) {
+                Some(column) => ColumnEdit {
                     editable: true,
-                    column_name: Some(name.clone()),
+                    column_name: Some(column.name.clone()),
                     cast_type: Some(c.cast_type.clone()),
                     reason: None,
                 },

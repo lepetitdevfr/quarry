@@ -1,6 +1,8 @@
 mod common;
 
-use quarry_lib::edit::{apply_edits, build_deletes, build_updates, CellEdit, RowDelete, RowEdit};
+use quarry_lib::edit::{
+    apply_edits, build_deletes, build_updates, CellEdit, Identity, RowDelete, RowEdit,
+};
 use quarry_lib::exec::run_query;
 use quarry_lib::schema::lookup_table;
 
@@ -41,8 +43,66 @@ async fn lookup_table_reports_columns_and_the_primary_key() {
     assert_eq!(facts.schema, "public");
     assert_eq!(facts.table, "people");
     assert_eq!(facts.columns.len(), 3);
-    assert_eq!(facts.columns[0], (1, "id".to_string(), true));
-    assert_eq!(facts.columns[1], (2, "email".to_string(), false));
+    assert_eq!(facts.columns[0].attnum, 1);
+    assert_eq!(facts.columns[0].name, "id");
+    assert!(facts.columns[0].is_pk);
+    assert_eq!(facts.columns[1].name, "email");
+    assert!(!facts.columns[1].is_pk);
+}
+
+#[tokio::test]
+async fn lookup_table_reports_nullability_defaults_and_identity() {
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table widgets (
+           id     int generated always as identity primary key,
+           code   text not null,
+           label  text,
+           made   timestamptz not null default now(),
+           shout  text generated always as (upper(code)) stored
+         )",
+        false,
+    )
+    .await
+    .expect("create table");
+
+    let oid = oid_of(&db.pool, "widgets").await;
+    let facts = lookup_table(&db.pool, oid)
+        .await
+        .expect("lookup should run")
+        .expect("the table exists");
+
+    let by_name = |name: &str| {
+        facts
+            .columns
+            .iter()
+            .find(|c| c.name == name)
+            .unwrap_or_else(|| panic!("{name} should be in the catalog"))
+            .clone()
+    };
+
+    // An identity column: the database supplies the value.
+    assert_eq!(by_name("id").identity, Identity::Always);
+    assert!(by_name("id").not_null);
+
+    // The one column a user must supply: NOT NULL, no default, not
+    // generated. This is what rule 2 of the spec keys off.
+    assert!(by_name("code").not_null);
+    assert!(!by_name("code").has_default);
+    assert_eq!(by_name("code").identity, Identity::None);
+    assert!(!by_name("code").generated);
+
+    // Nullable, so it may be left out.
+    assert!(!by_name("label").not_null);
+
+    // NOT NULL but defaulted, so it may also be left out.
+    assert!(by_name("made").not_null);
+    assert!(by_name("made").has_default);
+
+    // A stored generated column cannot be written at all.
+    assert!(by_name("shout").generated);
 }
 
 #[tokio::test]
@@ -93,7 +153,7 @@ async fn lookup_table_skips_dropped_columns() {
     // A dropped column keeps its attnum forever. Including it would
     // shift nothing, but it would let a stale attnum match.
     assert_eq!(facts.columns.len(), 2);
-    assert!(facts.columns.iter().all(|(_, name, _)| name != "junk"));
+    assert!(facts.columns.iter().all(|c| c.name != "junk"));
 }
 
 #[tokio::test]
