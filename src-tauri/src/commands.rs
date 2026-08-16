@@ -1,6 +1,7 @@
 use crate::conn::{build_pool, ping, ConnectionConfig};
 use crate::edit::{
-    apply_edits, build_updates, plan_apply, AppliedRow, EditInfo, RowEdit, Statement,
+    apply_edits, build_deletes, build_updates, plan_apply, AppliedRow, EditInfo, RowDelete,
+    RowEdit, Statement,
 };
 use crate::error::AppError;
 use crate::exec::{run_query, QueryResult};
@@ -122,29 +123,41 @@ pub async fn execute(
 ///
 /// Calls the same generator `apply_row_edits` calls. A preview that
 /// could drift from what executes would be worse than no preview.
+///
+/// Updates come before deletes. With a delete beating an edit on the
+/// frontend no row is in both sets, so the order is arbitrary — fixing
+/// it makes the previewed SQL stable.
 #[tauri::command]
-pub fn preview_edits(edit: EditInfo, rows: Vec<RowEdit>) -> Result<Vec<Statement>, AppError> {
-    build_updates(&edit, &rows)
+pub fn preview_edits(
+    edit: EditInfo,
+    rows: Vec<RowEdit>,
+    deletes: Vec<RowDelete>,
+) -> Result<Vec<Statement>, AppError> {
+    let mut statements = build_updates(&edit, &rows)?;
+    statements.extend(build_deletes(&edit, &deletes)?);
+    Ok(statements)
 }
 
-/// Apply staged cell edits in one transaction.
+/// Apply staged cell edits and row deletions in one transaction.
 ///
 /// The decision comes back from the frontend rather than being
 /// recomputed: recomputing would mean re-preparing the original SQL,
 /// which the user may have since edited in the buffer. `build_updates`
-/// refuses anything inconsistent and the guard refuses anything that
-/// should not run, so a tampered payload cannot widen what an edit can
-/// do beyond an `UPDATE` against a table the connection can already
-/// write to.
+/// and `build_deletes` refuse anything inconsistent and the guard
+/// refuses anything that should not run, so a tampered payload cannot
+/// widen what an edit can do beyond an `UPDATE` or `DELETE` against a
+/// table the connection can already write to.
 #[tauri::command]
 pub async fn apply_row_edits(
     state: tauri::State<'_, AppState>,
     edit: EditInfo,
     rows: Vec<RowEdit>,
+    deletes: Vec<RowDelete>,
 ) -> Result<Vec<AppliedRow>, AppError> {
     let (pool, policy, unlocked_until) = state.pool_and_guard()?;
 
-    let statements = build_updates(&edit, &rows)?;
+    let mut statements = build_updates(&edit, &rows)?;
+    statements.extend(build_deletes(&edit, &deletes)?);
 
     // The same chokepoint every typed statement crosses. The UI hides
     // editing on a locked connection; this does not trust it to.

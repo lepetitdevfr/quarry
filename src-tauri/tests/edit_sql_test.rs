@@ -1,5 +1,8 @@
 use quarry_lib::edit::decide::{ColumnEdit, EditInfo, PkColumn};
-use quarry_lib::edit::sql::{build_updates, cast_target, quote_ident, CellEdit, RowEdit};
+use quarry_lib::edit::sql::{
+    build_deletes, build_updates, cast_target, quote_ident, CellEdit, RowDelete, RowEdit,
+    StatementKind,
+};
 use tokio_postgres::types::Type;
 
 fn editable(name: &str, cast_type: &str) -> ColumnEdit {
@@ -155,9 +158,10 @@ fn null_binds_as_null_not_as_the_word() {
     assert_eq!(statements[0].params[0], None);
 }
 
-#[test]
-fn a_composite_key_puts_every_column_in_the_where() {
-    let info = EditInfo {
+/// `select user_id, group_id, role from memberships`, the key being
+/// both id columns.
+fn memberships() -> EditInfo {
+    EditInfo {
         editable: true,
         reason: None,
         schema: Some("public".to_string()),
@@ -177,7 +181,12 @@ fn a_composite_key_puts_every_column_in_the_where() {
             read_only(),
             editable("role", "\"pg_catalog\".\"text\""),
         ],
-    };
+    }
+}
+
+#[test]
+fn a_composite_key_puts_every_column_in_the_where() {
+    let info = memberships();
 
     let edits = vec![RowEdit {
         row: 0,
@@ -264,5 +273,117 @@ fn a_result_that_is_not_editable_generates_nothing() {
 #[test]
 fn no_edits_generate_no_statements() {
     let statements = build_updates(&users(), &[]).expect("should build");
+    assert!(statements.is_empty());
+}
+
+#[test]
+fn an_update_is_marked_as_an_update() {
+    let edits = vec![RowEdit {
+        row: 0,
+        pk: vec!["7".to_string()],
+        cells: vec![CellEdit {
+            column: 1,
+            value: Some("a@b.co".to_string()),
+        }],
+    }];
+
+    let statements = build_updates(&users(), &edits).expect("should build");
+    assert_eq!(statements[0].kind, StatementKind::Update);
+}
+
+#[test]
+fn one_deleted_row_becomes_one_delete() {
+    let deletes = vec![RowDelete {
+        row: 4,
+        pk: vec!["7".to_string()],
+    }];
+
+    let statements = build_deletes(&users(), &deletes).expect("should build");
+
+    assert_eq!(statements.len(), 1);
+    assert_eq!(
+        statements[0].sql,
+        "delete from \"public\".\"users\" \
+         where \"id\" = $1::text::\"pg_catalog\".\"text\" \
+         returning \"id\""
+    );
+    assert_eq!(statements[0].params, vec![Some("7".to_string())]);
+    assert_eq!(statements[0].row, 4);
+    assert_eq!(statements[0].kind, StatementKind::Delete);
+    // The RETURNING list is there to make the rowcount assert work, not
+    // to feed the grid: a deleted row has nothing left to patch.
+    assert!(statements[0].returned.is_empty());
+}
+
+#[test]
+fn two_deleted_rows_become_two_deletes() {
+    let deletes = vec![
+        RowDelete {
+            row: 0,
+            pk: vec!["7".to_string()],
+        },
+        RowDelete {
+            row: 1,
+            pk: vec!["8".to_string()],
+        },
+    ];
+
+    let statements = build_deletes(&users(), &deletes).expect("should build");
+    assert_eq!(statements.len(), 2);
+    assert_eq!(statements[0].params, vec![Some("7".to_string())]);
+    assert_eq!(statements[1].params, vec![Some("8".to_string())]);
+    assert_eq!(statements[1].row, 1);
+}
+
+#[test]
+fn a_composite_key_delete_puts_every_column_in_the_where() {
+    let deletes = vec![RowDelete {
+        row: 0,
+        pk: vec!["7".to_string(), "9".to_string()],
+    }];
+
+    let statements = build_deletes(&memberships(), &deletes).expect("should build");
+
+    assert_eq!(
+        statements[0].sql,
+        "delete from \"public\".\"memberships\" \
+         where \"user_id\" = $1::text::\"pg_catalog\".\"text\" \
+         and \"group_id\" = $2::text::\"pg_catalog\".\"text\" \
+         returning \"user_id\", \"group_id\""
+    );
+    assert_eq!(
+        statements[0].params,
+        vec![Some("7".to_string()), Some("9".to_string())]
+    );
+}
+
+#[test]
+fn a_wrong_number_of_key_values_is_refused_for_a_delete() {
+    let deletes = vec![RowDelete { row: 0, pk: vec![] }];
+
+    let error = build_deletes(&users(), &deletes).expect_err("must refuse");
+    assert!(
+        format!("{error}").contains("primary key"),
+        "error was: {error}"
+    );
+}
+
+#[test]
+fn a_result_that_is_not_editable_deletes_nothing() {
+    let mut info = users();
+    info.editable = false;
+    info.reason = Some("this result comes from a view".to_string());
+
+    let deletes = vec![RowDelete {
+        row: 0,
+        pk: vec!["7".to_string()],
+    }];
+
+    build_deletes(&info, &deletes).expect_err("must refuse");
+}
+
+#[test]
+fn no_deletes_generate_no_statements() {
+    let statements = build_deletes(&users(), &[]).expect("should build");
     assert!(statements.is_empty());
 }

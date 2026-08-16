@@ -3,7 +3,7 @@
 //! The impure half of the module. Everything it runs was built by
 //! `edit::sql`, which is pure and tested separately.
 
-use crate::edit::sql::Statement;
+use crate::edit::sql::{Statement, StatementKind};
 use crate::error::AppError;
 use crate::exec::value::cell_to_json;
 use crate::guard::{decide, Decision, Policy};
@@ -64,6 +64,8 @@ pub struct AppliedCell {
 pub struct AppliedRow {
     pub row: usize,
     pub cells: Vec<AppliedCell>,
+    /// The row is gone: drop it from the grid rather than patching it.
+    pub deleted: bool,
 }
 
 /// Apply every statement in one transaction.
@@ -145,18 +147,28 @@ async fn run_one(
         });
     }
 
-    let cells = statement
-        .returned
-        .iter()
-        .enumerate()
-        .map(|(i, column)| AppliedCell {
-            column: *column,
-            value: cell_to_json(&rows[0], i),
-        })
-        .collect();
+    let deleted = matches!(statement.kind, StatementKind::Delete);
+
+    // A delete's RETURNING carries its key, not display data, and the
+    // row it named is about to leave the grid. Collecting cells from it
+    // would hand the frontend values to patch into a row that is gone.
+    let cells = if deleted {
+        Vec::new()
+    } else {
+        statement
+            .returned
+            .iter()
+            .enumerate()
+            .map(|(i, column)| AppliedCell {
+                column: *column,
+                value: cell_to_json(&rows[0], i),
+            })
+            .collect()
+    };
 
     Ok(AppliedRow {
         row: statement.row,
         cells,
+        deleted,
     })
 }

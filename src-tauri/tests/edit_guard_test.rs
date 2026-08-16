@@ -1,5 +1,5 @@
 use quarry_lib::edit::plan_apply;
-use quarry_lib::edit::sql::Statement;
+use quarry_lib::edit::sql::{Statement, StatementKind};
 use quarry_lib::guard::Policy;
 use std::time::{Duration, Instant};
 
@@ -11,6 +11,7 @@ fn one_update() -> Vec<Statement> {
         params: vec![Some("a@b.co".to_string()), Some("1".to_string())],
         row: 0,
         returned: vec![1],
+        kind: StatementKind::Update,
     }]
 }
 

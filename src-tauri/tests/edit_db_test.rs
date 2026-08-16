@@ -1,6 +1,6 @@
 mod common;
 
-use quarry_lib::edit::{apply_edits, build_updates, CellEdit, RowEdit};
+use quarry_lib::edit::{apply_edits, build_deletes, build_updates, CellEdit, RowDelete, RowEdit};
 use quarry_lib::exec::run_query;
 use quarry_lib::schema::lookup_table;
 
@@ -395,6 +395,185 @@ async fn a_vanished_row_rolls_back_the_whole_batch() {
         .await
         .expect("select");
     assert_eq!(after.rows[0][0], serde_json::json!("a@x.co"));
+}
+
+#[tokio::test]
+async fn a_delete_removes_the_row() {
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table people (id int primary key, email text)",
+        false,
+    )
+    .await
+    .expect("create table");
+    run_query(
+        &db.pool,
+        "insert into people values (1, 'a@x.co'), (2, 'b@x.co')",
+        false,
+    )
+    .await
+    .expect("insert");
+
+    let result = run_query(&db.pool, "select id, email from people order by id", false)
+        .await
+        .expect("select");
+
+    let statements = build_deletes(
+        &result.edit,
+        &[RowDelete {
+            row: 1,
+            pk: vec!["2".to_string()],
+        }],
+    )
+    .expect("should build");
+
+    let applied = apply_edits(&db.pool, &statements, false)
+        .await
+        .expect("apply should succeed");
+
+    assert_eq!(applied.len(), 1);
+    assert_eq!(applied[0].row, 1);
+    assert!(applied[0].deleted);
+    // A deleted row has nothing to patch: its RETURNING carried the key,
+    // not display data.
+    assert!(applied[0].cells.is_empty());
+
+    let after = run_query(&db.pool, "select id from people order by id", false)
+        .await
+        .expect("select");
+    assert_eq!(after.rows.len(), 1);
+    assert_eq!(after.rows[0][0], serde_json::json!(1));
+}
+
+#[tokio::test]
+async fn a_vanished_row_rolls_back_an_accompanying_delete() {
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table people (id int primary key, email text)",
+        false,
+    )
+    .await
+    .expect("create table");
+    run_query(
+        &db.pool,
+        "insert into people values (1, 'a@x.co'), (2, 'b@x.co')",
+        false,
+    )
+    .await
+    .expect("insert");
+
+    let result = run_query(&db.pool, "select id, email from people order by id", false)
+        .await
+        .expect("select");
+
+    // Row 2 is deleted behind our back, exactly as a concurrent session
+    // would.
+    run_query(&db.pool, "delete from people where id = 2", false)
+        .await
+        .expect("delete");
+
+    let mut statements = build_updates(
+        &result.edit,
+        &[RowEdit {
+            row: 0,
+            pk: vec!["1".to_string()],
+            cells: vec![CellEdit {
+                column: 1,
+                value: Some("changed@x.co".to_string()),
+            }],
+        }],
+    )
+    .expect("should build");
+    statements.extend(
+        build_deletes(
+            &result.edit,
+            &[RowDelete {
+                row: 1,
+                pk: vec!["2".to_string()],
+            }],
+        )
+        .expect("should build"),
+    );
+
+    let error = apply_edits(&db.pool, &statements, false)
+        .await
+        .expect_err("deleting a row that is already gone must fail the batch");
+    assert!(
+        format!("{error}").contains("no longer"),
+        "error was: {error}"
+    );
+
+    // And the update that *would* have worked is rolled back with it.
+    let after = run_query(&db.pool, "select email from people where id = 1", false)
+        .await
+        .expect("select");
+    assert_eq!(after.rows[0][0], serde_json::json!("a@x.co"));
+}
+
+#[tokio::test]
+async fn a_mixed_batch_updates_one_row_and_deletes_another() {
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table people (id int primary key, email text)",
+        false,
+    )
+    .await
+    .expect("create table");
+    run_query(
+        &db.pool,
+        "insert into people values (1, 'a@x.co'), (2, 'b@x.co')",
+        false,
+    )
+    .await
+    .expect("insert");
+
+    let result = run_query(&db.pool, "select id, email from people order by id", false)
+        .await
+        .expect("select");
+
+    let mut statements = build_updates(
+        &result.edit,
+        &[RowEdit {
+            row: 0,
+            pk: vec!["1".to_string()],
+            cells: vec![CellEdit {
+                column: 1,
+                value: Some("changed@x.co".to_string()),
+            }],
+        }],
+    )
+    .expect("should build");
+    statements.extend(
+        build_deletes(
+            &result.edit,
+            &[RowDelete {
+                row: 1,
+                pk: vec!["2".to_string()],
+            }],
+        )
+        .expect("should build"),
+    );
+
+    let applied = apply_edits(&db.pool, &statements, false)
+        .await
+        .expect("apply should succeed");
+
+    assert_eq!(applied.len(), 2);
+    assert!(!applied[0].deleted);
+    assert_eq!(applied[0].cells[0].value, serde_json::json!("changed@x.co"));
+    assert!(applied[1].deleted);
+
+    let after = run_query(&db.pool, "select id, email from people order by id", false)
+        .await
+        .expect("select");
+    assert_eq!(after.rows.len(), 1);
+    assert_eq!(after.rows[0][1], serde_json::json!("changed@x.co"));
 }
 
 #[tokio::test]
