@@ -76,6 +76,33 @@ The data behind the lock is structurally valid either way, so recovering beats
 bricking. Not urgent; "unreachable in practice" is just the assumption that
 ages badly as the code grows.
 
+## CI cannot run the integration tests
+
+**Found:** 2026-08-16, when the first CI run failed. The Rust job was on
+Ubuntu and the crate does not compile there: `security_framework::passwords`
+and the macOS about-menu in `menu.rs` have no Linux equivalent.
+
+Now the job runs on `macos-latest` with `cargo test --lib` — 50 unit tests —
+because GitHub's macOS runners ship no Docker daemon and the integration
+suites start Postgres through testcontainers. So roughly 198 database-backed
+tests run only on a developer's machine, and the CI badge means less than it
+appears to.
+
+Three ways out, in increasing order of value:
+
+1. **Colima on the macOS runner** to provide a Docker daemon. Works, but adds
+   minutes to every run and is the flakiest of the three.
+2. **A Postgres service container** with the tests taking a connection URL
+   from the environment instead of starting their own container. Fast and
+   stable, but means a second code path through the test harness.
+3. **Port Keychain access to the `keyring` crate** (see the Windows and Linux
+   entry). The crate then compiles on Linux, and one Ubuntu job runs
+   everything with Docker already present. This is the real fix, and it is
+   worth doing for its own sake anyway.
+
+Until then, `cargo test` in full before pushing is the gate, and CONTRIBUTING
+says so.
+
 ## Windows and Linux support
 
 **Assessed:** 2026-08-15, by measuring the codebase rather than estimating.

@@ -155,6 +155,12 @@ cd src-tauri && cargo clippy --all-targets -- -D warnings && cargo fmt --check
 All of these pass on `main`; there are no known-failing baselines, so a failure
 is something you just changed.
 
+CI runs the lint and the pure unit tests on a macOS runner, plus the whole
+frontend suite. The Postgres-backed integration tests are a **local** gate:
+they need Docker, GitHub's macOS runners have none, and Linux runners cannot
+compile the crate because Keychain access is macOS-only. Run `cargo test` in
+full before pushing.
+
 Rust integration tests start a throwaway Postgres 17 through testcontainers, so
 Docker must be running. A further set in `src-tauri/tests/smoke_local.rs` is
 `#[ignore]`d because it expects a hand-started database on port 55432:
