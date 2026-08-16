@@ -138,12 +138,28 @@ async fn run_one(
     let rows = client.query(&statement.sql, &params).await?;
 
     if rows.len() != 1 {
-        return Err(AppError::Query {
-            message: format!(
+        // The two cases fail for opposite reasons and deserve opposite
+        // sentences. An update or delete addressed a row that is no
+        // longer there; an insert reached the server, raised nothing,
+        // and still stored nothing — which is what a `BEFORE INSERT`
+        // trigger returning NULL does. Telling someone their new row
+        // "was changed or deleted by someone else" would send them
+        // looking for a row that never existed.
+        let message = match statement.kind {
+            StatementKind::Insert => format!(
+                "new row {} was not stored — a trigger or rule discarded it. \
+                 Nothing was applied.",
+                statement.row + 1
+            ),
+            _ => format!(
                 "row {} no longer matches one row in the table — it was changed or deleted \
                  by someone else. Nothing was applied.",
                 statement.row + 1
             ),
+        };
+
+        return Err(AppError::Query {
+            message,
             code: None,
             position: None,
         });

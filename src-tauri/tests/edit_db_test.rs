@@ -1173,9 +1173,18 @@ async fn an_insert_a_trigger_swallows_rolls_back_the_batch() {
         .expect("should build"),
     );
 
-    apply_edits(&db.pool, &statements, true)
+    let error = apply_edits(&db.pool, &statements, true)
         .await
         .expect_err("an insert that affected no row must fail the batch");
+
+    // An insert gets its own sentence: there is no earlier row for
+    // someone else to have changed, so the update/delete wording would
+    // send the user hunting for a row that never existed.
+    let message = format!("{error:?}");
+    assert!(
+        message.contains("was not stored"),
+        "an insert should not report a row that changed underneath it: {message}"
+    );
 
     let after = run_query(&db.pool, "select email from people order by id", false)
         .await
