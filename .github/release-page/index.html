@@ -11,6 +11,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Quarry — a keyboard-first PostgreSQL client for macOS</title>
+    <link rel="icon" type="image/png" href="favicon.png" />
     <style>
       :root {
         --bg: #16181d;
@@ -33,6 +34,12 @@
         font: 15px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
       main { width: 100%; max-width: 460px; text-align: center; }
+      /* Same treatment as the app's own launch screen: the icon carries the
+         weight here, since there is nothing else on the page to look at. */
+      .logo {
+        width: 88px; height: 88px; border-radius: 20px;
+        box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+      }
       h1 { margin: 16px 0 8px; font-size: 32px; }
       .tagline { margin: 0 0 28px; color: var(--muted); font-size: 14px; }
       .prod {
@@ -64,6 +71,7 @@
   </head>
   <body>
     <main>
+      <img class="logo" src="icon.png" alt="" width="88" height="88" />
       <h1>Quarry</h1>
       <p class="tagline">
         A keyboard-first PostgreSQL client for macOS. Connections tagged
