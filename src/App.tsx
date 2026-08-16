@@ -689,7 +689,15 @@ export default function App() {
   if (!connection) {
     return (
       <main className="app centered">
-        <h1>Quarry</h1>
+        <div className="launch-mark">
+          <img src="/icon.png" alt="" width="64" height="64" />
+          <h1>Quarry</h1>
+          <p className="launch-tagline">
+            A keyboard-first PostgreSQL client. Connections tagged{" "}
+            <span className="tag-inline">prod</span> stay read-only until you
+            unlock them.
+          </p>
+        </div>
         {editing || (connectionsLoaded && connections.length === 0) ? (
           <ConnectionEditor
             existing={editing && editing !== "new" ? editing : undefined}

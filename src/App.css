@@ -57,10 +57,24 @@ body {
   gap: 16px;
 }
 
+/* The window has no title bar of its own (titleBarStyle: Overlay), so the
+   traffic lights float over this strip. The left inset is the room they
+   need; without it the connection button sits underneath them. */
 .top-bar {
-  padding: var(--s-2) var(--s-3);
+  padding: var(--s-2) var(--s-3) var(--s-2) 82px;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
+  /* Dragging the window has to work somewhere, and this strip is the
+     only chrome left. Children opt back out below, or a click on the
+     connection button would start a drag instead. */
+  -webkit-app-region: drag;
+}
+
+.top-bar button,
+.top-bar .connection-menu,
+.top-bar input,
+.top-bar select {
+  -webkit-app-region: no-drag;
 }
 
 button {
@@ -565,6 +579,62 @@ button:disabled {
   background: transparent;
   color: var(--accent);
   text-align: left;
+}
+
+/* The launch screen's only action, so it looks like one. Everywhere else
+   this button sits beneath a list of connections and should not compete
+   with them. */
+.picker-new.primary {
+  background: var(--accent);
+  color: #fff;
+  text-align: center;
+  height: var(--h-control);
+  font-weight: 500;
+}
+
+.picker-new.primary:hover {
+  filter: brightness(1.08);
+}
+
+/* ---- launch screen ---------------------------------------------- */
+
+.launch-mark {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-2);
+  text-align: center;
+  max-width: 420px;
+}
+
+.launch-mark img {
+  border-radius: var(--radius-lg);
+  /* The icon is the first thing a new user sees and the app is not yet
+     doing anything, so it carries the weight a splash screen would. */
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
+}
+
+.launch-mark h1 {
+  margin: 0;
+}
+
+.launch-tagline {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--t-sm);
+  line-height: 1.5;
+}
+
+/* The guard is the reason this app exists, so it gets a word that looks
+   like the badge it becomes once a connection is tagged. */
+.tag-inline {
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--error) 18%, transparent);
+  color: var(--error);
+  font-size: var(--t-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .connection-editor {
@@ -1202,4 +1272,54 @@ button.link {
   border-radius: 4px;
   color: var(--text);
   font-size: var(--t-sm);
+}
+
+/* ---- motion ------------------------------------------------------ */
+
+/* Named per property rather than `transition: all`: animating layout
+   properties by accident is what makes a UI feel soft instead of quick.
+   130ms is under the threshold where a change reads as a delay, which is
+   the point — the feedback should feel immediate, just not abrupt. */
+button,
+.picker-row,
+.tree-row,
+.tab,
+.row-action,
+.result-grid td.selected {
+  transition:
+    background-color 130ms ease,
+    border-color 130ms ease,
+    color 130ms ease,
+    opacity 130ms ease;
+}
+
+/* Banners and bars arrive rather than appear: they are the app telling
+   you something changed, and a slide of a few pixels is what says so. */
+.edit-bar,
+.guard-banner {
+  animation: rise 150ms ease-out;
+}
+
+@keyframes rise {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Respect the system setting. A person who turned motion off did it for
+   a reason, and none of this carries meaning that the movement alone
+   conveys. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
 }

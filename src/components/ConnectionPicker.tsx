@@ -35,7 +35,10 @@ export function ConnectionPicker({
   return (
     <div className={`connection-picker${standalone ? " standalone" : ""}`}>
       {connections.length === 0 && (
-        <p className="picker-empty">No saved connections yet.</p>
+        <p className="picker-empty">
+          No connections yet. Add one with a Postgres URL — the password goes
+          to the macOS Keychain, never to disk.
+        </p>
       )}
 
       <ul className="picker-list">
@@ -72,8 +75,16 @@ export function ConnectionPicker({
         ))}
       </ul>
 
-      <button className="picker-new" onClick={onNew}>
-        + New connection…
+      {/* Primary on the launch screen, where it is the only thing to do;
+          quiet in the dropdown, where it sits under a list of real
+          choices. */}
+      <button
+        className={`picker-new${standalone && connections.length === 0 ? " primary" : ""}`}
+        onClick={onNew}
+      >
+        {standalone && connections.length === 0
+          ? "Add a connection"
+          : "+ New connection…"}
       </button>
     </div>
   );
