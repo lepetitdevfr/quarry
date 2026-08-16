@@ -18,7 +18,7 @@ on:
       rebuild_tag:
         description: "Rebuild and publish an existing version, WITHOUT the v (e.g. 0.2.0). Skips semantic-release."
         type: string
-        default: ""errored
+        default: ""
 
 concurrency:
   group: release
