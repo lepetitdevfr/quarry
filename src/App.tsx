@@ -418,10 +418,16 @@ export default function App() {
     [connection],
   );
 
-  const run = useCallback(() => {
-    setSort(null);
-    void runSql(text);
-  }, [runSql, text]);
+  // `sql` is the statement the editor extracted under the cursor;
+  // omitting it runs the whole buffer, which is what ⇧⌘↵ and every
+  // non-editor caller want.
+  const run = useCallback(
+    (sql?: string) => {
+      setSort(null);
+      void runSql(sql ?? text);
+    },
+    [runSql, text],
+  );
 
   // Single-click in the tree: the rows, which is what you usually want
   // from a table. The tab is disposable and reused by the next click, so

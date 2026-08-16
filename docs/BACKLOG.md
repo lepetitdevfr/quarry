@@ -342,10 +342,15 @@ yet" since the first stage, through nine further stages. Rewritten this stage
 because inline editing was the last planned feature and the claim had become
 actively misleading — it told a reader the write-guard did not exist.
 
-## Run the statement under the cursor
+## Run the statement under the cursor — RESOLVED
 
-**Found:** 2026-08-16, while smoke testing insert. Scheduled as the next
-stage.
+**Found:** 2026-08-16, while smoke testing insert. **Closed:** the same
+day, in `plans/2026-08-16-run-statement-under-cursor.md`. `⌘↵` now runs
+the statement the cursor sits in and `⇧⌘↵` runs the whole buffer, both
+for the first time, via a pure `statementAt` in `src/lib/statements.ts`
+with a case per way a semicolon is not a separator.
+
+The original entry follows.
 
 `specs/2026-08-13-quarry-design.md:243` calls for "`⌘↵` runs the statement
 under the cursor; `⇧⌘↵` runs the whole buffer", and the README's Keyboard
