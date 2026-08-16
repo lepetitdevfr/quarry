@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import iconUrl from "./assets/icon.png";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 // Aliased: this module already has a `save` callback for Cmd+S.
@@ -690,7 +691,11 @@ export default function App() {
     return (
       <main className="app centered">
         <div className="launch-mark">
-          <img src="/icon.png" alt="" width="64" height="64" />
+          {/* Imported rather than referenced as `/icon.png`: a public-path
+              asset resolves against the dev server but not through Tauri's
+              asset protocol in a built app. Importing lets Vite hash and
+              bundle it, so it loads in both. */}
+          <img src={iconUrl} alt="" width="64" height="64" />
           <h1>Quarry</h1>
           <p className="launch-tagline">
             A keyboard-first PostgreSQL client. Connections tagged{" "}
