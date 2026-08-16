@@ -63,8 +63,16 @@ export const quarryEditorTheme = EditorView.theme(
       border: "none",
       borderRight: `1px solid ${BORDER}`,
     },
+    // Translucent, not the flat #20242b it used to be. The active-line
+    // decoration is painted on the line element, which sits above the
+    // selection layer, and `highlightActiveLine` marks the line under
+    // the selection's head whether or not the selection is empty. An
+    // opaque colour there hides every selection that stays on one line
+    // — the exact bug this replaced. CodeMirror's own defaults are
+    // translucent for the same reason. 3% white over the editor
+    // background lands on the same colour it was.
     ".cm-activeLine": {
-      backgroundColor: "#20242b",
+      backgroundColor: "rgba(255, 255, 255, 0.03)",
     },
     ".cm-activeLineGutter": {
       backgroundColor: "#20242b",
