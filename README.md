@@ -12,7 +12,8 @@ saved connections, the schema tree with autocomplete, preview and table-detail
 tabs, grid sort/resize, copy and export, the production write-guard, and inline
 row editing.
 
-**Inline row editing.** Double-click a cell to edit it, `⌘⌫` to set NULL.
+**Inline row editing.** Double-click a cell to edit it, `⌘⌫` to set NULL,
+`⇧⌘⌫` to stage the row for deletion (press again to undo).
 Changes stage as highlighted pending diffs with a bottom bar showing the count;
 Confirm applies them in one transaction, and `View SQL` shows the generated
 statements first if you want them. A result is editable only when it comes from
@@ -90,6 +91,7 @@ npm run tauri build
 | `⇧⌘↵` | Run the whole buffer |
 | `↵` / double-click | Edit the focused grid cell |
 | `⌘⌫` | Stage SQL `NULL` in the focused cell |
+| `⇧⌘⌫` | Stage the selected row for deletion, or undo it |
 | `esc` | Cancel the cell edit in progress |
 | `⌘W` | Close the active tab (the window, once no tabs are left) |
 | `⇧⌘W` | Close the window |

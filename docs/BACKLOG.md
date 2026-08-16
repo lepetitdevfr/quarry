@@ -291,10 +291,12 @@ not.
 — identity from `table_oid`, generated SQL, the transaction with its rowcount
 assert — now exists, so each is much cheaper than it would have been before.
 
-- **Insert and delete rows from the grid.** Insert needs an empty pending row,
-  awareness of `NOT NULL` and defaults, and returning the generated key to
-  display. Delete needs its own affordance and a strikethrough rendering for
-  pending deletions.
+- **Insert rows from the grid.** Needs an empty pending row, awareness of
+  `NOT NULL` and defaults, and returning the generated key to display.
+  Deletion shipped 2026-08-16 (`plans/2026-08-16-delete-rows.md`) and reused
+  the editing machinery whole; insert does not, and has real design questions,
+  so give it the normal spec-then-plan flow rather than folding the design
+  into a plan as the delete work did.
 - **Editing a primary key.** Mechanically fine — the `WHERE` uses the original
   value — but excluded from v1 because it is rare and it is the one edit that
   can orphan a foreign key silently.
