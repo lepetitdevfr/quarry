@@ -24,6 +24,18 @@ const FIXTURE: &str = "
     create index users_active_plan on public.users (plan) where nickname is not null;
     alter table public.users add constraint email_has_at check (email like '%@%');
 
+    comment on table public.users is 'People who signed up.';
+
+    create function public.touch_users() returns trigger as $$
+      begin return new; end;
+    $$ language plpgsql;
+
+    create trigger users_touched before update on public.users
+      for each row execute function public.touch_users();
+
+    create view public.active_users as select id, email from public.users;
+    create materialized view public.user_count as select count(*) from public.users;
+
     create table analytics.events (
         user_id    integer not null references public.users(id),
         seq        integer not null,
@@ -269,4 +281,86 @@ async fn an_empty_database_yields_empty_schemas_not_an_error() {
     // `public` exists in a fresh database but holds no tables.
     let public = schema.schemas.iter().find(|s| s.name == "public");
     assert!(public.map(|s| s.tables.is_empty()).unwrap_or(true));
+}
+
+#[tokio::test]
+async fn reports_size_row_estimate_and_comment() {
+    let (schema, _db) = fixture_schema().await;
+    let users = table(&schema, "public", "users");
+
+    let stats = users.stats.as_ref().expect("stats should be read");
+    // An empty, never-analyzed table reports -1 rather than 0. The
+    // number is the planner's estimate, which is why the UI says
+    // "estimated" — asserting a row count here would be asserting a
+    // guess.
+    assert!(stats.estimated_rows <= 0);
+    // Even an empty table occupies pages once it has indexes.
+    assert!(
+        stats.total_bytes > 0,
+        "total_bytes was {}",
+        stats.total_bytes
+    );
+    assert_eq!(users.comment.as_deref(), Some("People who signed up."));
+
+    // A table with no comment reports none rather than an empty string.
+    assert_eq!(table(&schema, "analytics", "events").comment, None);
+}
+
+#[tokio::test]
+async fn reports_user_triggers_but_not_internal_ones() {
+    let (schema, _db) = fixture_schema().await;
+
+    let users = table(&schema, "public", "users");
+    assert_eq!(users.triggers.len(), 1);
+    assert_eq!(users.triggers[0].name, "users_touched");
+    // pg_get_triggerdef renders keywords uppercase.
+    assert!(
+        users.triggers[0]
+            .definition
+            .to_lowercase()
+            .contains("before update"),
+        "definition was: {}",
+        users.triggers[0].definition
+    );
+
+    // `events` has a foreign key, which Postgres implements with
+    // internal triggers. Listing those would imply the user wrote them.
+    assert!(table(&schema, "analytics", "events").triggers.is_empty());
+}
+
+#[tokio::test]
+async fn reports_the_views_that_read_a_table() {
+    let (schema, _db) = fixture_schema().await;
+    let users = table(&schema, "public", "users");
+
+    let mut found: Vec<(String, String)> = users
+        .dependents
+        .iter()
+        .map(|d| (d.name.clone(), d.kind.clone()))
+        .collect();
+    found.sort();
+
+    assert_eq!(
+        found,
+        vec![
+            ("active_users".to_string(), "v".to_string()),
+            ("user_count".to_string(), "m".to_string()),
+        ]
+        .into_iter()
+        .collect::<Vec<_>>()
+        .tap_sorted()
+    );
+}
+
+/// Sorting helper kept local: the assertion above compares two sorted
+/// lists and inlining the sort twice reads worse than naming it.
+trait TapSorted {
+    fn tap_sorted(self) -> Self;
+}
+
+impl TapSorted for Vec<(String, String)> {
+    fn tap_sorted(mut self) -> Self {
+        self.sort();
+        self
+    }
 }

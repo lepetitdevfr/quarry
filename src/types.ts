@@ -294,6 +294,31 @@ export interface SchemaTable {
   columns: SchemaColumn[];
   indexes: SchemaIndex[];
   constraints: SchemaConstraint[];
+  stats: TableStats | null;
+  comment: string | null;
+  triggers: SchemaTrigger[];
+  dependents: SchemaDependent[];
+}
+
+/** Mirrors Rust `TableStats`. */
+export interface TableStats {
+  /** The planner's estimate; -1 on a table that was never analyzed. */
+  estimated_rows: number;
+  total_bytes: number;
+}
+
+/** Mirrors Rust `Trigger`. */
+export interface SchemaTrigger {
+  name: string;
+  definition: string;
+}
+
+/** Mirrors Rust `Dependent`: a view that reads this table. */
+export interface SchemaDependent {
+  schema: string;
+  name: string;
+  /** `v` for a view, `m` for a materialised view. */
+  kind: string;
 }
 
 /** Mirrors Rust `SchemaNode`. */

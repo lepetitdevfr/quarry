@@ -23,6 +23,39 @@ pub struct Table {
     pub columns: Vec<Column>,
     pub indexes: Vec<Index>,
     pub constraints: Vec<Constraint>,
+    /// Size and row estimate, absent when the catalog row could not be
+    /// read.
+    pub stats: Option<TableStats>,
+    /// `COMMENT ON TABLE`, if there is one.
+    pub comment: Option<String>,
+    pub triggers: Vec<Trigger>,
+    /// Views and materialised views that read this table.
+    pub dependents: Vec<Dependent>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TableStats {
+    /// `pg_class.reltuples`: the planner's estimate, not a count. It
+    /// reads -1 on a table that has never been analyzed, which the UI
+    /// shows as unknown rather than as a number.
+    pub estimated_rows: i64,
+    /// `pg_total_relation_size`: heap, indexes and TOAST together.
+    pub total_bytes: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Trigger {
+    pub name: String,
+    /// The full `CREATE TRIGGER` text from `pg_get_triggerdef`.
+    pub definition: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Dependent {
+    pub schema: String,
+    pub name: String,
+    /// `v` for a view, `m` for a materialised view.
+    pub kind: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

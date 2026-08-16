@@ -1391,3 +1391,47 @@ button,
   color: var(--faint);
   font-size: var(--t-sm);
 }
+
+/* ---- table facts -------------------------------------------------- */
+
+.table-facts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s-2);
+}
+
+.fact-row {
+  display: flex;
+  gap: var(--s-6);
+}
+
+.fact {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+
+.fact-label {
+  font-size: var(--t-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+.fact-value {
+  font-family: ui-monospace, "SF Mono", monospace;
+  font-size: var(--t-base);
+}
+
+/* The qualifier stays attached to the number: a row estimate presented
+   as a count is the one way this section can mislead. */
+.fact-note {
+  font-size: var(--t-sm);
+  color: var(--muted);
+}
+
+.table-comment {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--t-sm);
+}

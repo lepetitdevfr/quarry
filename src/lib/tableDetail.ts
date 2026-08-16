@@ -1,4 +1,4 @@
-import type { Schema } from "../types";
+import type { Schema, SchemaDependent, SchemaTrigger } from "../types";
 
 /**
  * The structure view's whole data model. Everything the view needs is
@@ -11,6 +11,12 @@ export interface TableDetail {
   columns: DetailColumn[];
   indexes: DetailIndex[];
   constraints: ConstraintGroup[];
+  /** `COMMENT ON TABLE`, when there is one. */
+  comment: string | null;
+  /** Display-ready size and row estimate, or null when unavailable. */
+  facts: { rows: string; size: string } | null;
+  triggers: SchemaTrigger[];
+  dependents: SchemaDependent[];
 }
 
 export interface DetailColumn {
@@ -85,7 +91,58 @@ export function tableDetail(
       badges: [...(i.is_primary ? ["PK"] : []), ...(i.is_unique ? ["UNIQUE"] : [])],
     })),
     constraints: groupConstraints(table.constraints),
+    comment: table.comment,
+    facts: table.stats
+      ? {
+          rows: formatRowEstimate(table.stats.estimated_rows),
+          size: formatBytes(table.stats.total_bytes),
+        }
+      : null,
+    triggers: table.triggers,
+    dependents: table.dependents,
   };
+}
+
+/**
+ * A byte count in the largest unit that keeps it readable.
+ *
+ * Decimal units, matching what `pg_size_pretty` and the rest of the
+ * Postgres tooling show, so a number here can be compared with one from
+ * psql without mental arithmetic.
+ */
+export function formatBytes(bytes: number): string {
+  const units = ["B", "kB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit += 1;
+  }
+
+  // Bytes are whole things; anything larger has been divided and reads
+  // better with one decimal.
+  return unit === 0 ? `${value} B` : `${value.toFixed(1)} ${units[unit]}`;
+}
+
+/**
+ * The planner's row estimate, or "unknown".
+ *
+ * `pg_class.reltuples` is -1 on a table that has never been analyzed.
+ * Rendering that as "-1" is absurd and rendering it as "0" is plausible
+ * and therefore worse — someone would believe it.
+ */
+export function formatRowEstimate(estimate: number): string {
+  if (estimate < 0) return "unknown";
+  return estimate.toLocaleString("en-US");
+}
+
+/** A dependent view, with materialised ones called out. */
+export function dependentLabel(dependent: SchemaDependent): string {
+  const name = `${dependent.schema}.${dependent.name}`;
+  // A materialised view holds a copy: changing this table does not
+  // change it until it is refreshed, which is worth knowing here.
+  return dependent.kind === "m" ? `${name} (materialised)` : name;
 }
 
 function groupConstraints(

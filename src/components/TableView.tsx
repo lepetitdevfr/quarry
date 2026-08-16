@@ -1,3 +1,4 @@
+import { dependentLabel } from "../lib/tableDetail";
 import type { TableDetail } from "../lib/tableDetail";
 import type { TableMode } from "../types";
 
@@ -57,6 +58,31 @@ export function TableView({
         </p>
       ) : (
         <div className="table-view-body">
+          {/* Facts first: size and row count are what you came for when
+              you opened a table you already know the shape of. */}
+          {(detail.facts || detail.comment) && (
+            <section className="table-facts">
+              {detail.facts && (
+                <div className="fact-row">
+                  <span className="fact">
+                    <span className="fact-label">Rows</span>
+                    {/* "estimated" is not decoration: this is
+                        pg_class.reltuples, the planner's figure, and it
+                        can be well out of date. */}
+                    <span className="fact-value">{detail.facts.rows}</span>
+                    <span className="fact-note">estimated</span>
+                  </span>
+                  <span className="fact">
+                    <span className="fact-label">Size</span>
+                    <span className="fact-value">{detail.facts.size}</span>
+                    <span className="fact-note">with indexes</span>
+                  </span>
+                </div>
+              )}
+              {detail.comment && <p className="table-comment">{detail.comment}</p>}
+            </section>
+          )}
+
           <section>
             <h3>Columns</h3>
             {detail.columns.length === 0 ? (
@@ -105,6 +131,37 @@ export function TableView({
                       </span>
                     ))}
                     <code>{i.definition}</code>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section>
+            <h3>Triggers</h3>
+            {detail.triggers.length === 0 ? (
+              <p className="none">None</p>
+            ) : (
+              <ul className="detail-list">
+                {detail.triggers.map((t) => (
+                  <li key={t.name}>
+                    <span className="detail-name">{t.name}</span>
+                    <code>{t.definition}</code>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </section>
+
+          <section>
+            <h3>Used by</h3>
+            {detail.dependents.length === 0 ? (
+              <p className="none">No views read this table</p>
+            ) : (
+              <ul className="detail-list">
+                {detail.dependents.map((d) => (
+                  <li key={`${d.schema}.${d.name}`}>
+                    <span className="detail-name">{dependentLabel(d)}</span>
                   </li>
                 ))}
               </ul>

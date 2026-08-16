@@ -10,7 +10,10 @@
 
 use crate::edit::{Identity, TableColumn, TableFacts};
 use crate::error::AppError;
-use crate::schema::model::{Column, Constraint, ForeignKey, Index, Schema, SchemaNode, Table};
+use crate::schema::model::{
+    Column, Constraint, Dependent, ForeignKey, Index, Schema, SchemaNode, Table, TableStats,
+    Trigger,
+};
 use deadpool_postgres::Pool;
 use std::collections::BTreeMap;
 use tokio_postgres::types::Oid;
@@ -107,6 +110,10 @@ pub async fn introspect(pool: &Pool) -> Result<Schema, AppError> {
                 columns: Vec::new(),
                 indexes: Vec::new(),
                 constraints: Vec::new(),
+                stats: None,
+                comment: None,
+                triggers: Vec::new(),
+                dependents: Vec::new(),
             })
             .columns
             .push(Column {
@@ -170,6 +177,105 @@ pub async fn introspect(pool: &Pool) -> Result<Schema, AppError> {
                 name: row.get("name"),
                 kind: row.get("kind"),
                 definition: row.get("definition"),
+            });
+        }
+    }
+
+    // ---- size, row estimate and comment ------------------------------
+    //
+    // One query for every table rather than one per table opened: the
+    // structure view renders from this cached schema, so the numbers are
+    // as fresh as the last refresh — which is why the UI calls the row
+    // count an estimate rather than a count. `reltuples` is the
+    // planner's figure and reads -1 on a table that has never been
+    // analyzed.
+    let stats_sql = format!(
+        "select n.nspname                     as schema,
+                c.relname                     as table,
+                c.reltuples::bigint           as estimated_rows,
+                pg_total_relation_size(c.oid) as total_bytes,
+                obj_description(c.oid)        as comment
+         from pg_class c
+         join pg_namespace n on n.oid = c.relnamespace
+         where c.relkind in ('r', 'p')
+           and {SYSTEM_SCHEMA_FILTER}"
+    );
+
+    for row in client.query(&stats_sql, &[]).await? {
+        let key: (String, String) = (row.get("schema"), row.get("table"));
+        if let Some(table) = tables.get_mut(&key) {
+            table.stats = Some(TableStats {
+                estimated_rows: row.get("estimated_rows"),
+                total_bytes: row.get("total_bytes"),
+            });
+            table.comment = row.get("comment");
+        }
+    }
+
+    // ---- triggers -----------------------------------------------------
+    //
+    // `tgisinternal` excludes the rows Postgres creates for foreign keys
+    // and constraint enforcement: they are already shown as constraints,
+    // and listing them again as triggers would imply the user wrote them.
+    let trigger_sql = format!(
+        "select n.nspname               as schema,
+                c.relname               as table,
+                t.tgname                as name,
+                pg_get_triggerdef(t.oid) as definition
+         from pg_trigger t
+         join pg_class c     on c.oid = t.tgrelid
+         join pg_namespace n on n.oid = c.relnamespace
+         where not t.tgisinternal
+           and c.relkind in ('r', 'p')
+           and {SYSTEM_SCHEMA_FILTER}
+         order by t.tgname"
+    );
+
+    for row in client.query(&trigger_sql, &[]).await? {
+        let key: (String, String) = (row.get("schema"), row.get("table"));
+        if let Some(table) = tables.get_mut(&key) {
+            table.triggers.push(Trigger {
+                name: row.get("name"),
+                definition: row.get("definition"),
+            });
+        }
+    }
+
+    // ---- dependent views ----------------------------------------------
+    //
+    // A view's dependency on its tables is recorded against its rewrite
+    // rule, not the view relation, which is why this joins through
+    // pg_rewrite. `dc.oid <> c.oid` drops the rule's dependency on the
+    // view itself; without it every view lists itself.
+    let dependent_sql = format!(
+        "select distinct
+                n.nspname  as schema,
+                c.relname  as table,
+                dn.nspname as view_schema,
+                dc.relname as view_name,
+                dc.relkind::text as view_kind
+         from pg_depend d
+         join pg_rewrite r    on r.oid = d.objid
+         join pg_class dc     on dc.oid = r.ev_class
+         join pg_namespace dn on dn.oid = dc.relnamespace
+         join pg_class c      on c.oid = d.refobjid
+         join pg_namespace n  on n.oid = c.relnamespace
+         where d.classid = 'pg_rewrite'::regclass
+           and d.refclassid = 'pg_class'::regclass
+           and dc.relkind in ('v', 'm')
+           and dc.oid <> c.oid
+           and c.relkind in ('r', 'p')
+           and {SYSTEM_SCHEMA_FILTER}
+         order by view_schema, view_name"
+    );
+
+    for row in client.query(&dependent_sql, &[]).await? {
+        let key: (String, String) = (row.get("schema"), row.get("table"));
+        if let Some(table) = tables.get_mut(&key) {
+            table.dependents.push(Dependent {
+                schema: row.get("view_schema"),
+                name: row.get("view_name"),
+                kind: row.get("view_kind"),
             });
         }
     }
