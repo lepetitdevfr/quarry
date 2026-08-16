@@ -4,6 +4,7 @@ use quarry_lib::guard::Policy;
 use testcontainers_modules::postgres::Postgres;
 use testcontainers_modules::testcontainers::runners::AsyncRunner;
 use testcontainers_modules::testcontainers::ContainerAsync;
+use testcontainers_modules::testcontainers::ImageExt;
 
 /// A running Postgres container plus a pool pointed at it.
 ///
@@ -32,7 +33,14 @@ pub async fn start() -> TestDb {
     // binary) — that's fine, we only care that one ends up installed.
     let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
 
+    // Pinned rather than defaulted. `testcontainers-modules` defaults to
+    // `postgres:11-alpine`, which is years behind anything this app
+    // connects to in practice and lacks catalog columns the editing
+    // code reads — `attgenerated` arrived in Postgres 12. Testing
+    // against a server older than every supported release proves the
+    // wrong thing.
     let container = Postgres::default()
+        .with_tag("17-alpine")
         .start()
         .await
         .expect("failed to start postgres container — is Docker running?");
