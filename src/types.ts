@@ -27,6 +27,18 @@ export interface ColumnEdit {
   cast_type: string | null;
   /** Why this cell cannot be edited. */
   reason: string | null;
+  /** Whether a new row may supply a value for this column. */
+  insertable: boolean;
+  /** Why this cell cannot take a value on a new row. */
+  insert_reason: string | null;
+  /** The values this column accepts, if it is an enum or a boolean. */
+  choices: string[] | null;
+  /**
+   * Whether the database fills this column in when a new row leaves it
+   * out — the difference between an untouched cell meaning "default"
+   * and it meaning "NULL", which are different promises.
+   */
+  has_default: boolean;
 }
 
 /**
@@ -37,6 +49,10 @@ export interface EditInfo {
   editable: boolean;
   /** Why the whole result cannot be edited. */
   reason: string | null;
+  /** Whether this result can take new rows at all. */
+  insertable: boolean;
+  /** Why this result cannot take new rows. */
+  insert_reason: string | null;
   schema: string | null;
   table: string | null;
   pk: PkColumn[];
@@ -62,8 +78,19 @@ export interface RowDelete {
   pk: string[];
 }
 
+/**
+ * Mirrors Rust `RowInsert`: one staged new row. `cells` carries only
+ * the columns the user touched; anything absent is left out of the
+ * statement, so the database applies its default.
+ */
+export interface RowInsert {
+  /** Index into the staged list, not into the grid. */
+  row: number;
+  cells: CellEdit[];
+}
+
 /** Mirrors Rust `StatementKind`. */
-export type StatementKind = "update" | "delete";
+export type StatementKind = "update" | "delete" | "insert";
 
 /** Mirrors Rust `Statement`, for the View SQL panel. */
 export interface EditStatement {
@@ -85,8 +112,8 @@ export interface AppliedRow {
   row: number;
   /** Always empty for a deleted row: there is nothing left to patch. */
   cells: AppliedCell[];
-  /** The row is gone: drop it from the grid rather than patching it. */
-  deleted: boolean;
+  /** What the statement did: patch this row, drop it, or append it. */
+  kind: StatementKind;
 }
 
 /**

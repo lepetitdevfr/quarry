@@ -5,7 +5,9 @@ import type {
   QueryResult,
   RowDelete,
   RowEdit,
+  RowInsert,
 } from "../types";
+import { UNKNOWN } from "../types";
 
 /**
  * Staged cell edits, keyed by row and column.
@@ -38,6 +40,82 @@ export function emptyDeletes(): PendingDeletes {
 
 export function isDeleted(deletes: PendingDeletes, row: number): boolean {
   return deletes.has(row);
+}
+
+/**
+ * One staged new row.
+ *
+ * `cells` holds only the columns the user touched: a column absent from
+ * the map is left out of the generated INSERT, so the database applies
+ * its default. `null` is an explicit SQL NULL, which overrides one.
+ *
+ * `id` is a counter, never an array index — a staged row must keep its
+ * identity when an earlier staged row is discarded, or the editor
+ * reopens on the wrong row.
+ */
+export type PendingInsert = { id: number; cells: Map<number, string | null> };
+export type PendingInserts = PendingInsert[];
+
+let nextInsertId = 1;
+
+export function emptyInserts(): PendingInserts {
+  return [];
+}
+
+export function addInsert(inserts: PendingInserts): PendingInserts {
+  return [...inserts, { id: nextInsertId++, cells: new Map() }];
+}
+
+export function removeInsert(
+  inserts: PendingInserts,
+  id: number,
+): PendingInserts {
+  return inserts.filter((row) => row.id !== id);
+}
+
+/**
+ * Stage one cell of a new row.
+ *
+ * Committing an empty string returns the cell to untouched. That is
+ * what makes "give me the default back" possible without another
+ * chord; the cost is that an empty string cannot be inserted into a
+ * text column from the grid, which the spec accepts.
+ */
+export function setInsertCell(
+  inserts: PendingInserts,
+  id: number,
+  column: number,
+  value: string | null,
+): PendingInserts {
+  return inserts.map((row) => {
+    if (row.id !== id) return row;
+    const cells = new Map(row.cells);
+    if (value === "") cells.delete(column);
+    else cells.set(column, value);
+    return { ...row, cells };
+  });
+}
+
+export function insertValue(
+  inserts: PendingInserts,
+  id: number,
+  column: number,
+): string | null | undefined {
+  return inserts.find((row) => row.id === id)?.cells.get(column);
+}
+
+/**
+ * The payload the backend expects. `row` is the position in this list,
+ * which is the handle the reply comes back with; the id stays on the
+ * frontend.
+ */
+export function toRowInserts(inserts: PendingInserts): RowInsert[] {
+  return inserts.map((row, index) => ({
+    row: index,
+    cells: [...row.cells.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([column, value]) => ({ column, value })),
+  }));
 }
 
 function key(row: number, col: number): string {
@@ -116,12 +194,13 @@ export function toggleDelete(
   return { pending: nextPending, deletes: nextDeletes };
 }
 
-/** Total staged changes: edited cells plus deleted rows. */
+/** Total staged changes: edited cells, deleted rows and new rows. */
 export function totalPending(
   pending: Pending,
   deletes: PendingDeletes,
+  inserts: PendingInserts,
 ): number {
-  return pending.size + deletes.size;
+  return pending.size + deletes.size + inserts.length;
 }
 
 /**
@@ -190,8 +269,8 @@ function pkValues(result: QueryResult, row: number): string[] {
 }
 
 /**
- * Replace edited cells with the values the database returned, and drop
- * the rows that were deleted.
+ * Replace edited cells with the values the database returned, drop the
+ * rows that were deleted, and append the rows that were inserted.
  *
  * Returns a new result rather than mutating: React re-renders on
  * identity, and the grid would otherwise keep showing the old values.
@@ -207,14 +286,32 @@ export function applyPatches(
   const patched = result.rows.map((row) => [...row]);
 
   for (const patch of applied) {
+    // Only an update addresses a grid row. An insert's `row` indexes
+    // the staged list, so patching by it would overwrite whatever
+    // happens to sit at that position in the grid.
+    if (patch.kind !== "update") continue;
     for (const cell of patch.cells) {
       if (patched[patch.row]) patched[patch.row][cell.column] = cell.value;
     }
   }
 
-  const removed = new Set(applied.filter((a) => a.deleted).map((a) => a.row));
-  const rows =
+  const removed = new Set(
+    applied.filter((a) => a.kind === "delete").map((a) => a.row),
+  );
+  const kept =
     removed.size === 0 ? patched : patched.filter((_, i) => !removed.has(i));
+
+  // Appended rows are built column by column: anything the INSERT did
+  // not return has no known value, which is not the same as NULL.
+  const added = applied
+    .filter((a) => a.kind === "insert")
+    .map((a) => {
+      const row: CellValue[] = result.columns.map(() => UNKNOWN);
+      for (const cell of a.cells) row[cell.column] = cell.value;
+      return row;
+    });
+
+  const rows = [...kept, ...added];
 
   return { ...result, rows, row_count: rows.length };
 }

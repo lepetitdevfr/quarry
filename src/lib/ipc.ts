@@ -12,6 +12,7 @@ import type {
   QueryResult,
   RowDelete,
   RowEdit,
+  RowInsert,
   Schema,
   Tab,
   TableMode,
@@ -32,19 +33,31 @@ export async function previewEdits(
   edit: EditInfo,
   rows: RowEdit[],
   deletes: RowDelete[],
+  inserts: RowInsert[],
 ): Promise<EditStatement[]> {
-  return invoke<EditStatement[]>("preview_edits", { edit, rows, deletes });
+  return invoke<EditStatement[]>("preview_edits", {
+    edit,
+    rows,
+    deletes,
+    inserts,
+  });
 }
 
-/// Applies staged cell edits and row deletions in one transaction,
-/// returning what the database stored for each edited cell and which
-/// rows are gone.
+/// Applies staged cell edits, row deletions and new rows in one
+/// transaction, returning what the database stored for each edited or
+/// inserted cell and which rows are gone.
 export async function applyRowEdits(
   edit: EditInfo,
   rows: RowEdit[],
   deletes: RowDelete[],
+  inserts: RowInsert[],
 ): Promise<AppliedRow[]> {
-  return invoke<AppliedRow[]>("apply_row_edits", { edit, rows, deletes });
+  return invoke<AppliedRow[]>("apply_row_edits", {
+    edit,
+    rows,
+    deletes,
+    inserts,
+  });
 }
 
 export async function disconnect(): Promise<void> {
