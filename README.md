@@ -1,5 +1,8 @@
 # Quarry
 
+[![CI](https://github.com/lepetitdevfr/quarry/actions/workflows/ci.yml/badge.svg)](https://github.com/lepetitdevfr/quarry/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+
 A fast, keyboard-first PostgreSQL client for macOS, with an Insomnia-style
 query library and a production write-guard that is on by default.
 
@@ -189,3 +192,17 @@ The original design spec is
 [`docs/superpowers/specs/2026-08-13-quarry-design.md`](docs/superpowers/specs/2026-08-13-quarry-design.md).
 The specs are worth reading before changing behaviour: each records why a
 decision went the way it did, including the options that were rejected.
+
+## Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) — in particular the two house rules,
+that every decision lives in a pure module with unit tests, and that a test
+must be shown to fail when the code under it is broken.
+
+Security issues go through [SECURITY.md](SECURITY.md), privately, not through
+a public issue.
+
+## License
+
+[MIT](LICENSE) © Lepetitdev
+

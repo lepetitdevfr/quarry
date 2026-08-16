@@ -2,6 +2,12 @@
   "name": "quarry",
   "private": true,
   "version": "0.1.0",
+  "description": "A keyboard-first PostgreSQL client with a production write-guard",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/lepetitdevfr/quarry.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
