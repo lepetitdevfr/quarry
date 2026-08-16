@@ -142,8 +142,10 @@ Stop it with `docker stop quarry-smoke`.
 Honest list, not a roadmap. Items with a plan behind them are in
 [`docs/BACKLOG.md`](docs/BACKLOG.md).
 
-- **macOS Apple Silicon only.** Nothing in the code is deeply macOS-bound
-  except Keychain access, but no Windows or Linux build is set up or tested.
+- **macOS Apple Silicon only, in practice.** The crate compiles on Linux and
+  Windows — credentials go through `keyring`, which wraps each platform's
+  store — but no build is shipped or tested there, and the fonts and shortcut
+  labels are still macOS-shaped.
 - **Downloads are unsigned.** They install, but macOS quarantines them until
   you clear the flag (see [Download](#download)). Signing needs a paid Apple
   Developer account.
@@ -173,11 +175,10 @@ cd src-tauri && cargo clippy --all-targets -- -D warnings && cargo fmt --check
 All of these pass on `main`; there are no known-failing baselines, so a failure
 is something you just changed.
 
-CI runs the lint and the pure unit tests on a macOS runner, plus the whole
-frontend suite. The Postgres-backed integration tests are a **local** gate:
-they need Docker, GitHub's macOS runners have none, and Linux runners cannot
-compile the crate because Keychain access is macOS-only. Run `cargo test` in
-full before pushing.
+CI runs all of it: an Ubuntu job runs the full Rust suite, database tests
+included, and a macOS job runs clippy, fmt, the unit tests and a build. Both
+exist for a reason — Linux has the Docker daemon testcontainers needs, macOS
+is the platform users run and the only one that compiles the Keychain path.
 
 Rust integration tests start a throwaway Postgres 17 through testcontainers, so
 Docker must be running. A further set in `src-tauri/tests/smoke_local.rs` is

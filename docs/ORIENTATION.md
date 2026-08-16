@@ -71,6 +71,9 @@ Rust integration tests need Docker; they start Postgres 17 via testcontainers.
   than it looks: window dragging needed `core:window:allow-start-dragging`
   added explicitly, and the denial was silent. Capability changes need a
   `tauri dev` restart — they compile into the binary.
+- `src-tauri/src/menu.rs` holds the codebase's **only** `cfg(target_os)`.
+  Credentials go through `keyring`, so everything else compiles on any
+  platform — keep it that way.
 - The window has no title bar (`titleBarStyle: "Overlay"`). A 28px
   `.drag-strip` carries the traffic lights and the window drag; its height and
   `.app.with-sidebar`'s `padding-top` must stay equal.

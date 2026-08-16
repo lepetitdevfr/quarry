@@ -76,76 +76,45 @@ The data behind the lock is structurally valid either way, so recovering beats
 bricking. Not urgent; "unreachable in practice" is just the assumption that
 ages badly as the code grows.
 
-## CI cannot run the integration tests
+## CI cannot run the integration tests — RESOLVED
 
-**Found:** 2026-08-16, when the first CI run failed. The Rust job was on
-Ubuntu and the crate does not compile there: `security_framework::passwords`
-and the macOS about-menu in `menu.rs` have no Linux equivalent.
+**Found:** 2026-08-16, when the first CI run failed. **Closed:** the same
+day, by the cross-platform port below.
 
-Now the job runs on `macos-latest` with `cargo test --lib` — 50 unit tests —
-because GitHub's macOS runners ship no Docker daemon and the integration
-suites start Postgres through testcontainers. So roughly 198 database-backed
-tests run only on a developer's machine, and the CI badge means less than it
-appears to.
+`secrets.rs` moved from `security-framework` to the `keyring` crate and
+`menu.rs` gained the codebase's only `cfg(target_os)`, so the crate compiles
+on Linux. CI now runs two Rust jobs: Ubuntu runs the whole suite, database
+tests included, because Docker is there; macOS runs clippy, fmt, the unit
+tests and a build, because it is the platform users run and the only one that
+compiles the Keychain branch.
 
-Three ways out, in increasing order of value:
 
-1. **Colima on the macOS runner** to provide a Docker daemon. Works, but adds
-   minutes to every run and is the flakiest of the three.
-2. **A Postgres service container** with the tests taking a connection URL
-   from the environment instead of starting their own container. Fast and
-   stable, but means a second code path through the test harness.
-3. **Port Keychain access to the `keyring` crate** (see the Windows and Linux
-   entry). The crate then compiles on Linux, and one Ubuntu job runs
-   everything with Docker already present. This is the real fix, and it is
-   worth doing for its own sake anyway.
+## Windows and Linux builds
 
-Until then, `cargo test` in full before pushing is the gate, and CONTRIBUTING
-says so.
+**Assessed:** 2026-08-15. **Code port done:** 2026-08-16 — see
+`plans/2026-08-16-cross-platform.md`. What is left is distribution, not
+compilation.
 
-## Windows and Linux support
+The crate now builds off macOS: `keyring` covers macOS Keychain, Windows
+Credential Manager and Linux keyutils behind the same three functions, and
+the only `cfg(target_os)` in the codebase is the macOS menu in `menu.rs`.
+**Keep it that way** — this entry exists to keep the constraint visible.
 
-**Assessed:** 2026-08-15, by measuring the codebase rather than estimating.
-Out of scope for v1 by the original design spec, but cheaper than expected —
-**and it stays cheap only while nothing else reaches for a platform API
-directly.** That is the reason this entry exists: to keep the constraint
-visible, not because the work is scheduled.
+Remaining, in order of cost:
 
-**One file is genuinely macOS-only.** `security-framework` is the single
-platform crate, used in `src-tauri/src/secrets.rs` and nowhere else, behind a
-three-function interface — `save_password`, `load_password`,
-`delete_password`. There are **zero `cfg(target_os)` guards in the codebase**;
-nothing else ever needed one.
+1. **Real-machine testing.** The Windows and Linux credential backends have
+   never been run, only compiled. `keyring`'s Linux feature here is
+   `linux-native` (kernel keyutils) rather than Secret Service, chosen
+   because a headless CI runner has no D-Bus session — a desktop Linux user
+   may want the opposite, and that is a one-line change in `Cargo.toml`.
+2. **Fonts.** Six `-apple-system` / `SF Pro` / `SF Mono` references in
+   `App.css` need fallbacks.
+3. **Shortcut labels.** Both `metaKey` uses are already `metaKey || ctrlKey`;
+   this is showing "Ctrl+S" rather than "⌘S".
+4. **CI, signing and installers.** The largest item and mostly money: a
+   runner per platform, an Authenticode certificate for Windows, AppImage or
+   `.deb` for Linux.
 
-Already portable: `dirs::data_dir()` for paths, `rusqlite` with `bundled`,
-`rustls` + `webpki-roots` (no system TLS), the `.ico` and Windows `Square*`
-icons that `tauri icon` already emits, `"targets": "all"` in
-`tauri.conf.json`, and a window config carrying nothing but title and size.
-
-**The work, in order of cost:**
-
-1. **Keychain → the `keyring` crate**, which wraps macOS Keychain, Windows
-   Credential Manager and Linux Secret Service behind one API. The three
-   signatures stay identical, so `commands.rs` and every test are untouched.
-   The subtlety is error semantics: `secrets.rs` distinguishes
-   `errSecItemNotFound` (→ `Ok(None)`) from `errSecAuthFailed` (→ "enter the
-   password again to re-save it"). Those codes are macOS-specific and each
-   platform needs its equivalents mapped. The existing tests pin the
-   behaviour that matters.
-2. **Keyboard shortcuts.** Only two `metaKey` uses, both already
-   `metaKey || ctrlKey`, and CodeMirror's `Mod-` handles the rest. Mostly a
-   labelling question — showing "Ctrl+S" rather than "⌘S".
-3. **Fonts.** Six references to `-apple-system` / `SF Pro` / `SF Mono` in
-   `App.css`. Cosmetic; needs fallbacks.
-4. **CI, signing and installers.** Not code, and the largest item: build
-   runners per platform, an Authenticode certificate for Windows (without it
-   SmartScreen warns on every download), AppImage or `.deb` for Linux.
-   Money and bureaucracy rather than engineering time.
-5. **Testing on real machines.** The Keychain replacement in particular
-   cannot be proven from a Mac.
-
-**Rough size:** the code port is about one stage. Distribution is a separate
-stage and the one that actually consumes the time.
 
 ## Table detail extras
 
