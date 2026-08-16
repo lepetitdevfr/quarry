@@ -1,7 +1,8 @@
 mod common;
 
 use quarry_lib::edit::{
-    apply_edits, build_deletes, build_updates, CellEdit, Identity, RowDelete, RowEdit,
+    apply_edits, build_deletes, build_inserts, build_updates, CellEdit, Identity, RowDelete,
+    RowEdit, RowInsert, StatementKind,
 };
 use quarry_lib::exec::run_query;
 use quarry_lib::schema::lookup_table;
@@ -495,7 +496,7 @@ async fn a_delete_removes_the_row() {
 
     assert_eq!(applied.len(), 1);
     assert_eq!(applied[0].row, 1);
-    assert!(applied[0].deleted);
+    assert_eq!(applied[0].kind, StatementKind::Delete);
     // A deleted row has nothing to patch: its RETURNING carried the key,
     // not display data.
     assert!(applied[0].cells.is_empty());
@@ -625,9 +626,9 @@ async fn a_mixed_batch_updates_one_row_and_deletes_another() {
         .expect("apply should succeed");
 
     assert_eq!(applied.len(), 2);
-    assert!(!applied[0].deleted);
+    assert_eq!(applied[0].kind, StatementKind::Update);
     assert_eq!(applied[0].cells[0].value, serde_json::json!("changed@x.co"));
-    assert!(applied[1].deleted);
+    assert_eq!(applied[1].kind, StatementKind::Delete);
 
     let after = run_query(&db.pool, "select id, email from people order by id", false)
         .await
@@ -846,4 +847,343 @@ async fn an_unlocked_connection_can_apply_an_edit() {
         .await
         .expect("select");
     assert_eq!(after.rows[0][0], serde_json::json!("b@x.co"));
+}
+
+#[tokio::test]
+async fn an_insert_returns_the_generated_key_and_the_applied_defaults() {
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table people (
+           id    serial primary key,
+           email text not null,
+           plan  text default 'free'
+         )",
+        false,
+    )
+    .await
+    .expect("create table");
+
+    let result = run_query(&db.pool, "select id, email, plan from people", false)
+        .await
+        .expect("select should run");
+
+    let inserts = vec![RowInsert {
+        row: 0,
+        cells: vec![CellEdit {
+            column: 1,
+            value: Some("a@b.c".to_string()),
+        }],
+    }];
+    let statements = build_inserts(&result.edit, &inserts).expect("should build");
+    let applied = apply_edits(&db.pool, &statements, true)
+        .await
+        .expect("insert should apply");
+
+    assert_eq!(applied.len(), 1);
+    assert_eq!(applied[0].kind, StatementKind::Insert);
+    // The generated key and the applied default both come back, so the
+    // grid shows what the database stored rather than what was typed.
+    assert_eq!(applied[0].cells[0].value, serde_json::json!(1));
+    assert_eq!(applied[0].cells[2].value, serde_json::json!("free"));
+}
+
+#[tokio::test]
+async fn an_explicit_null_overrides_a_default() {
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table people (id serial primary key, plan text default 'free')",
+        false,
+    )
+    .await
+    .expect("create table");
+
+    let result = run_query(&db.pool, "select id, plan from people", false)
+        .await
+        .expect("select should run");
+
+    let inserts = vec![
+        // Untouched: takes the default.
+        RowInsert {
+            row: 0,
+            cells: vec![],
+        },
+        // Explicitly NULL: overrides it.
+        RowInsert {
+            row: 1,
+            cells: vec![CellEdit {
+                column: 1,
+                value: None,
+            }],
+        },
+    ];
+    let statements = build_inserts(&result.edit, &inserts).expect("should build");
+    let applied = apply_edits(&db.pool, &statements, true)
+        .await
+        .expect("inserts should apply");
+
+    assert_eq!(applied[0].cells[1].value, serde_json::json!("free"));
+    assert_eq!(applied[1].cells[1].value, serde_json::Value::Null);
+}
+
+#[tokio::test]
+async fn a_before_insert_trigger_rewrite_comes_back() {
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table people (id serial primary key, email text)",
+        false,
+    )
+    .await
+    .expect("create table");
+    run_query(
+        &db.pool,
+        "create function lower_email() returns trigger as $$
+           begin new.email := lower(new.email); return new; end;
+         $$ language plpgsql",
+        false,
+    )
+    .await
+    .expect("create function");
+    run_query(
+        &db.pool,
+        "create trigger lower_it before insert on people
+         for each row execute function lower_email()",
+        false,
+    )
+    .await
+    .expect("create trigger");
+
+    let result = run_query(&db.pool, "select id, email from people", false)
+        .await
+        .expect("select should run");
+
+    let inserts = vec![RowInsert {
+        row: 0,
+        cells: vec![CellEdit {
+            column: 1,
+            value: Some("LOUD@B.C".to_string()),
+        }],
+    }];
+    let statements = build_inserts(&result.edit, &inserts).expect("should build");
+    let applied = apply_edits(&db.pool, &statements, true)
+        .await
+        .expect("insert should apply");
+
+    assert_eq!(applied[0].cells[1].value, serde_json::json!("loud@b.c"));
+}
+
+#[tokio::test]
+async fn a_failing_insert_rolls_back_an_update_in_the_same_batch() {
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table people (id serial primary key, email text not null)",
+        false,
+    )
+    .await
+    .expect("create table");
+    run_query(
+        &db.pool,
+        "insert into people (email) values ('first@b.c')",
+        false,
+    )
+    .await
+    .expect("seed");
+
+    let result = run_query(&db.pool, "select id, email from people", false)
+        .await
+        .expect("select should run");
+
+    let mut statements = build_updates(
+        &result.edit,
+        &[RowEdit {
+            row: 0,
+            pk: vec!["1".to_string()],
+            cells: vec![CellEdit {
+                column: 1,
+                value: Some("changed@b.c".to_string()),
+            }],
+        }],
+    )
+    .expect("should build");
+    // NOT NULL with no default, staged as NULL: the server refuses it.
+    statements.extend(
+        build_inserts(
+            &result.edit,
+            &[RowInsert {
+                row: 0,
+                cells: vec![CellEdit {
+                    column: 1,
+                    value: None,
+                }],
+            }],
+        )
+        .expect("should build"),
+    );
+
+    apply_edits(&db.pool, &statements, true)
+        .await
+        .expect_err("the batch must fail");
+
+    let after = run_query(&db.pool, "select email from people order by id", false)
+        .await
+        .expect("select should run");
+    assert_eq!(after.rows.len(), 1, "the insert must not have landed");
+    assert_eq!(
+        after.rows[0][0],
+        serde_json::json!("first@b.c"),
+        "the update must have rolled back with it"
+    );
+}
+
+#[tokio::test]
+async fn a_deleted_natural_key_can_be_reinserted_in_one_batch() {
+    // This is the ordering decision: inserts run after deletes. Reverse
+    // them and this fails on the unique key.
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table codes (code text primary key, label text)",
+        false,
+    )
+    .await
+    .expect("create table");
+    run_query(&db.pool, "insert into codes values ('FR', 'France')", false)
+        .await
+        .expect("seed");
+
+    let result = run_query(&db.pool, "select code, label from codes", false)
+        .await
+        .expect("select should run");
+
+    let mut statements = build_deletes(
+        &result.edit,
+        &[RowDelete {
+            row: 0,
+            pk: vec!["FR".to_string()],
+        }],
+    )
+    .expect("should build");
+    statements.extend(
+        build_inserts(
+            &result.edit,
+            &[RowInsert {
+                row: 0,
+                cells: vec![
+                    CellEdit {
+                        column: 0,
+                        value: Some("FR".to_string()),
+                    },
+                    CellEdit {
+                        column: 1,
+                        value: Some("France (new)".to_string()),
+                    },
+                ],
+            }],
+        )
+        .expect("should build"),
+    );
+
+    apply_edits(&db.pool, &statements, true)
+        .await
+        .expect("delete then insert should apply");
+
+    let after = run_query(&db.pool, "select label from codes", false)
+        .await
+        .expect("select should run");
+    assert_eq!(after.rows.len(), 1);
+    assert_eq!(after.rows[0][0], serde_json::json!("France (new)"));
+}
+
+#[tokio::test]
+async fn an_insert_a_trigger_swallows_rolls_back_the_batch() {
+    // A `BEFORE INSERT` trigger returning NULL skips the row without
+    // raising: the statement succeeds and RETURNING yields nothing. The
+    // rowcount assert is the only thing standing between that and a
+    // grid showing a row the table does not hold — so this is what
+    // exercises it, rather than a server error, which fails earlier.
+    let db = common::start().await;
+
+    run_query(
+        &db.pool,
+        "create table people (id serial primary key, email text not null)",
+        false,
+    )
+    .await
+    .expect("create table");
+    run_query(
+        &db.pool,
+        "insert into people (email) values ('first@b.c')",
+        false,
+    )
+    .await
+    .expect("seed");
+    run_query(
+        &db.pool,
+        "create function swallow() returns trigger as $$
+           begin return null; end;
+         $$ language plpgsql",
+        false,
+    )
+    .await
+    .expect("create function");
+    run_query(
+        &db.pool,
+        "create trigger swallow_it before insert on people
+         for each row execute function swallow()",
+        false,
+    )
+    .await
+    .expect("create trigger");
+
+    let result = run_query(&db.pool, "select id, email from people", false)
+        .await
+        .expect("select should run");
+
+    let mut statements = build_updates(
+        &result.edit,
+        &[RowEdit {
+            row: 0,
+            pk: vec!["1".to_string()],
+            cells: vec![CellEdit {
+                column: 1,
+                value: Some("changed@b.c".to_string()),
+            }],
+        }],
+    )
+    .expect("should build");
+    statements.extend(
+        build_inserts(
+            &result.edit,
+            &[RowInsert {
+                row: 0,
+                cells: vec![CellEdit {
+                    column: 1,
+                    value: Some("swallowed@b.c".to_string()),
+                }],
+            }],
+        )
+        .expect("should build"),
+    );
+
+    apply_edits(&db.pool, &statements, true)
+        .await
+        .expect_err("an insert that affected no row must fail the batch");
+
+    let after = run_query(&db.pool, "select email from people order by id", false)
+        .await
+        .expect("select should run");
+    assert_eq!(after.rows.len(), 1, "the insert must not have landed");
+    assert_eq!(
+        after.rows[0][0],
+        serde_json::json!("first@b.c"),
+        "the update must have rolled back with it"
+    );
 }

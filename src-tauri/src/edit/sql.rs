@@ -35,14 +35,26 @@ pub struct RowDelete {
     pub pk: Vec<String>,
 }
 
-/// What a generated statement does. `Update` carries the result column
-/// indexes its RETURNING list names; `Delete` carries none, because the
-/// row is going away rather than changing.
+/// One row to insert. `cells` holds only the columns the user touched;
+/// anything absent is left out of the statement, so the database
+/// applies its default.
+#[derive(Debug, Clone, Deserialize)]
+pub struct RowInsert {
+    /// Which staged row this is, so the reply can be matched back to
+    /// it. Not a grid index — the row is not in the grid yet.
+    pub row: usize,
+    pub cells: Vec<CellEdit>,
+}
+
+/// What a generated statement does. `Update` and `Insert` carry the
+/// result column indexes their RETURNING list names; `Delete` carries
+/// none, because the row is going away rather than changing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "snake_case")]
 pub enum StatementKind {
     Update,
     Delete,
+    Insert,
 }
 
 /// A statement ready to execute, and enough context to patch the grid
@@ -52,7 +64,9 @@ pub struct Statement {
     pub sql: String,
     /// Bound values. `None` is a real SQL `NULL`.
     pub params: Vec<Option<String>>,
-    /// The grid row this statement updates.
+    /// Which row this statement is for: a grid index for an update or
+    /// a delete, an index into the staged insert list for an insert,
+    /// whose row is not in the grid yet.
     pub row: usize,
     /// Result column indexes, in the order the `RETURNING` list names
     /// them.
@@ -307,6 +321,118 @@ pub fn build_deletes(info: &EditInfo, deletes: &[RowDelete]) -> Result<Vec<State
             // Nothing to patch back: the row is going away.
             returned: Vec::new(),
             kind: StatementKind::Delete,
+        });
+    }
+
+    Ok(statements)
+}
+
+/// Build one `INSERT` per staged row.
+///
+/// The column list holds only the cells the user touched, which is what
+/// lets untouched columns take their defaults. `RETURNING` names every
+/// result column that maps to a real table column, so the generated
+/// key, the applied defaults and any `BEFORE INSERT` rewrite all reach
+/// the grid as what the database actually stored.
+pub fn build_inserts(info: &EditInfo, inserts: &[RowInsert]) -> Result<Vec<Statement>, AppError> {
+    if inserts.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let (schema, table) = source_table(info)?;
+
+    if !info.insertable {
+        return Err(AppError::Query {
+            message: format!(
+                "this result cannot take new rows: {}",
+                info.insert_reason
+                    .clone()
+                    .unwrap_or_else(|| "unknown".to_string())
+            ),
+            code: None,
+            position: None,
+        });
+    }
+
+    // Every column whose attnum resolved to a real table column, in
+    // result order. A computed or duplicated column has no name, so it
+    // is skipped — the frontend renders those cells as unknown.
+    let returned: Vec<usize> = info
+        .columns
+        .iter()
+        .enumerate()
+        .filter(|(_, c)| c.column_name.is_some())
+        .map(|(i, _)| i)
+        .collect();
+    let returning: Vec<String> = returned
+        .iter()
+        .filter_map(|i| info.columns[*i].column_name.as_ref())
+        .map(|name| quote_ident(name))
+        .collect();
+
+    if returning.is_empty() {
+        return Err(AppError::Query {
+            message: "this result has no table columns to return".to_string(),
+            code: None,
+            position: None,
+        });
+    }
+
+    let mut statements = Vec::new();
+
+    for insert in inserts {
+        let mut params: Vec<Option<String>> = Vec::new();
+        let mut names = Vec::new();
+        let mut values = Vec::new();
+
+        for cell in &insert.cells {
+            let column = info
+                .columns
+                .get(cell.column)
+                .ok_or_else(|| AppError::Query {
+                    message: format!("column {} is not in this result", cell.column),
+                    code: None,
+                    position: None,
+                })?;
+
+            let (name, cast) = match (&column.column_name, &column.cast_type) {
+                (Some(name), Some(cast)) if column.insertable => (name, cast),
+                _ => {
+                    return Err(AppError::Query {
+                        message: format!("column {} cannot take a value on a new row", cell.column),
+                        code: None,
+                        position: None,
+                    })
+                }
+            };
+
+            params.push(cell.value.clone());
+            names.push(quote_ident(name));
+            values.push(format!("${}::text::{}", params.len(), cast));
+        }
+
+        // A row with nothing staged is a row of defaults, and
+        // `default values` is the statement Postgres provides for it.
+        let body = if names.is_empty() {
+            "default values".to_string()
+        } else {
+            format!("({}) values ({})", names.join(", "), values.join(", "))
+        };
+
+        let sql = format!(
+            "insert into {}.{} {} returning {}",
+            quote_ident(schema),
+            quote_ident(table),
+            body,
+            returning.join(", ")
+        );
+
+        statements.push(Statement {
+            sql,
+            params,
+            row: insert.row,
+            returned: returned.clone(),
+            kind: StatementKind::Insert,
         });
     }
 

@@ -1,7 +1,7 @@
 use crate::conn::{build_pool, ping, ConnectionConfig};
 use crate::edit::{
-    apply_edits, build_deletes, build_updates, plan_apply, AppliedRow, EditInfo, RowDelete,
-    RowEdit, Statement,
+    apply_edits, build_batch, plan_apply, AppliedRow, EditInfo, RowDelete, RowEdit, RowInsert,
+    Statement,
 };
 use crate::error::AppError;
 use crate::exec::{run_query, QueryResult};
@@ -124,40 +124,39 @@ pub async fn execute(
 /// Calls the same generator `apply_row_edits` calls. A preview that
 /// could drift from what executes would be worse than no preview.
 ///
-/// Updates come before deletes. With a delete beating an edit on the
-/// frontend no row is in both sets, so the order is arbitrary — fixing
-/// it makes the previewed SQL stable.
+/// The batch order comes from `build_batch`, so the previewed SQL is
+/// the SQL that runs, statement for statement.
 #[tauri::command]
 pub fn preview_edits(
     edit: EditInfo,
     rows: Vec<RowEdit>,
     deletes: Vec<RowDelete>,
+    inserts: Vec<RowInsert>,
 ) -> Result<Vec<Statement>, AppError> {
-    let mut statements = build_updates(&edit, &rows)?;
-    statements.extend(build_deletes(&edit, &deletes)?);
-    Ok(statements)
+    build_batch(&edit, &rows, &deletes, &inserts)
 }
 
-/// Apply staged cell edits and row deletions in one transaction.
+/// Apply staged cell edits, row deletions and new rows in one
+/// transaction.
 ///
 /// The decision comes back from the frontend rather than being
 /// recomputed: recomputing would mean re-preparing the original SQL,
-/// which the user may have since edited in the buffer. `build_updates`
-/// and `build_deletes` refuse anything inconsistent and the guard
-/// refuses anything that should not run, so a tampered payload cannot
-/// widen what an edit can do beyond an `UPDATE` or `DELETE` against a
-/// table the connection can already write to.
+/// which the user may have since edited in the buffer. The generators
+/// refuse anything inconsistent and the guard refuses anything that
+/// should not run, so a tampered payload cannot widen what an edit can
+/// do beyond an `UPDATE`, `DELETE` or `INSERT` against a table the
+/// connection can already write to.
 #[tauri::command]
 pub async fn apply_row_edits(
     state: tauri::State<'_, AppState>,
     edit: EditInfo,
     rows: Vec<RowEdit>,
     deletes: Vec<RowDelete>,
+    inserts: Vec<RowInsert>,
 ) -> Result<Vec<AppliedRow>, AppError> {
     let (pool, policy, unlocked_until) = state.pool_and_guard()?;
 
-    let mut statements = build_updates(&edit, &rows)?;
-    statements.extend(build_deletes(&edit, &deletes)?);
+    let statements = build_batch(&edit, &rows, &deletes, &inserts)?;
 
     // The same chokepoint every typed statement crosses. The UI hides
     // editing on a locked connection; this does not trust it to.

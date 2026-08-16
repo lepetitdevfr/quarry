@@ -64,8 +64,10 @@ pub struct AppliedCell {
 pub struct AppliedRow {
     pub row: usize,
     pub cells: Vec<AppliedCell>,
-    /// The row is gone: drop it from the grid rather than patching it.
-    pub deleted: bool,
+    /// What the statement did, so the grid knows whether to patch the
+    /// row, drop it, or append it. One field rather than a pair of
+    /// flags: "deleted and inserted" must not be representable.
+    pub kind: StatementKind,
 }
 
 /// Apply every statement in one transaction.
@@ -147,15 +149,13 @@ async fn run_one(
         });
     }
 
-    let deleted = matches!(statement.kind, StatementKind::Delete);
-
-    // A delete's RETURNING carries its key, not display data, and the
-    // row it named is about to leave the grid. Collecting cells from it
-    // would hand the frontend values to patch into a row that is gone.
-    let cells = if deleted {
-        Vec::new()
-    } else {
-        statement
+    let cells = match statement.kind {
+        // A delete's RETURNING carries its key, not display data, and
+        // the row it named is about to leave the grid. Collecting cells
+        // from it would hand the frontend values to patch into a row
+        // that is gone.
+        StatementKind::Delete => Vec::new(),
+        _ => statement
             .returned
             .iter()
             .enumerate()
@@ -163,12 +163,12 @@ async fn run_one(
                 column: *column,
                 value: cell_to_json(&rows[0], i),
             })
-            .collect()
+            .collect(),
     };
 
     Ok(AppliedRow {
         row: statement.row,
         cells,
-        deleted,
+        kind: statement.kind,
     })
 }
