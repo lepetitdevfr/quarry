@@ -90,6 +90,27 @@ Remaining, in order of cost:
    `.deb` for Linux.
 
 
+## One Keychain prompt instead of one per connection
+
+**Raised:** 2026-08-16, after the prompt count came down from four to one per
+connection.
+
+macOS authorises Keychain access per *item*, so N saved connections mean N
+prompts — one each, and in `tauri dev` again after every rebuild, because
+entries are tied to the signing identity.
+
+Storing every connection's password in a single item (a JSON map keyed by
+connection id under one account) would make it one ACL and therefore one
+prompt, ever.
+
+**Costs, which is why it was not done on the spot:** one opaque entry in
+Keychain Access instead of a legible one per connection; any read decrypts
+every credential; deleting one connection becomes read-modify-write of the
+whole blob; and existing entries need a migration.
+
+Worth doing if the connection count grows. With two, a signed release build
+and one "Always Allow" per item settles it.
+
 ## Table detail extras
 
 **Deferred:** 2026-08-15, while designing table detail tabs
