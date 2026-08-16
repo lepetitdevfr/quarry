@@ -1,7 +1,7 @@
 {
   "name": "quarry",
   "private": true,
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "A keyboard-first PostgreSQL client with a production write-guard",
   "license": "MIT",
   "repository": {
