@@ -628,12 +628,17 @@ fn double_clicking_pins_the_tab_that_was_a_preview() {
     s.open_table_tab("public", "users", TableMode::Structure, false)
         .unwrap();
     let tabs = s
-        .open_table_tab("public", "orders", TableMode::Data, true)
+        .open_table_tab("sales", "orders", TableMode::Data, true)
         .unwrap();
 
     assert_eq!(tabs.len(), 1, "the preview slot is taken over");
     assert!(!tabs[0].is_preview, "a double-click pins the reused row");
     assert_eq!(tabs[0].mode, Some(TableMode::Data));
+    // Distinct words, so a swapped schema/table on the reuse path — a
+    // different statement from the insert path — cannot pass unnoticed.
+    assert_eq!(tabs[0].target_schema.as_deref(), Some("sales"));
+    assert_eq!(tabs[0].target_table.as_deref(), Some("orders"));
+    assert_eq!(tabs[0].title.as_deref(), Some("orders"));
 }
 
 #[test]

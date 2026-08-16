@@ -1,7 +1,7 @@
 use crate::error::AppError;
 use crate::library::model::{Tab, TableMode, POSITION_GAP};
 use crate::library::store::{new_id, sql_err, Store};
-use rusqlite::{params, Connection, Row};
+use rusqlite::{named_params, params, Connection, Row};
 
 impl Store {
     // ---- tabs --------------------------------------------------------
@@ -37,8 +37,12 @@ impl Store {
 
         conn.execute(
             "insert into tabs (id, query_id, scratch_sql, position, is_active, cursor_pos)
-             values (?1, ?2, null, ?3, 0, 0)",
-            params![id, query_id, position],
+             values (:id, :query_id, null, :position, 0, 0)",
+            named_params! {
+                ":id": id,
+                ":query_id": query_id,
+                ":position": position,
+            },
         )
         .map_err(sql_err)?;
 
@@ -74,10 +78,14 @@ impl Store {
             Some(id) => {
                 conn.execute(
                     "update tabs
-                        set title = ?2, scratch_sql = ?3, cursor_pos = 0,
+                        set title = :title, scratch_sql = :sql, cursor_pos = 0,
                             target_schema = null, target_table = null, mode = null
-                      where id = ?1",
-                    params![id, title, sql],
+                      where id = :id",
+                    named_params! {
+                        ":id": id,
+                        ":title": title,
+                        ":sql": sql,
+                    },
                 )
                 .map_err(sql_err)?;
                 id
@@ -90,8 +98,13 @@ impl Store {
                     "insert into tabs
                        (id, query_id, scratch_sql, position, is_active, cursor_pos,
                         is_preview, title)
-                     values (?1, null, ?2, ?3, 0, 0, 1, ?4)",
-                    params![id, sql, position, title],
+                     values (:id, null, :sql, :position, 0, 0, 1, :title)",
+                    named_params! {
+                        ":id": id,
+                        ":sql": sql,
+                        ":position": position,
+                        ":title": title,
+                    },
                 )
                 .map_err(sql_err)?;
                 id
@@ -128,11 +141,19 @@ impl Store {
             Some(id) => {
                 conn.execute(
                     "update tabs
-                        set title = ?2, target_schema = ?3, target_table = ?4,
-                            mode = ?5, scratch_sql = null, query_id = null,
-                            cursor_pos = 0, is_preview = ?6
-                      where id = ?1",
-                    params![id, table, schema, table, mode.as_str(), is_preview],
+                        set title = :title, target_schema = :schema,
+                            target_table = :table, mode = :mode,
+                            scratch_sql = null, query_id = null,
+                            cursor_pos = 0, is_preview = :is_preview
+                      where id = :id",
+                    named_params! {
+                        ":id": id,
+                        ":title": table,
+                        ":schema": schema,
+                        ":table": table,
+                        ":mode": mode.as_str(),
+                        ":is_preview": is_preview,
+                    },
                 )
                 .map_err(sql_err)?;
                 id
@@ -145,16 +166,17 @@ impl Store {
                     "insert into tabs
                        (id, query_id, scratch_sql, position, is_active, cursor_pos,
                         is_preview, title, target_schema, target_table, mode)
-                     values (?1, null, null, ?2, 0, 0, ?3, ?4, ?5, ?6, ?7)",
-                    params![
-                        id,
-                        position,
-                        is_preview,
-                        table,
-                        schema,
-                        table,
-                        mode.as_str()
-                    ],
+                     values (:id, null, null, :position, 0, 0, :is_preview,
+                             :title, :schema, :table, :mode)",
+                    named_params! {
+                        ":id": id,
+                        ":position": position,
+                        ":is_preview": is_preview,
+                        ":title": table,
+                        ":schema": schema,
+                        ":table": table,
+                        ":mode": mode.as_str(),
+                    },
                 )
                 .map_err(sql_err)?;
                 id
@@ -190,8 +212,8 @@ impl Store {
         // takes the same lock. `promote_tab` above has the same shape.
         self.lock()
             .execute(
-                "update tabs set mode = ?2, is_preview = 0 where id = ?1",
-                params![id, mode.as_str()],
+                "update tabs set mode = :mode, is_preview = 0 where id = :id",
+                named_params! { ":id": id, ":mode": mode.as_str() },
             )
             .map_err(sql_err)?;
         self.tabs()
@@ -205,8 +227,8 @@ impl Store {
     pub fn save_scratch(&self, id: &str, sql: &str) -> Result<(), AppError> {
         self.lock()
             .execute(
-                "update tabs set scratch_sql = ?2 where id = ?1",
-                params![id, sql],
+                "update tabs set scratch_sql = :sql where id = :id",
+                named_params! { ":id": id, ":sql": sql },
             )
             .map_err(sql_err)?;
         Ok(())
@@ -321,34 +343,33 @@ fn activate(conn: &Connection, id: &str) -> Result<(), AppError> {
     Ok(())
 }
 
-/// The tab columns, in the order `tab_from_row` reads them. Both places
-/// that select a tab share this, so the column list and the indexes
-/// below can never drift apart.
+/// The tab columns. Both places that select a tab share this, so every
+/// name `tab_from_row` reads below is guaranteed to be in the result.
 const TAB_COLUMNS: &str = "id, query_id, scratch_sql, position, is_active, cursor_pos,
      is_preview, title, target_schema, target_table, mode";
 
 fn tab_from_row(row: &Row) -> rusqlite::Result<Tab> {
     // Read out early: whether there is a target decides how a missing
     // mode is filled in below.
-    let target_table: Option<String> = row.get(9)?;
+    let target_table: Option<String> = row.get("target_table")?;
 
     Ok(Tab {
-        id: row.get(0)?,
-        query_id: row.get(1)?,
-        scratch_sql: row.get(2)?,
-        position: row.get(3)?,
-        is_active: row.get::<_, i64>(4)? != 0,
-        cursor_pos: row.get(5)?,
-        is_preview: row.get::<_, i64>(6)? != 0,
-        title: row.get(7)?,
-        target_schema: row.get(8)?,
+        id: row.get("id")?,
+        query_id: row.get("query_id")?,
+        scratch_sql: row.get("scratch_sql")?,
+        position: row.get("position")?,
+        is_active: row.get::<_, i64>("is_active")? != 0,
+        cursor_pos: row.get("cursor_pos")?,
+        is_preview: row.get::<_, i64>("is_preview")? != 0,
+        title: row.get("title")?,
+        target_schema: row.get("target_schema")?,
         // `mode` is NULL on an ordinary query tab, so the decode only
         // runs when there is actually a mode stored. A tab that DOES
         // have a target but no stored mode is a broken row rather than a
         // real state — `Tab` says the two go together — so rather than
         // hand the UI a target it cannot render, fall back to Structure,
         // which reads the cached schema and runs no SQL.
-        mode: match row.get::<_, Option<String>>(10)? {
+        mode: match row.get::<_, Option<String>>("mode")? {
             Some(stored) => Some(TableMode::from_stored(&stored)),
             None if target_table.is_some() => Some(TableMode::Structure),
             None => None,
