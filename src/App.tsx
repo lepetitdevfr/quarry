@@ -152,11 +152,19 @@ export default function App() {
   // has no room for the sidebar, and a launch panel held to 900px is the
   // problem this is solving.
   const connected = connection !== null;
+  // The connection form is seven rows tall — URL, name, host and port, user
+  // and database, password, tag and SSL, buttons — so the panel that fits a
+  // list of connections cannot hold it. Three sizes rather than two, because
+  // sizing the launch screen for its tallest state would leave the common
+  // one mostly empty.
+  const editorOpen = !connected && editing !== null;
   useEffect(() => {
     const window = getCurrentWindow();
     const [w, h, minW, minH] = connected
       ? [1200, 800, 900, 560]
-      : [560, 520, 460, 420];
+      : editorOpen
+        ? [620, 780, 520, 640]
+        : [560, 520, 460, 420];
 
     // Order matters: shrinking below the current minimum is refused, so
     // the minimum has to come down first, and going the other way the
@@ -171,7 +179,9 @@ export default function App() {
       }
       await window.center();
     })();
-  }, [connected]);
+    // Growing for the form and shrinking again are the same transition run
+    // in reverse, so both directions clamp in the order set above.
+  }, [connected, editorOpen]);
 
   // ⌘W. The menu owns the accelerator — on macOS a menu key equivalent
   // never reaches the webview, so this cannot be a keydown listener
