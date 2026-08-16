@@ -88,20 +88,25 @@
         <a class="download" id="download" href="#">Loading latest release…</a>
         <p class="meta" id="meta">Apple Silicon · macOS</p>
 
-        <h2>First open</h2>
-        <pre>xattr -dr com.apple.quarantine /Applications/Quarry.app</pre>
-        <p class="note">
-          The build is unsigned, so macOS quarantines it and refuses the first
-          open until that flag is cleared. Drag Quarry to Applications first.
+        <div id="mac-note" hidden>
+          <h2>First open</h2>
+          <pre>xattr -dr com.apple.quarantine /Applications/Quarry.app</pre>
+          <p class="note">
+            The build is unsigned, so macOS quarantines it and refuses the
+            first open until that flag is cleared. Drag Quarry to Applications
+            first.
+          </p>
+        </div>
+
+        <p class="note" id="beta-note" hidden>
+          <strong>Beta.</strong> This build has never been run on a real
+          machine — it compiles and packages in CI, and that is all that is
+          known about it. Saved passwords in particular may not work.
         </p>
 
-        <div id="beta" hidden>
-          <h2>Linux and Windows — beta</h2>
-          <ul class="beta-list" id="beta-list"></ul>
-          <p class="note">
-            Never run on a real machine. They build in CI and that is all that
-            is known about them — saved passwords in particular may not work.
-          </p>
+        <div id="others" hidden>
+          <h2>Other platforms</h2>
+          <ul class="beta-list" id="other-list"></ul>
         </div>
       </div>
 
@@ -118,60 +123,86 @@
       const meta = document.getElementById("meta");
       const footer = document.getElementById("footer");
 
-      // What each file extension means to someone choosing a download.
-      // Anything not listed still appears, under its own extension.
-      const PLATFORMS = {
-        deb: "Linux · Debian/Ubuntu (.deb)",
-        AppImage: "Linux · AppImage",
-        msi: "Windows · installer (.msi)",
-        exe: "Windows · setup (.exe)",
-        zip: "macOS · app bundle (.zip)",
-      };
+      // What each file means to someone choosing a download. `beta` is what
+      // the app itself claims: macOS is exercised daily, the other two have
+      // only ever been compiled.
+      const KINDS = [
+        { ext: "dmg",      os: "mac",     label: "macOS · disk image (.dmg)" },
+        { ext: "app.zip",  os: "mac",     label: "macOS · app bundle (.zip)" },
+        { ext: "AppImage", os: "linux",   label: "Linux · AppImage", beta: true },
+        { ext: "deb",      os: "linux",   label: "Linux · Debian/Ubuntu (.deb)", beta: true },
+        { ext: "msi",      os: "windows", label: "Windows · installer (.msi)", beta: true },
+        { ext: "exe",      os: "windows", label: "Windows · setup (.exe)", beta: true },
+      ];
+
+      /** Which OS the visitor is on, so the big button is the one they want. */
+      function detectOs() {
+        // userAgentData is the non-deprecated source where it exists; the UA
+        // string is the fallback. Neither is reliable enough to hide the
+        // other platforms behind — hence a guess for the button and a full
+        // list underneath.
+        const platform =
+          navigator.userAgentData?.platform || navigator.platform || "";
+        const ua = platform + " " + navigator.userAgent;
+        if (/mac|iphone|ipad/i.test(ua)) return "mac";
+        if (/win/i.test(ua)) return "windows";
+        // Android reports Linux too, and there is no Android build, so it
+        // falls through to the default rather than being offered a .deb.
+        if (/linux|x11/i.test(ua) && !/android/i.test(ua)) return "linux";
+        return "mac";
+      }
+
+      const kindOf = (name) =>
+        KINDS.find((k) => name.endsWith("." + k.ext)) || {
+          os: "other",
+          label: name,
+        };
 
       const mb = (bytes) => (bytes / 1024 / 1024).toFixed(1) + " MB";
 
       fetch(API)
         .then((r) => (r.ok ? r.json() : Promise.reject(new Error(r.status))))
         .then((release) => {
-          const assets = release.assets || [];
+          const assets = (release.assets || []).map((a) => ({
+            ...a,
+            kind: kindOf(a.name),
+          }));
           if (assets.length === 0) throw new Error("release has no files");
 
-          const primary =
-            assets.find((a) => a.name.endsWith(".dmg")) ||
-            assets.find((a) => a.name.endsWith(".app.zip"));
-
-          if (primary) {
-            link.href = primary.browser_download_url;
-            link.textContent = "Download " + release.tag_name + " for macOS";
-            const date = new Date(release.published_at).toLocaleDateString();
-            meta.textContent =
-              "Apple Silicon · " + mb(primary.size) + " · " + date;
-          } else {
-            // Every platform is optional: a macOS packaging failure should not
-            // make the page claim there is nothing to download.
-            link.textContent = "No macOS build in " + release.tag_name;
-            link.removeAttribute("href");
-            meta.textContent = "Other platforms are listed below.";
-          }
-
+          const os = detectOs();
+          // Order within a platform is the order of KINDS: the installer a
+          // newcomer should take comes first.
+          const ranked = KINDS.flatMap((k) =>
+            assets.filter((a) => a.kind.ext === k.ext),
+          );
+          const primary = ranked.find((a) => a.kind.os === os) || ranked[0];
           const others = assets.filter((a) => a !== primary);
+
+          link.href = primary.browser_download_url;
+          link.textContent = "Download " + release.tag_name;
+          const date = new Date(release.published_at).toLocaleDateString();
+          meta.textContent =
+            primary.kind.label + " · " + mb(primary.size) + " · " + date;
+
+          // The quarantine instruction is macOS-only; showing it to a Windows
+          // visitor is noise that makes the page look careless.
+          document.getElementById("mac-note").hidden = primary.kind.os !== "mac";
+          document.getElementById("beta-note").hidden = !primary.kind.beta;
+
           if (others.length > 0) {
-            const list = document.getElementById("beta-list");
+            const list = document.getElementById("other-list");
             for (const asset of others) {
-              const ext = asset.name.endsWith(".app.zip")
-                ? "zip"
-                : asset.name.split(".").pop();
               const li = document.createElement("li");
               const a = document.createElement("a");
               a.href = asset.browser_download_url;
-              a.textContent = PLATFORMS[ext] || asset.name;
+              a.textContent = asset.kind.label + (asset.kind.beta ? " — beta" : "");
               const size = document.createElement("span");
               size.className = "size";
               size.textContent = " · " + mb(asset.size);
               li.append(a, size);
               list.append(li);
             }
-            document.getElementById("beta").hidden = false;
+            document.getElementById("others").hidden = false;
           }
 
           footer.innerHTML =
