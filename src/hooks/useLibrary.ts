@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import * as ipc from "../lib/ipc";
-import type { LibraryTree, Query, Tab, TableMode } from "../types";
+import type { LibraryTree, Query, Tab, TableMode, TabPin } from "../types";
 
 /** How long typing must pause before a draft is written. */
 const AUTOSAVE_DELAY_MS = 400;
@@ -107,7 +107,7 @@ export function useLibrary() {
       schema: string,
       table: string,
       mode: TableMode,
-      pin: boolean,
+      pin: TabPin,
     ) => setTabs(await ipc.openTableTab(schema, table, mode, pin)),
     setTabMode: async (id: string, mode: TableMode) =>
       setTabs(await ipc.setTabMode(id, mode)),

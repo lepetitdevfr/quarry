@@ -336,7 +336,7 @@ export default function App() {
   const openTableData = useCallback(
     async (schemaName: string, tableName: string) => {
       setSort(null);
-      await actions.openTableTab(schemaName, tableName, "data", false);
+      await actions.openTableTab(schemaName, tableName, "data", "preview");
       await runSql(previewSql(schemaName, tableName));
     },
     [actions, runSql],
@@ -345,7 +345,7 @@ export default function App() {
   // Double-click: structure, pinned — an explicit "keep this one".
   const openTableStructure = useCallback(
     async (schemaName: string, tableName: string) => {
-      await actions.openTableTab(schemaName, tableName, "structure", true);
+      await actions.openTableTab(schemaName, tableName, "structure", "pinned");
     },
     [actions],
   );

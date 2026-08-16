@@ -118,6 +118,9 @@ export interface Query {
 /** Mirrors Rust `TableMode`. */
 export type TableMode = "structure" | "data";
 
+/** Mirrors Rust `TabPin`. `"preview"` is disposable; `"pinned"` is kept. */
+export type TabPin = "preview" | "pinned";
+
 /** Mirrors Rust `Tab`. `query_id === null` means an untitled tab. */
 export interface Tab {
   id: string;

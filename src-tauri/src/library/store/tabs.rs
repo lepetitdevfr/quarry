@@ -1,5 +1,5 @@
 use crate::error::AppError;
-use crate::library::model::{Tab, TableMode, POSITION_GAP};
+use crate::library::model::{Tab, TabPin, TableMode, POSITION_GAP};
 use crate::library::store::{new_id, sql_err, Store};
 use rusqlite::{named_params, params, Connection, Row};
 
@@ -117,11 +117,11 @@ impl Store {
     }
 
     /// Open a tab targeting a table, reusing the preview slot unless
-    /// `pin` is set.
+    /// `pin` is `Pinned`.
     ///
-    /// `pin` is what a double-click passes: an explicit "keep this one",
-    /// so the next single-click in the tree opens elsewhere instead of
-    /// overwriting it. The preview slot is shared with query previews,
+    /// `Pinned` is what a double-click passes: an explicit "keep this
+    /// one", so the next single-click in the tree opens elsewhere instead
+    /// of overwriting it. The preview slot is shared with query previews,
     /// so this clears `scratch_sql` on the reuse path — otherwise a
     /// table tab would still be carrying the previous preview's SQL —
     /// and `query_id`, so a reused saved-query preview stops pointing at
@@ -131,11 +131,11 @@ impl Store {
         schema: &str,
         table: &str,
         mode: TableMode,
-        pin: bool,
+        pin: TabPin,
     ) -> Result<Vec<Tab>, AppError> {
         let conn = self.lock();
 
-        let is_preview = if pin { 0 } else { 1 };
+        let is_preview = pin.is_preview();
 
         let id = match preview_slot(&conn) {
             Some(id) => {

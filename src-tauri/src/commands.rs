@@ -5,7 +5,7 @@ use crate::edit::{
 use crate::error::AppError;
 use crate::exec::{run_query, QueryResult};
 use crate::guard::{decide, Decision, Policy};
-use crate::library::model::{LibraryTree, Query, Tab, TableMode};
+use crate::library::model::{LibraryTree, Query, Tab, TabPin, TableMode};
 use crate::library::store::Store;
 use deadpool_postgres::Pool;
 use serde::Serialize;
@@ -410,7 +410,7 @@ pub fn open_table_tab(
     schema: String,
     table: String,
     mode: TableMode,
-    pin: bool,
+    pin: TabPin,
 ) -> Result<Vec<Tab>, AppError> {
     state.library.open_table_tab(&schema, &table, mode, pin)
 }

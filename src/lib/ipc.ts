@@ -14,6 +14,7 @@ import type {
   Schema,
   Tab,
   TableMode,
+  TabPin,
 } from "../types";
 
 /**
@@ -169,7 +170,7 @@ export async function openTableTab(
   schema: string,
   table: string,
   mode: TableMode,
-  pin: boolean,
+  pin: TabPin,
 ): Promise<Tab[]> {
   return invoke<Tab[]>("open_table_tab", { schema, table, mode, pin });
 }

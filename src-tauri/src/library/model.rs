@@ -156,6 +156,31 @@ impl TableMode {
     }
 }
 
+/// Whether opening a table tab claims the preview slot or keeps the tab.
+///
+/// `Preview` is a single-click: the tab is disposable and the next
+/// preview reuses it. `Pinned` is a double-click — an explicit "keep
+/// this one", so the next preview opens elsewhere.
+///
+/// This is not stored as a string: it decides the `is_preview` integer
+/// column, which is why there is no `as_str`/`from_stored` pair here.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum TabPin {
+    Preview,
+    Pinned,
+}
+
+impl TabPin {
+    /// The `is_preview` column value this pin means.
+    pub fn is_preview(&self) -> i64 {
+        match self {
+            TabPin::Preview => 1,
+            TabPin::Pinned => 0,
+        }
+    }
+}
+
 /// A saved connection. The password is NOT here — it lives in the
 /// Keychain under this record's id.
 #[derive(Debug, Clone, Serialize, Deserialize)]

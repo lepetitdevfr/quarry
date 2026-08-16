@@ -1,4 +1,4 @@
-use quarry_lib::library::model::TableMode;
+use quarry_lib::library::model::{TabPin, TableMode};
 use quarry_lib::library::store::Store;
 
 /// Each test gets its own database in a temp dir, so tests never share
@@ -527,7 +527,7 @@ fn opens_a_table_tab_in_the_preview_slot() {
     let (s, _dir) = store();
 
     let tabs = s
-        .open_table_tab("public", "users", TableMode::Structure, false)
+        .open_table_tab("public", "users", TableMode::Structure, TabPin::Preview)
         .unwrap();
 
     assert_eq!(tabs.len(), 1);
@@ -551,10 +551,10 @@ fn a_second_table_tab_reuses_the_preview_slot() {
     // Clicking down a long tree must not leave a tab per row.
     let (s, _dir) = store();
 
-    s.open_table_tab("public", "users", TableMode::Structure, false)
+    s.open_table_tab("public", "users", TableMode::Structure, TabPin::Preview)
         .unwrap();
     let tabs = s
-        .open_table_tab("public", "events", TableMode::Structure, false)
+        .open_table_tab("public", "events", TableMode::Structure, TabPin::Preview)
         .unwrap();
 
     assert_eq!(tabs.len(), 1, "the preview slot is reused, not added to");
@@ -565,10 +565,10 @@ fn a_second_table_tab_reuses_the_preview_slot() {
 fn a_pinned_table_tab_is_not_reused() {
     let (s, _dir) = store();
 
-    s.open_table_tab("public", "users", TableMode::Data, true)
+    s.open_table_tab("public", "users", TableMode::Data, TabPin::Pinned)
         .unwrap();
     let tabs = s
-        .open_table_tab("public", "events", TableMode::Structure, false)
+        .open_table_tab("public", "events", TableMode::Structure, TabPin::Preview)
         .unwrap();
 
     assert_eq!(tabs.len(), 2, "the pinned tab survives");
@@ -587,7 +587,7 @@ fn a_query_preview_clears_a_table_target() {
     // look like a table tab to the UI.
     let (s, _dir) = store();
 
-    s.open_table_tab("public", "users", TableMode::Structure, false)
+    s.open_table_tab("public", "users", TableMode::Structure, TabPin::Preview)
         .unwrap();
     let tabs = s
         .open_preview_tab("events", "select * from events")
@@ -608,7 +608,7 @@ fn a_table_tab_clears_the_query_preview_it_replaces() {
     s.open_preview_tab("events", "select * from events")
         .unwrap();
     let tabs = s
-        .open_table_tab("public", "users", TableMode::Structure, false)
+        .open_table_tab("public", "users", TableMode::Structure, TabPin::Preview)
         .unwrap();
 
     assert_eq!(tabs.len(), 1, "the slot is reused, not added to");
@@ -625,10 +625,10 @@ fn double_clicking_pins_the_tab_that_was_a_preview() {
     // Single-click then double-click: the pin has to stick even though
     // the row already existed as a preview.
     let (s, _dir) = store();
-    s.open_table_tab("public", "users", TableMode::Structure, false)
+    s.open_table_tab("public", "users", TableMode::Structure, TabPin::Preview)
         .unwrap();
     let tabs = s
-        .open_table_tab("sales", "orders", TableMode::Data, true)
+        .open_table_tab("sales", "orders", TableMode::Data, TabPin::Pinned)
         .unwrap();
 
     assert_eq!(tabs.len(), 1, "the preview slot is taken over");
@@ -652,7 +652,7 @@ fn a_table_tab_round_trips_its_schema_and_table() {
 
     {
         let s = Store::open_at(&path).unwrap();
-        s.open_table_tab("sales", "orders", TableMode::Data, true)
+        s.open_table_tab("sales", "orders", TableMode::Data, TabPin::Pinned)
             .unwrap();
 
         let tabs = s.tabs().unwrap();
@@ -688,7 +688,7 @@ fn a_tab_with_a_target_but_no_stored_mode_reads_as_structure() {
     {
         let s = Store::open_at(&path).unwrap();
         // Pinned, so it survives the reopen below.
-        s.open_table_tab("sales", "orders", TableMode::Data, true)
+        s.open_table_tab("sales", "orders", TableMode::Data, TabPin::Pinned)
             .unwrap();
     }
 
@@ -711,7 +711,7 @@ fn switching_mode_pins_the_tab() {
     let (s, _dir) = store();
 
     let tabs = s
-        .open_table_tab("public", "users", TableMode::Structure, false)
+        .open_table_tab("public", "users", TableMode::Structure, TabPin::Preview)
         .unwrap();
     let id = tabs[0].id.clone();
 
