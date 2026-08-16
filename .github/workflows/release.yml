@@ -1,30 +1,44 @@
 name: Release
 
-# Tag-driven: `git tag v0.1.0 && git push origin v0.1.0` builds and publishes.
-# The tag is the trigger and the version, so nothing here needs editing per
-# release — but the tag must match `version` in src-tauri/tauri.conf.json and
-# package.json, or the .dmg inside will disagree with the release name.
+# Push to main and semantic-release decides, from the commit messages, whether
+# there is a release and what version it is. `feat:` bumps the minor, `fix:`
+# and `refactor:` the patch, a `BREAKING CHANGE:` footer the major; `docs:`,
+# `test:`, `ci:` and `chore:` release nothing.
+#
+# Versioning, building and publishing all live in ONE job on purpose: a tag
+# pushed with GITHUB_TOKEN does not trigger other workflows, so a separate
+# tag-triggered build would simply never run.
 on:
   push:
-    tags: ["v*"]
-  # Lets a build be rehearsed without tagging: the publish step is skipped.
+    branches: [main]
+  # Rehearsal: builds and uploads an artifact, releases nothing.
   workflow_dispatch:
 
+concurrency:
+  group: release
+  cancel-in-progress: false
+
 env:
-  # The public repo the .dmg is published to. This repo stays private, and a
-  # private repo's release assets cannot be downloaded without a token — so
-  # the artifact goes somewhere public while the source does not.
+  # The public repo the artifacts are published to. This repo stays private,
+  # and a private repo's release assets cannot be downloaded without a token.
   RELEASES_REPO: lepetitdevfr/quarry-releases
 
 jobs:
   release:
-    # Apple Silicon runner: the app is macOS-only and this is the arch it
-    # ships for. An Intel build would need a second matrix entry with
-    # `--target x86_64-apple-darwin`.
+    # Apple Silicon: the arch the app ships for.
     runs-on: macos-14
+
+    permissions:
+      # semantic-release commits the changelog and version bump back to main.
+      contents: write
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # semantic-release reads the tag history to work out the last
+          # release; a shallow clone makes it think every release is the first.
+          fetch-depth: 0
+          persist-credentials: true
 
       - uses: actions/setup-node@v4
         with:
@@ -39,34 +53,61 @@ jobs:
 
       - run: npm ci
 
-      # The .app is bundled first and separately. DMG creation is the flaky
-      # step on a headless runner — it drives hdiutil and, on some images,
-      # Finder via AppleScript — and a DMG problem should not cost the build
-      # that already succeeded.
+      # Decides the version, writes CHANGELOG.md, propagates the version into
+      # tauri.conf.json and Cargo.toml, commits, and tags. Publishes nothing
+      # by itself — the artifacts are attached further down, because they have
+      # to be built with the version this step just chose.
+      - name: Version and changelog
+        id: semantic
+        if: github.event_name == 'push'
+        uses: cycjimmy/semantic-release-action@v4
+        with:
+          semantic_version: 24
+          extra_plugins: |
+            @semantic-release/changelog@6
+            @semantic-release/git@10
+            @semantic-release/exec@6
+            conventional-changelog-conventionalcommits@7
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Everything below runs when a release was cut, or on a manual rehearsal.
+      - name: Should build
+        id: gate
+        run: |
+          if [ "${{ steps.semantic.outputs.new_release_published }}" = "true" ] \
+             || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "go=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "go=false" >> "$GITHUB_OUTPUT"
+            echo "no releasable commits — nothing to build"
+          fi
+
+      # The .app first and separately: DMG creation drives hdiutil on a
+      # headless runner and is the flaky step, and a DMG problem should not
+      # cost a build that already succeeded.
       - name: Build the app
+        if: steps.gate.outputs.go == 'true'
         run: npm run tauri build -- --bundles app --verbose
 
-      # `hdiutil` intermittently reports "Resource busy" on CI when a volume
-      # from an earlier attempt is still detaching, so one retry after a
-      # pause fixes most failures. `--verbose` keeps the real error visible
-      # when it does not.
+      # hdiutil intermittently reports "Resource busy" on CI while a volume
+      # from an earlier attempt detaches, so one retry clears most failures.
       - name: Bundle the .dmg
-        id: bundle
+        if: steps.gate.outputs.go == 'true'
         continue-on-error: true
         run: |
           npm run tauri build -- --bundles dmg --verbose \
             || (echo "retrying dmg bundle"; sleep 15; npm run tauri build -- --bundles dmg --verbose)
 
-      # Renamed with the tag so a downloaded file says which version it is:
-      # Tauri names every build from the config version, which stops being
-      # bumped by hand sooner or later. Ships whichever bundles exist. A .zip of the .app is a perfectly good
-      # macOS download — it is what many notarised apps distribute — so a
-      # failed DMG degrades the release rather than blocking it.
+      # Ships whichever bundles exist. A ditto zip of the .app is a normal
+      # macOS download, so a failed DMG degrades the release rather than
+      # blocking it.
       - name: Collect the artifacts
-        id: dmg
+        id: artifacts
+        if: steps.gate.outputs.go == 'true'
         run: |
           set -euo pipefail
-          version="${{ github.ref_name }}"
+          version="${{ steps.semantic.outputs.new_release_version || github.sha }}"
           out=""
 
           dmg=$(ls src-tauri/target/release/bundle/dmg/*.dmg 2>/dev/null | head -1 || true)
@@ -79,7 +120,7 @@ jobs:
 
           app=$(ls -d src-tauri/target/release/bundle/macos/*.app 2>/dev/null | head -1 || true)
           if [ -n "$app" ]; then
-            # ditto, not zip: it preserves the resource forks and symlinks an
+            # ditto, not zip: it preserves the symlinks and resource forks an
             # .app bundle needs to stay launchable.
             ditto -c -k --keepParent "$app" "Quarry-$version-aarch64.app.zip"
             out="$out"$'\n'"Quarry-$version-aarch64.app.zip"
@@ -96,28 +137,32 @@ jobs:
             echo "EOF"
           } >> "$GITHUB_OUTPUT"
 
-      # Uploaded on every run, tag or not, so a dispatch rehearsal still
-      # produces something to open and check before anything is published.
       - uses: actions/upload-artifact@v4
+        if: steps.gate.outputs.go == 'true'
         with:
           name: bundles
-          path: ${{ steps.dmg.outputs.paths }}
+          path: ${{ steps.artifacts.outputs.paths }}
 
+      # The notes are semantic-release's own, generated from the commits, so
+      # the public release says the same thing as CHANGELOG.md.
       - name: Publish to the public releases repo
-        if: startsWith(github.ref, 'refs/tags/')
+        if: steps.semantic.outputs.new_release_published == 'true'
         uses: softprops/action-gh-release@v2
         with:
           repository: ${{ env.RELEASES_REPO }}
-          # A fine-grained PAT scoped to the releases repo only, with
-          # Contents: read and write. The default GITHUB_TOKEN cannot reach
-          # another repository.
+          # A fine-grained PAT scoped to the releases repo, Contents: read and
+          # write. GITHUB_TOKEN cannot reach another repository.
           token: ${{ secrets.RELEASES_TOKEN }}
-          tag_name: ${{ github.ref_name }}
-          name: Quarry ${{ github.ref_name }}
-          files: ${{ steps.dmg.outputs.paths }}
+          tag_name: v${{ steps.semantic.outputs.new_release_version }}
+          name: Quarry v${{ steps.semantic.outputs.new_release_version }}
+          files: ${{ steps.artifacts.outputs.paths }}
           body: |
-            Apple Silicon build, unsigned. macOS quarantines it and will
-            refuse the first open until the flag is cleared:
+            ${{ steps.semantic.outputs.new_release_notes }}
+
+            ---
+
+            Apple Silicon build, unsigned. macOS quarantines it and will refuse
+            the first open until the flag is cleared:
 
             ```bash
             xattr -dr com.apple.quarantine /Applications/Quarry.app
