@@ -76,7 +76,6 @@ body {
   z-index: 20;
   background: var(--panel);
   border-bottom: 1px solid var(--border);
-  -webkit-app-region: drag;
 }
 
 /* Room for the strip. `border-box` because .app is 100vh: without it the
