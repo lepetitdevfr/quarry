@@ -54,12 +54,31 @@ impl AppState {
         })
     }
 
+    /// The active connection, recovering rather than panicking if the
+    /// mutex is poisoned.
+    ///
+    /// A mutex poisons when a thread panics while holding it. Every
+    /// critical section here is a `HashMap` insert or an `Option` swap,
+    /// so the data behind the lock is structurally valid either way.
+    /// Propagating the poison would panic every later `connect`,
+    /// `execute` and `disconnect` too — one unlucky panic would leave
+    /// the app permanently dead with nothing on screen to say why.
+    /// Recovering beats bricking.
+    fn active(&self) -> std::sync::MutexGuard<'_, Option<ActiveConnection>> {
+        self.active.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The cached schema, recovering for the same reason as `active`.
+    fn schema(&self) -> std::sync::MutexGuard<'_, Option<crate::schema::Schema>> {
+        self.schema.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
     /// Clone the live pool, or report that nothing is connected.
     ///
     /// The guard is dropped before returning, so no lock is ever held
     /// across an `.await` in the async command handlers.
     fn pool(&self) -> Result<Pool, AppError> {
-        let active = self.active.lock().expect("state lock poisoned");
+        let active = self.active();
         active
             .as_ref()
             .map(|a| a.pool.clone())
@@ -69,7 +88,7 @@ impl AppState {
     /// The pool plus the guard state, read under one lock so the policy
     /// cannot change between the check and the execution.
     fn pool_and_guard(&self) -> Result<(Pool, Policy, Option<Instant>), AppError> {
-        let active = self.active.lock().expect("state lock poisoned");
+        let active = self.active();
         active
             .as_ref()
             .map(|a| (a.pool.clone(), a.policy, a.unlocked_until))
@@ -78,8 +97,7 @@ impl AppState {
 
     /// Install a new active connection, closing whatever it replaces.
     fn set_active(&self, next: Option<ActiveConnection>) {
-        let previous =
-            std::mem::replace(&mut *self.active.lock().expect("state lock poisoned"), next);
+        let previous = std::mem::replace(&mut *self.active(), next);
 
         // `Pool` does not close its sockets when dropped, so an
         // un-closed pool leaves idle connections open on the server
@@ -88,7 +106,7 @@ impl AppState {
             old.pool.close();
         }
 
-        *self.schema.lock().expect("state lock poisoned") = None;
+        *self.schema() = None;
     }
 }
 
@@ -181,7 +199,7 @@ pub struct GuardStatus {
 
 #[tauri::command]
 pub fn guard_status(state: tauri::State<'_, AppState>) -> Result<Option<GuardStatus>, AppError> {
-    let active = state.active.lock().expect("state lock poisoned");
+    let active = state.active();
     Ok(active.as_ref().map(|a| GuardStatus {
         policy: match a.policy {
             Policy::Free => "free".to_string(),
@@ -207,7 +225,7 @@ pub fn unlock(state: tauri::State<'_, AppState>, typed_name: String) -> Result<(
     // holding the `active` mutex across a SQLite call would nest two
     // locks for no reason, and nested locks are how ordering bugs start.
     let id = {
-        let active = state.active.lock().expect("state lock poisoned");
+        let active = state.active();
         active
             .as_ref()
             .map(|a| a.id.clone())
@@ -222,7 +240,7 @@ pub fn unlock(state: tauri::State<'_, AppState>, typed_name: String) -> Result<(
         )));
     }
 
-    let mut active = state.active.lock().expect("state lock poisoned");
+    let mut active = state.active();
     // Re-check identity: the user could have switched connections while
     // the dialog was open, and unlocking a different database than the
     // one they named is exactly the accident this feature prevents.
@@ -240,7 +258,7 @@ pub fn unlock(state: tauri::State<'_, AppState>, typed_name: String) -> Result<(
 
 #[tauri::command]
 pub fn relock(state: tauri::State<'_, AppState>) -> Result<(), AppError> {
-    let mut active = state.active.lock().expect("state lock poisoned");
+    let mut active = state.active();
     if let Some(connection) = active.as_mut() {
         connection.unlocked_until = None;
     }
@@ -257,7 +275,7 @@ pub fn disconnect(state: tauri::State<'_, AppState>) -> Result<(), AppError> {
 pub fn active_connection(
     state: tauri::State<'_, AppState>,
 ) -> Result<Option<ConnectionInfo>, AppError> {
-    let active = state.active.lock().expect("state lock poisoned");
+    let active = state.active();
     Ok(active.as_ref().map(|a| a.info.clone()))
 }
 
@@ -485,12 +503,7 @@ pub fn delete_connection(
 ) -> Result<Vec<Connection>, AppError> {
     // Disconnect first if this is the live one, otherwise the pool
     // would outlive the record it came from.
-    let is_active = state
-        .active
-        .lock()
-        .expect("state lock poisoned")
-        .as_ref()
-        .is_some_and(|a| a.id == id);
+    let is_active = state.active().as_ref().is_some_and(|a| a.id == id);
     if is_active {
         state.set_active(None);
     }
@@ -611,7 +624,7 @@ pub async fn refresh_schema(
     let pool = state.pool()?;
     let fresh = crate::schema::introspect(&pool).await?;
 
-    *state.schema.lock().expect("state lock poisoned") = Some(fresh.clone());
+    *state.schema() = Some(fresh.clone());
 
     Ok(fresh)
 }

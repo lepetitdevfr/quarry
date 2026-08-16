@@ -49,32 +49,23 @@ work covered moving because it belonged there; the UI task was never written.
 Do (1) first; do (2) together with the `position` work rather than rushing
 both.
 
-## Recover from a poisoned mutex instead of panicking
+## Recover from a poisoned mutex instead of panicking — RESOLVED
 
-**Deferred:** 2026-08-14, raised while reading the Rust code.
+**Deferred:** 2026-08-14. **Closed:** 2026-08-16.
 
-Production code has ten `expect` calls. Three are startup fail-fast in
-`lib.rs` and are correct as they are. The other seven are
-`.expect("state lock poisoned")` on `Mutex` guards in `commands.rs` and
-`store.rs`.
+The seven `.expect("state lock poisoned")` calls are gone. `AppState` gained
+`active()` and `schema()` accessors and `Store::lock` recovers, all three via
+`unwrap_or_else(|e| e.into_inner())`: the data behind these locks is a
+`HashMap` insert, an `Option` swap or a SQLite connection, structurally valid
+either way, so recovering beats bricking every later call.
 
-A mutex poisons only if a thread panics while holding it. These critical
-sections are a `HashMap` insert or an `Option` swap, so it is unreachable in
-practice — but if it ever happened, every later `connect`, `execute`, and
-`disconnect` would panic too, leaving the app permanently dead with no error
-shown.
+Proven rather than assumed — `a_poisoned_library_lock_still_serves_the_next_caller`
+poisons the lock from a panicking thread and then reads the library. Restoring
+the `expect` makes it fail with `library lock poisoned: PoisonError { .. }`.
 
-The fix is one helper and seven call sites:
+The three remaining `expect` calls are the startup fail-fast in `lib.rs`, which
+this entry always said were correct as they are.
 
-```rust
-fn lock(&self) -> MutexGuard<'_, T> {
-    self.inner.lock().unwrap_or_else(|e| e.into_inner())
-}
-```
-
-The data behind the lock is structurally valid either way, so recovering beats
-bricking. Not urgent; "unreachable in practice" is just the assumption that
-ages badly as the code grows.
 
 ## CI cannot run the integration tests — RESOLVED
 

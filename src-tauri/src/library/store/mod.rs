@@ -319,8 +319,18 @@ impl Store {
         })
     }
 
+    /// The library connection, recovering rather than panicking if the
+    /// mutex is poisoned.
+    ///
+    /// A mutex poisons when a thread panics while holding it. The data
+    /// behind this one is a SQLite connection, which is structurally
+    /// valid either way — a panic mid-query leaves the connection
+    /// usable, and any half-written transaction is rolled back by
+    /// SQLite itself. Propagating the poison instead would panic every
+    /// later call too, so a single unlucky panic would brick the
+    /// library for the rest of the session with no error shown.
     pub(crate) fn lock(&self) -> std::sync::MutexGuard<'_, Connection> {
-        self.conn.lock().expect("library lock poisoned")
+        self.conn.lock().unwrap_or_else(|e| e.into_inner())
     }
 }
 
@@ -378,4 +388,39 @@ fn read_query(row: &Row) -> Result<Query, AppError> {
         created_at: row.get(6).map_err(sql_err)?,
         updated_at: row.get(7).map_err(sql_err)?,
     })
+}
+
+#[cfg(test)]
+mod poison_tests {
+    use super::*;
+
+    /// A panic while the library lock is held must not brick every later
+    /// call.
+    ///
+    /// Poisoning is deliberately provoked here rather than waited for:
+    /// the critical sections are short and this is unreachable in normal
+    /// use, which is exactly why the recovery has to be tested — nothing
+    /// else would ever exercise it.
+    #[test]
+    fn a_poisoned_library_lock_still_serves_the_next_caller() {
+        let dir = tempfile::tempdir().expect("temp dir");
+        let store = Store::open_at(&dir.path().join("library.db")).expect("open");
+
+        // Panic inside a thread while holding the lock. `catch_unwind`
+        // keeps the panic from failing the test itself.
+        let result = std::thread::scope(|scope| {
+            scope
+                .spawn(|| {
+                    let _guard = store.lock();
+                    panic!("poisoning the lock on purpose");
+                })
+                .join()
+        });
+        assert!(result.is_err(), "the thread should have panicked");
+
+        // The recovery under test: the mutex is now poisoned, and the
+        // connection behind it is still perfectly usable.
+        let tree = store.tree().expect("the library must still be readable");
+        assert_eq!(tree.queries.len(), 0);
+    }
 }
