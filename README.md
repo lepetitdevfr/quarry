@@ -92,8 +92,7 @@ npm run tauri build
 
 | Key | Action |
 |-----|--------|
-| `⌘↵` | Run the statement under the cursor |
-| `⇧⌘↵` | Run the whole buffer |
+| `⌘↵` | Run the editor's contents |
 | `↵` / double-click | Edit the focused grid cell |
 | `⌘⌫` | Stage SQL `NULL` in the focused cell |
 | `⇧⌘⌫` | Stage the selected row for deletion, or undo it (discards a staged new row) |

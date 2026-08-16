@@ -342,6 +342,38 @@ yet" since the first stage, through nine further stages. Rewritten this stage
 because inline editing was the last planned feature and the claim had become
 actively misleading — it told a reader the write-guard did not exist.
 
+## Run the statement under the cursor
+
+**Found:** 2026-08-16, while smoke testing insert. Scheduled as the next
+stage.
+
+`specs/2026-08-13-quarry-design.md:243` calls for "`⌘↵` runs the statement
+under the cursor; `⇧⌘↵` runs the whole buffer", and the README's Keyboard
+table claimed both for months. Neither exists. `⌘↵` is the only binding in
+`SqlEditor.tsx`, and `App.tsx`'s `run` sends the entire editor contents; the
+README has been corrected to say so.
+
+The consequence is that a buffer holding two statements cannot be run at all
+— Postgres refuses a multi-statement prepared statement with
+`42601: cannot insert multiple commands into a prepared statement` — so
+setup scripts have to be pasted one statement at a time.
+
+The work is one pure module and two bindings:
+
+- `statementAt(text, cursor)` in `src/lib/`, returning the statement
+  containing the cursor. The difficulty is entirely that a semicolon is not
+  always a separator: it can sit inside `'a;b'`, a quoted identifier, a `--`
+  comment, a `/* … */` block, or a `$$ … $$` dollar-quoted body (including
+  tagged `$fn$ … $fn$`). Exhaustive case table, same shape as `guard/`.
+- `⌘↵` runs `statementAt`; `⇧⌘↵` keeps today's whole-buffer behaviour, which
+  correctly still fails on multiple statements — multi-statement execution
+  stays out of scope per the write-guard spec.
+
+Worth noting it makes the guard *narrower* in the user's favour: today one
+`drop table` anywhere in a buffer classifies the whole buffer as a write, so
+a `select` sitting beside it is blocked on a locked connection. Per-statement
+running ends that.
+
 ## The test database was Postgres 11 — RESOLVED
 
 **Found:** 2026-08-16, while adding the catalog columns the insert stage
