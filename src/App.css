@@ -57,24 +57,40 @@ body {
   gap: 16px;
 }
 
-/* The window has no title bar of its own (titleBarStyle: Overlay), so the
-   traffic lights float over this strip. The left inset is the room they
-   need; without it the connection button sits underneath them. */
 .top-bar {
-  padding: var(--s-2) var(--s-3) var(--s-2) 82px;
+  padding: var(--s-2) var(--s-3);
   border-bottom: 1px solid var(--border);
   background: var(--panel);
-  /* Dragging the window has to work somewhere, and this strip is the
-     only chrome left. Children opt back out below, or a click on the
-     connection button would start a drag instead. */
+}
+
+/* The 28px band the traffic lights sit in, spanning the whole window
+   width so the sidebar is pushed clear of them as well as the main pane.
+   Fixed rather than a flex child: the connected layout is a row, and a
+   full-width strip cannot be a row item without restructuring it. */
+.drag-strip {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 28px;
+  z-index: 20;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
   -webkit-app-region: drag;
 }
 
-.top-bar button,
-.top-bar .connection-menu,
-.top-bar input,
-.top-bar select {
-  -webkit-app-region: no-drag;
+/* Room for the strip. `border-box` because .app is 100vh: without it the
+   padding is added to the height and the status bar drops off-screen. */
+.app.with-sidebar {
+  box-sizing: border-box;
+  padding-top: 28px;
+}
+
+/* On the launch screen there is no chrome for the strip to belong to, so
+   it stays invisible and does nothing but carry the drag. */
+.drag-strip.transparent {
+  background: transparent;
+  border-bottom: none;
 }
 
 button {

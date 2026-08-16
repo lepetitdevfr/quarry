@@ -690,6 +690,9 @@ export default function App() {
   if (!connection) {
     return (
       <main className="app centered">
+        {/* Same reason as the connected layout: with no title bar, the
+            webview covers the region the window is normally dragged by. */}
+        <div className="drag-strip transparent" data-tauri-drag-region />
         <div className="launch-mark">
           {/* Imported rather than referenced as `/icon.png`: a public-path
               asset resolves against the dev server but not through Tauri's
@@ -762,6 +765,11 @@ export default function App() {
 
   return (
     <main className={`app with-sidebar${unlocked ? " unlocked" : ""}`}>
+      {/* The window has no title bar, so the traffic lights float over
+          whatever is at the top left — here, the sidebar. This strip is
+          the room they need and the only place left to drag the window
+          by, since every other surface is a control or a scroll area. */}
+      <div className="drag-strip" data-tauri-drag-region />
       <div className="sidebar-shell" style={{ width: sidebarWidth }}>
         <Sidebar
           library={library}
