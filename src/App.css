@@ -1371,7 +1371,10 @@ button,
   border-radius: 4px;
   background: transparent;
   color: var(--text);
-  font-size: var(--t-sm);
+  /* Same size as a tree row: these are collection names, the same kind of
+     content the sidebar already shows, and 11px here read as a different
+     class of thing. */
+  font-size: var(--t-base);
   font-weight: 400;
   text-align: left;
   white-space: nowrap;
