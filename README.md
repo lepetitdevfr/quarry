@@ -64,6 +64,22 @@ refuses the statement, and the session runs with
 `default_transaction_read_only=on` so Postgres refuses it too. A bug in the
 classifier is not enough to write to production.
 
+## Download
+
+[**Latest release**](https://github.com/lepetitdevfr/quarry/releases/latest) —
+a `.dmg` for Apple Silicon, built in CI from the tagged commit.
+
+The build is **unsigned**, so macOS quarantines it and refuses the first open.
+Clear the flag after dragging Quarry to Applications:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/Quarry.app
+```
+
+This is not a workaround for a broken app — it is what an app without a $99/yr
+Apple Developer signature looks like on macOS. If that trade is not acceptable,
+build from source below; the result is identical.
+
 ## Requirements
 
 - macOS (Apple Silicon), Xcode Command Line Tools
@@ -128,7 +144,9 @@ Honest list, not a roadmap. Items with a plan behind them are in
 
 - **macOS Apple Silicon only.** Nothing in the code is deeply macOS-bound
   except Keychain access, but no Windows or Linux build is set up or tested.
-- **No signed downloads.** Build from source.
+- **Downloads are unsigned.** They install, but macOS quarantines them until
+  you clear the flag (see [Download](#download)). Signing needs a paid Apple
+  Developer account.
 - **One statement at a time.** Postgres refuses a multi-statement prepared
   statement, so `⇧⌘↵` on a buffer holding several fails. `⌘↵` runs the one
   under the cursor.

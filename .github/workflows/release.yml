@@ -1,0 +1,58 @@
+name: Release
+
+# Tag-driven: `git tag v0.1.0 && git push origin v0.1.0` builds and publishes.
+# The tag is the trigger and the version, so nothing here needs editing per
+# release — but the tag must match `version` in src-tauri/tauri.conf.json and
+# package.json, or the .dmg inside will disagree with the release name.
+on:
+  push:
+    tags: ["v*"]
+  # Lets a build be rehearsed without tagging: the release step is skipped.
+  workflow_dispatch:
+
+jobs:
+  release:
+    # Apple Silicon runner: the app is macOS-only and this is the arch it
+    # ships for. An Intel build would need a second matrix entry with
+    # `--target x86_64-apple-darwin`.
+    runs-on: macos-14
+
+    permissions:
+      # Required to create the release and attach files to it.
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - run: npm ci
+
+      - uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: Quarry ${{ github.ref_name }}
+          releaseBody: |
+            Unsigned build. macOS will refuse it on first open until the
+            quarantine flag is cleared:
+
+            ```bash
+            xattr -dr com.apple.quarantine /Applications/Quarry.app
+            ```
+
+            See the README for what changed.
+          # Published straight away rather than left as a draft: a release
+          # nobody can see is indistinguishable from a failed build.
+          releaseDraft: false
+          prerelease: false
