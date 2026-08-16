@@ -15,6 +15,10 @@ on:
         description: "Rehearse: build every platform, publish nothing"
         type: boolean
         default: false
+      rebuild_tag:
+        description: "Rebuild and publish an existing version, WITHOUT the v (e.g. 0.2.0). Skips semantic-release."
+        type: string
+        default: ""errored
 
 concurrency:
   group: release
@@ -33,8 +37,12 @@ jobs:
     permissions:
       contents: write
     outputs:
-      published: ${{ steps.semantic.outputs.new_release_published }}
-      version: ${{ steps.semantic.outputs.new_release_version }}
+      # `rebuild_tag` republishes a version that was already cut — the case
+      # where the build failed after semantic-release had tagged, leaving a
+      # tag with no artifacts behind it. semantic-release will not cut a new
+      # version for that, because nothing has changed since.
+      published: ${{ inputs.rebuild_tag != '' && 'true' || steps.semantic.outputs.new_release_published }}
+      version: ${{ inputs.rebuild_tag != '' && inputs.rebuild_tag || steps.semantic.outputs.new_release_version }}
       notes: ${{ steps.semantic.outputs.new_release_notes }}
     steps:
       - uses: actions/checkout@v4
@@ -52,7 +60,7 @@ jobs:
 
       - name: Version and changelog
         id: semantic
-        if: inputs.dry_run != true
+        if: inputs.dry_run != true && inputs.rebuild_tag == ''
         uses: cycjimmy/semantic-release-action@v4
         with:
           semantic_version: 24
@@ -134,9 +142,36 @@ jobs:
       # unproven: a packaging failure on either should leave the macOS release
       # intact rather than sink it. The collect step below fails if nothing at
       # all was produced.
+      # `hdiutil: create failed - Resource busy` is the macOS runner's
+      # signature failure: a disk image from an earlier attempt is still
+      # detaching, or Spotlight has the volume open. Detaching anything
+      # stale and retrying clears it. Three attempts because the window is
+      # short and a release should not die on a race.
       - name: Build
         continue-on-error: ${{ matrix.os != 'macos-14' }}
-        run: npm run tauri build -- --bundles ${{ matrix.bundles }} --verbose
+        shell: bash
+        run: |
+          set -o pipefail
+          for attempt in 1 2 3; do
+            if npm run tauri build -- --bundles ${{ matrix.bundles }} --verbose; then
+              exit 0
+            fi
+            echo "::warning::build attempt $attempt failed"
+
+            if [ "${{ matrix.os }}" = "macos-14" ]; then
+              # Detach any Quarry volume the failed run left mounted, and
+              # give the kernel a moment to release the device.
+              hdiutil info | awk '/\/Volumes\/Quarry/ {print $1}' | while read -r dev; do
+                echo "detaching stale volume $dev"
+                hdiutil detach "$dev" -force || true
+              done
+              sleep 20
+            else
+              sleep 10
+            fi
+          done
+          echo "build failed after 3 attempts"
+          exit 1
 
       - name: Collect the bundles
         shell: bash
