@@ -8,6 +8,6 @@ pub use decide::{
     TableFacts,
 };
 pub use sql::{
-    build_deletes, build_updates, cast_target, quote_ident, CellEdit, RowDelete, RowEdit,
-    Statement, StatementKind,
+    build_deletes, build_updates, cast_target, quote_ident, value_choices, CellEdit, RowDelete,
+    RowEdit, Statement, StatementKind,
 };

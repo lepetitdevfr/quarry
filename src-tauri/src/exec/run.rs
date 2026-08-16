@@ -1,4 +1,4 @@
-use crate::edit::{cast_target, decide_editability, EditInfo, SourceColumn};
+use crate::edit::{cast_target, decide_editability, value_choices, EditInfo, SourceColumn};
 use crate::error::AppError;
 use crate::exec::value::cell_to_json;
 use crate::schema::lookup_table;
@@ -91,6 +91,7 @@ pub async fn run_query(pool: &Pool, sql: &str, read_write: bool) -> Result<Query
             table_oid: c.table_oid(),
             attnum: c.column_id(),
             cast_type: cast_target(c.type_()),
+            choices: value_choices(c.type_()),
         })
         .collect();
 

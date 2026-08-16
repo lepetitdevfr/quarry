@@ -83,6 +83,22 @@ pub fn cast_target(t: &Type) -> String {
     }
 }
 
+/// The fixed set of values a column accepts, if it has one.
+///
+/// The labels come from the driver's own type metadata, resolved from
+/// `pg_enum` during `prepare` — the same place `table_oid` comes from.
+/// No catalog query, and nothing parsed.
+pub fn value_choices(t: &Type) -> Option<Vec<String>> {
+    match t.kind() {
+        Kind::Enum(labels) => Some(labels.clone()),
+        // A domain is a constrained wrapper around another type, so it
+        // accepts whatever that type accepts.
+        Kind::Domain(inner) => value_choices(inner),
+        _ if *t == Type::BOOL => Some(vec!["true".to_string(), "false".to_string()]),
+        _ => None,
+    }
+}
+
 /// The table a statement will name, refusing a result that has none or
 /// that is not editable at all.
 ///
