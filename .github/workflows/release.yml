@@ -4,14 +4,10 @@ name: Release
 # there is a release and what version it is. `feat:` bumps the minor, `fix:`
 # and `refactor:` the patch, a `BREAKING CHANGE:` footer the major; `docs:`,
 # `test:`, `ci:` and `chore:` release nothing.
-#
-# Versioning, building and publishing all live in ONE job on purpose: a tag
-# pushed with GITHUB_TOKEN does not trigger other workflows, so a separate
-# tag-triggered build would simply never run.
 on:
   push:
     branches: [main]
-  # Rehearsal: builds and uploads an artifact, releases nothing.
+  # Rehearsal: builds every platform and uploads artifacts, releases nothing.
   workflow_dispatch:
 
 concurrency:
@@ -24,39 +20,30 @@ env:
   RELEASES_REPO: lepetitdevfr/quarry-releases
 
 jobs:
-  release:
-    # Apple Silicon: the arch the app ships for.
-    runs-on: macos-14
-
+  # Runs first and alone: the version has to exist before anything is built,
+  # because it is baked into tauri.conf.json and names every artifact.
+  version:
+    runs-on: ubuntu-latest
     permissions:
-      # semantic-release commits the changelog and version bump back to main.
       contents: write
-
+    outputs:
+      published: ${{ steps.semantic.outputs.new_release_published }}
+      version: ${{ steps.semantic.outputs.new_release_version }}
+      notes: ${{ steps.semantic.outputs.new_release_notes }}
     steps:
       - uses: actions/checkout@v4
         with:
-          # semantic-release reads the tag history to work out the last
-          # release; a shallow clone makes it think every release is the first.
+          # semantic-release reads tag history to find the last release; a
+          # shallow clone makes it think every release is the first.
           fetch-depth: 0
-          persist-credentials: true
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
 
-      - uses: dtolnay/rust-toolchain@stable
-
-      - uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: src-tauri
-
       - run: npm ci
 
-      # Decides the version, writes CHANGELOG.md, propagates the version into
-      # tauri.conf.json and Cargo.toml, commits, and tags. Publishes nothing
-      # by itself — the artifacts are attached further down, because they have
-      # to be built with the version this step just chose.
       - name: Version and changelog
         id: semantic
         if: github.event_name == 'push'
@@ -71,99 +58,154 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      # Everything below runs when a release was cut, or on a manual rehearsal.
-      - name: Should build
-        id: gate
+  build:
+    needs: version
+    if: needs.version.outputs.published == 'true' || github.event_name == 'workflow_dispatch'
+
+    strategy:
+      # One platform failing must not cost the others: macOS is the supported
+      # build and the other two are beta, so a Linux packaging problem should
+      # not withhold the .dmg.
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            label: aarch64-macos
+            bundles: app,dmg
+          - os: ubuntu-latest
+            label: x86_64-linux
+            bundles: deb,appimage
+          - os: windows-latest
+            label: x86_64-windows
+            bundles: msi,nsis
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The tag semantic-release just pushed, so the build carries the
+          # version bump it committed. On a rehearsal there is no tag, so the
+          # branch tip is what gets built.
+          ref: ${{ needs.version.outputs.published == 'true' && format('v{0}', needs.version.outputs.version) || github.ref }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: ${{ matrix.label }}
+
+      # Tauri links against the system webview on Linux. These are the
+      # packages its own CI guide names for a Debian-family runner.
+      - name: Install Tauri system dependencies
+        if: matrix.os == 'ubuntu-latest'
         run: |
-          if [ "${{ steps.semantic.outputs.new_release_published }}" = "true" ] \
-             || [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "go=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "go=false" >> "$GITHUB_OUTPUT"
-            echo "no releasable commits — nothing to build"
-          fi
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf
 
-      # The .app first and separately: DMG creation drives hdiutil on a
-      # headless runner and is the flaky step, and a DMG problem should not
-      # cost a build that already succeeded.
-      - name: Build the app
-        if: steps.gate.outputs.go == 'true'
-        run: npm run tauri build -- --bundles app --verbose
+      - run: npm ci
 
-      # hdiutil intermittently reports "Resource busy" on CI while a volume
-      # from an earlier attempt detaches, so one retry clears most failures.
-      - name: Bundle the .dmg
-        if: steps.gate.outputs.go == 'true'
-        continue-on-error: true
-        run: |
-          npm run tauri build -- --bundles dmg --verbose \
-            || (echo "retrying dmg bundle"; sleep 15; npm run tauri build -- --bundles dmg --verbose)
+      # `continue-on-error` because the Linux and Windows builds are beta and
+      # unproven: a packaging failure on either should leave the macOS release
+      # intact rather than sink it. The collect step below fails if nothing at
+      # all was produced.
+      - name: Build
+        continue-on-error: ${{ matrix.os != 'macos-14' }}
+        run: npm run tauri build -- --bundles ${{ matrix.bundles }} --verbose
 
-      # Ships whichever bundles exist. A ditto zip of the .app is a normal
-      # macOS download, so a failed DMG degrades the release rather than
-      # blocking it.
-      - name: Collect the artifacts
-        id: artifacts
-        if: steps.gate.outputs.go == 'true'
+      - name: Collect the bundles
+        shell: bash
         run: |
           set -euo pipefail
-          version="${{ steps.semantic.outputs.new_release_version || github.sha }}"
-          out=""
+          version="${{ needs.version.outputs.version || github.sha }}"
+          mkdir -p dist-artifacts
+          found=0
 
-          dmg=$(ls src-tauri/target/release/bundle/dmg/*.dmg 2>/dev/null | head -1 || true)
-          if [ -n "$dmg" ]; then
-            mv "$dmg" "Quarry-$version-aarch64.dmg"
-            out="Quarry-$version-aarch64.dmg"
-          else
-            echo "::warning::no .dmg was produced — publishing the .app as a zip instead"
-          fi
-
+          # ditto for the .app, not zip: it preserves the symlinks and
+          # resource forks the bundle needs to stay launchable.
           app=$(ls -d src-tauri/target/release/bundle/macos/*.app 2>/dev/null | head -1 || true)
           if [ -n "$app" ]; then
-            # ditto, not zip: it preserves the symlinks and resource forks an
-            # .app bundle needs to stay launchable.
-            ditto -c -k --keepParent "$app" "Quarry-$version-aarch64.app.zip"
-            out="$out"$'\n'"Quarry-$version-aarch64.app.zip"
+            ditto -c -k --keepParent "$app" "dist-artifacts/Quarry-$version-aarch64.app.zip"
+            found=1
           fi
 
-          if [ -z "$out" ]; then
-            echo "neither a .dmg nor an .app was built"
-            exit 1
-          fi
+          for f in \
+            src-tauri/target/release/bundle/dmg/*.dmg \
+            src-tauri/target/release/bundle/deb/*.deb \
+            src-tauri/target/release/bundle/appimage/*.AppImage \
+            src-tauri/target/release/bundle/msi/*.msi \
+            src-tauri/target/release/bundle/nsis/*.exe
+          do
+            [ -e "$f" ] || continue
+            ext="${f##*.}"
+            cp "$f" "dist-artifacts/Quarry-$version-${{ matrix.label }}.$ext"
+            found=1
+          done
 
-          {
-            echo "paths<<EOF"
-            echo "$out"
-            echo "EOF"
-          } >> "$GITHUB_OUTPUT"
+          if [ "$found" = "0" ]; then
+            echo "::warning::${{ matrix.label }} produced no bundles"
+          fi
+          ls -la dist-artifacts || true
 
       - uses: actions/upload-artifact@v4
-        if: steps.gate.outputs.go == 'true'
         with:
-          name: bundles
-          path: ${{ steps.artifacts.outputs.paths }}
+          name: bundles-${{ matrix.label }}
+          path: dist-artifacts/*
+          if-no-files-found: ignore
+
+  publish:
+    needs: [version, build]
+    if: needs.version.outputs.published == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: bundles-*
+          merge-multiple: true
+          path: dist-artifacts
+
+      - run: ls -la dist-artifacts
 
       # The notes are semantic-release's own, generated from the commits, so
       # the public release says the same thing as CHANGELOG.md.
       - name: Publish to the public releases repo
-        if: steps.semantic.outputs.new_release_published == 'true'
         uses: softprops/action-gh-release@v2
         with:
           repository: ${{ env.RELEASES_REPO }}
           # A fine-grained PAT scoped to the releases repo, Contents: read and
           # write. GITHUB_TOKEN cannot reach another repository.
           token: ${{ secrets.RELEASES_TOKEN }}
-          tag_name: v${{ steps.semantic.outputs.new_release_version }}
-          name: Quarry v${{ steps.semantic.outputs.new_release_version }}
-          files: ${{ steps.artifacts.outputs.paths }}
+          tag_name: v${{ needs.version.outputs.version }}
+          name: Quarry v${{ needs.version.outputs.version }}
+          files: dist-artifacts/*
           body: |
-            ${{ steps.semantic.outputs.new_release_notes }}
+            ${{ needs.version.outputs.notes }}
 
             ---
 
-            Apple Silicon build, unsigned. macOS quarantines it and will refuse
-            the first open until the flag is cleared:
+            ### macOS (Apple Silicon) — supported
+
+            Unsigned, so macOS quarantines it and refuses the first open:
 
             ```bash
             xattr -dr com.apple.quarantine /Applications/Quarry.app
             ```
+
+            ### Linux and Windows — beta, untested
+
+            These build in CI and have **never been run on a real machine**.
+            The credential store in particular — kernel keyutils on Linux,
+            Credential Manager on Windows — has only ever been compiled, and
+            the fonts and `⌘` shortcut labels are still macOS-shaped. Treat
+            them as previews and report what breaks.

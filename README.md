@@ -66,8 +66,14 @@ classifier is not enough to write to production.
 
 ## Download
 
-[**Latest release**](https://github.com/lepetitdevfr/quarry/releases/latest) —
-a `.dmg` for Apple Silicon, built in CI from the tagged commit.
+[**Latest release**](https://github.com/lepetitdevfr/quarry-releases/releases/latest)
+· [Download page](https://lepetitdevfr.github.io/quarry-releases/)
+
+**macOS (Apple Silicon)** is the supported build: a `.dmg`, or a `.zip` of the
+`.app`. **Linux (`.deb`, `.AppImage`) and Windows (`.msi`, `.exe`) are beta** —
+they build in CI and have never been run on a real machine. Their credential
+stores, kernel keyutils and Credential Manager, are compiled but unexercised,
+and the fonts and `⌘` labels are still macOS-shaped.
 
 The build is **unsigned**, so macOS quarantines it and refuses the first open.
 Clear the flag after dragging Quarry to Applications:
@@ -142,10 +148,10 @@ Stop it with `docker stop quarry-smoke`.
 Honest list, not a roadmap. Items with a plan behind them are in
 [`docs/BACKLOG.md`](docs/BACKLOG.md).
 
-- **macOS Apple Silicon only, in practice.** The crate compiles on Linux and
-  Windows — credentials go through `keyring`, which wraps each platform's
-  store — but no build is shipped or tested there, and the fonts and shortcut
-  labels are still macOS-shaped.
+- **macOS is the only supported platform.** Linux and Windows builds are
+  published as beta: they compile and package in CI, but nothing has run them,
+  their credential backends have never been exercised, and the fonts and
+  shortcut labels assume a Mac.
 - **Downloads are unsigned.** They install, but macOS quarantines them until
   you clear the flag (see [Download](#download)). Signing needs a paid Apple
   Developer account.
