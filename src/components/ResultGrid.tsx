@@ -13,9 +13,31 @@ import {
   initialWidths,
   resized,
 } from "../lib/gridWidths";
-import { cellText, isDeleted, isPending, pendingValue } from "../lib/pendingEdits";
-import type { Pending, PendingDeletes } from "../lib/pendingEdits";
-import type { QueryResult } from "../types";
+import {
+  cellText,
+  editorSeed,
+  insertValue,
+  isDeleted,
+  isPending,
+  pendingValue,
+} from "../lib/pendingEdits";
+import type {
+  Pending,
+  PendingDeletes,
+  PendingInserts,
+} from "../lib/pendingEdits";
+import type { ColumnEdit, QueryResult } from "../types";
+
+/**
+ * What an untouched cell on a new row will become.
+ *
+ * `default` and `NULL` are different promises, and the column's own
+ * metadata is the only thing that knows which one applies.
+ */
+function placeholderFor(columnEdit: ColumnEdit | undefined): string {
+  if (!columnEdit || columnEdit.insertable === false) return "generated";
+  return columnEdit.has_default ? "default" : "NULL";
+}
 
 interface Props {
   result: QueryResult;
@@ -39,6 +61,11 @@ interface Props {
   /** Staged row deletions, or null when editing is off entirely. */
   deletes: PendingDeletes | null;
   onToggleDelete: (row: number) => void;
+  /** Staged new rows, or null when editing is off entirely. */
+  inserts: PendingInserts | null;
+  onInsertRow: () => void;
+  onInsertCell: (id: number, column: number, value: string | null) => void;
+  onRemoveInsert: (id: number) => void;
   /**
    * The selected row, as an index into `result.rows`, or null when
    * nothing is selected. Reported upwards because the Delete row button
@@ -59,6 +86,10 @@ export function ResultGrid({
   onStage,
   deletes,
   onToggleDelete,
+  inserts,
+  onInsertRow,
+  onInsertCell,
+  onRemoveInsert,
   onSelectRow,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -98,6 +129,15 @@ export function ResultGrid({
   );
   const [draft, setDraft] = useState("");
 
+  // The same, for a cell on a staged new row. Keyed by the staged row's
+  // id rather than its position, so discarding an earlier staged row
+  // cannot re-point an open editor at a different one.
+  const [editingInsert, setEditingInsert] = useState<{
+    id: number;
+    col: number;
+  } | null>(null);
+  const [insertDraft, setInsertDraft] = useState("");
+
   const columnEdits = result.edit.columns;
 
   function canEdit(col: number): boolean {
@@ -108,7 +148,10 @@ export function ResultGrid({
     if (!canEdit(col)) return;
     const staged = pendingValue(pending!, row, col);
     setDraft(
-      staged !== undefined ? (staged ?? "") : cellText(result.rows[row][col]),
+      editorSeed(
+        columnEdits[col],
+        staged !== undefined ? (staged ?? "") : cellText(result.rows[row][col]),
+      ),
     );
     setEditing({ row, col });
   }
@@ -119,12 +162,98 @@ export function ResultGrid({
     setEditing(null);
   }
 
+  function openInsertEditor(id: number, col: number, current: string) {
+    setInsertDraft(editorSeed(columnEdits[col], current));
+    setEditingInsert({ id, col });
+  }
+
+  function commitInsert() {
+    if (editingInsert === null) return;
+    onInsertCell(editingInsert.id, editingInsert.col, insertDraft);
+    setEditingInsert(null);
+  }
+
+  /**
+   * The open editor for one cell.
+   *
+   * One function for both the existing rows and the staged ones: two
+   * copies of this branch would drift, and the column that offers a
+   * list of values offers it wherever it appears.
+   *
+   * A native `<select>` brings type-ahead, Enter-commits and
+   * Esc-cancels for free, which is why enum and boolean columns get one
+   * rather than a custom listbox.
+   */
+  function renderEditor(
+    columnEdit: ColumnEdit | undefined,
+    value: string,
+    setValue: (next: string) => void,
+    onCommit: () => void,
+    onCancel: () => void,
+  ) {
+    const shared = {
+      className: "cell-editor",
+      autoFocus: true,
+      value,
+      onBlur: onCommit,
+    };
+
+    if (columnEdit?.choices) {
+      return (
+        <select
+          {...shared}
+          onChange={(e) => setValue(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              onCommit();
+            }
+            if (e.key === "Escape") {
+              e.preventDefault();
+              onCancel();
+            }
+          }}
+        >
+          {columnEdit.choices.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+      );
+    }
+
+    return (
+      <input
+        {...shared}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            onCommit();
+          }
+          if (e.key === "Escape") {
+            e.preventDefault();
+            onCancel();
+          }
+          if (e.key === "Tab") {
+            e.preventDefault();
+            onCommit();
+          }
+          // The grid's document-level Cmd+C/Cmd+A handler already skips
+          // inputs, so nothing more is needed here.
+        }}
+      />
+    );
+  }
+
   // A rectangle into a result that no longer exists means nothing.
   useEffect(() => {
     setAnchor(null);
     setFocus(null);
     setSelectedAll(null);
     setEditing(null);
+    setEditingInsert(null);
     // `shape` is the same trigger the widths use.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shape]);
@@ -174,6 +303,14 @@ export function ResultGrid({
         return;
       }
 
+      // Shift+Cmd+N stages a blank row. Cmd+N is untouched by menu.rs,
+      // which claims only CmdOrCtrl+W and Shift+CmdOrCtrl+W.
+      if (e.shiftKey && e.key.toLowerCase() === "n" && inserts !== null) {
+        e.preventDefault();
+        onInsertRow();
+        return;
+      }
+
       if (e.key === "a") {
         e.preventDefault();
         setSelectedAll(selectAll(result.rows.length, result.columns.length));
@@ -201,7 +338,10 @@ export function ResultGrid({
 
     document.addEventListener("keydown", onKey);
     return () => document.removeEventListener("keydown", onKey);
-  }, [range, order, result]);
+    // `order` is a fresh array every render, so this already re-subscribes
+    // on each one; listing `inserts` and `onInsertRow` costs nothing and
+    // keeps the Shift+Cmd+N branch off a stale closure.
+  }, [range, order, result, inserts, onInsertRow]);
 
   // Drag state lives in a ref, not state: it changes on every
   // pointermove and re-rendering a virtualized grid at that rate is
@@ -418,34 +558,11 @@ export function ResultGrid({
                       }}
                       tabIndex={canEdit(i) ? 0 : undefined}
                     >
-                      {isEditingCell ? (
-                        <input
-                          className="cell-editor"
-                          autoFocus
-                          value={draft}
-                          onChange={(e) => setDraft(e.target.value)}
-                          onBlur={commit}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              e.preventDefault();
-                              commit();
-                            }
-                            if (e.key === "Escape") {
-                              e.preventDefault();
-                              setEditing(null);
-                            }
-                            if (e.key === "Tab") {
-                              e.preventDefault();
-                              commit();
-                            }
-                            // The grid's document-level Cmd+C/Cmd+A
-                            // handler already skips inputs, so nothing
-                            // more is needed here.
-                          }}
-                        />
-                      ) : (
-                        text
-                      )}
+                      {isEditingCell
+                        ? renderEditor(columnEdit, draft, setDraft, commit, () =>
+                            setEditing(null),
+                          )
+                        : text}
                     </td>
                   );
                 })}
@@ -453,6 +570,89 @@ export function ResultGrid({
             );
           })}
         </tbody>
+        {/* Staged rows sit in their own tbody, after the virtualized one
+            and outside both the virtual window and `order[]`: they are
+            not in the database, so there is nothing to sort them by and
+            nothing to scroll past — there are only ever a handful. */}
+        {inserts !== null && inserts.length > 0 && (
+          <tbody>
+            {inserts.map((staged) => (
+              <tr className="inserting" key={`insert-${staged.id}`}>
+                <td className="row-num">+</td>
+                {result.columns.map((_, i) => {
+                  const columnEdit = columnEdits[i];
+                  const value = insertValue(inserts, staged.id, i);
+                  const canFill = columnEdit?.insertable ?? false;
+                  const isEditingCell =
+                    editingInsert?.id === staged.id && editingInsert?.col === i;
+
+                  return (
+                    <td
+                      key={i}
+                      className={[
+                        value === undefined
+                          ? "cell-placeholder"
+                          : `cell-${formatCell(value).kind}`,
+                        canFill ? "" : "not-editable",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      style={{ width: `${widths[i]}px` }}
+                      title={
+                        canFill ? undefined : (columnEdit?.insert_reason ?? undefined)
+                      }
+                      tabIndex={canFill ? 0 : undefined}
+                      onDoubleClick={() =>
+                        canFill && openInsertEditor(staged.id, i, value ?? "")
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !isEditingCell && canFill) {
+                          e.preventDefault();
+                          openInsertEditor(staged.id, i, value ?? "");
+                        }
+                        // Discards the staged row outright: it never
+                        // existed, so there is nothing to ask the server
+                        // about.
+                        if (
+                          (e.metaKey || e.ctrlKey) &&
+                          e.shiftKey &&
+                          e.key === "Backspace"
+                        ) {
+                          e.preventDefault();
+                          onRemoveInsert(staged.id);
+                          return;
+                        }
+                        // An explicit NULL, which overrides a default
+                        // rather than accepting it.
+                        if (
+                          (e.metaKey || e.ctrlKey) &&
+                          !e.shiftKey &&
+                          e.key === "Backspace" &&
+                          canFill
+                        ) {
+                          e.preventDefault();
+                          onInsertCell(staged.id, i, null);
+                        }
+                      }}
+                    >
+                      {isEditingCell
+                        ? renderEditor(
+                            columnEdit,
+                            insertDraft,
+                            setInsertDraft,
+                            commitInsert,
+                            () => setEditingInsert(null),
+                          )
+                        : value === undefined
+                          ? placeholderFor(columnEdit)
+                          : formatCell(value).text}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        )}
       </table>
     </div>
   );

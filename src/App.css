@@ -1105,6 +1105,22 @@ button.link {
   box-shadow: inset 2px 0 0 var(--error);
 }
 
+/* A row staged for insertion. Tinted with the same amber as a pending
+   cell — it is the same promise, an unapplied change — but across the
+   whole row, since the row itself is what is new. */
+.result-grid tr.inserting td {
+  background: color-mix(in srgb, var(--pending) 12%, transparent);
+  box-shadow: inset 2px 0 0 var(--pending);
+}
+
+/* An untouched cell on a staged row, showing what the database will put
+   there rather than a value. Dimmed and italic so it never reads as
+   something that was typed. */
+.result-grid td.cell-placeholder {
+  color: var(--faint);
+  font-style: italic;
+}
+
 /* A cell that cannot be edited while the rest of the row can. Not an
    error state, so it stays quiet — the reason is in the tooltip. */
 .result-grid td.not-editable {

@@ -1,6 +1,7 @@
 import type {
   AppliedRow,
   CellValue,
+  ColumnEdit,
   EditInfo,
   QueryResult,
   RowDelete,
@@ -335,4 +336,23 @@ export function editingBlockedReason(
   if (!edit.editable) return edit.reason;
   if (locked) return "this connection is locked — unlock it to edit rows";
   return null;
+}
+
+/**
+ * The text an editor should open with, given what the cell holds now.
+ *
+ * A `<select>` can only display a value that is one of its options, so
+ * a cell whose current text is not a valid choice — an untouched cell
+ * on a new row, most often — would show the first option while the
+ * draft still said something else, and committing it untouched would
+ * stage that something else. Seeding from the choices keeps what is
+ * shown and what would be staged the same thing.
+ */
+export function editorSeed(
+  columnEdit: ColumnEdit | undefined,
+  current: string,
+): string {
+  const choices = columnEdit?.choices;
+  if (!choices || choices.length === 0) return current;
+  return choices.includes(current) ? current : choices[0];
 }

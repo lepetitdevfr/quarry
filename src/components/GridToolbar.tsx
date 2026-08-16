@@ -18,6 +18,14 @@ interface Props {
   /** Whether that row is already staged, so the button can undo it. */
   deleting: boolean;
   onDeleteRow: () => void;
+  /**
+   * Whether this result can take new rows. Disabled rather than absent
+   * when it cannot, with the reason as its tooltip, so the affordance
+   * stays discoverable and explains itself.
+   */
+  canInsert: boolean;
+  insertReason: string | null;
+  onInsertRow: () => void;
 }
 
 export function GridToolbar({
@@ -27,6 +35,9 @@ export function GridToolbar({
   canDelete,
   deleting,
   onDeleteRow,
+  canInsert,
+  insertReason,
+  onInsertRow,
 }: Props) {
   return (
     <div className="grid-toolbar">
@@ -43,6 +54,17 @@ export function GridToolbar({
         </button>
       )}
       <span className="grid-toolbar-gap" />
+      <button
+        disabled={busy || !canInsert}
+        title={
+          canInsert
+            ? "Shift+Cmd+N"
+            : (insertReason ?? "this result cannot take new rows")
+        }
+        onClick={onInsertRow}
+      >
+        Insert row
+      </button>
       <button
         className="danger"
         disabled={busy || !canDelete}

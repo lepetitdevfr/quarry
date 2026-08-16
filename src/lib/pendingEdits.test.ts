@@ -20,6 +20,7 @@ import {
   toggleDelete,
   totalPending,
   editingBlockedReason,
+  editorSeed,
 } from "./pendingEdits";
 import { UNKNOWN, type QueryResult } from "../types";
 
@@ -332,6 +333,28 @@ describe("editingBlockedReason", () => {
     // Reporting the lock first would send someone to unlock production
     // only to find the join was never editable anyway.
     expect(editingBlockedReason(notEditable, true)).toMatch(/joins 2 tables/);
+  });
+});
+
+describe("editorSeed", () => {
+  const plain = result().edit.columns[1];
+  const withChoices = { ...plain, choices: ["queued", "sent", "failed"] };
+
+  it("leaves a free-text cell's current value alone", () => {
+    expect(editorSeed(plain, "a@x.co")).toBe("a@x.co");
+    expect(editorSeed(plain, "")).toBe("");
+    expect(editorSeed(undefined, "anything")).toBe("anything");
+  });
+
+  it("keeps a value that is already one of the choices", () => {
+    expect(editorSeed(withChoices, "sent")).toBe("sent");
+  });
+
+  it("falls back to the first choice when the value is not one", () => {
+    // The untouched-new-row case: a select cannot show "", so without
+    // this the editor would display "queued" and commit "".
+    expect(editorSeed(withChoices, "")).toBe("queued");
+    expect(editorSeed(withChoices, "NULL")).toBe("queued");
   });
 });
 
