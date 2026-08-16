@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import iconUrl from "./assets/icon.png";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 // Aliased: this module already has a `save` callback for Cmd+S.
 import { save as saveFileDialog } from "@tauri-apps/plugin-dialog";
 import { ConfirmDialog } from "./components/ConfirmDialog";
@@ -142,6 +142,36 @@ export default function App() {
 
   const { library, tabs, activeTab, loaded, queryById, autosave, actions } =
     useLibrary();
+
+  // The launch screen is a list and a button; a working session is a
+  // sidebar, an editor and a grid. Sizing the window to whichever is on
+  // screen means the app opens as a small panel rather than a mostly
+  // empty 1200px window, and grows when there is something to fill it.
+  //
+  // The minimum moves with it: a connected window squeezed to 460px wide
+  // has no room for the sidebar, and a launch panel held to 900px is the
+  // problem this is solving.
+  const connected = connection !== null;
+  useEffect(() => {
+    const window = getCurrentWindow();
+    const [w, h, minW, minH] = connected
+      ? [1200, 800, 900, 560]
+      : [560, 520, 460, 420];
+
+    // Order matters: shrinking below the current minimum is refused, so
+    // the minimum has to come down first, and going the other way the
+    // size has to arrive before the larger minimum clamps it.
+    void (async () => {
+      if (connected) {
+        await window.setSize(new LogicalSize(w, h));
+        await window.setMinSize(new LogicalSize(minW, minH));
+      } else {
+        await window.setMinSize(new LogicalSize(minW, minH));
+        await window.setSize(new LogicalSize(w, h));
+      }
+      await window.center();
+    })();
+  }, [connected]);
 
   // ⌘W. The menu owns the accelerator — on macOS a menu key equivalent
   // never reaches the webview, so this cannot be a keydown listener
