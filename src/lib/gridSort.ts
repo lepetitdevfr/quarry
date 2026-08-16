@@ -1,5 +1,6 @@
 import { formatCell } from "./format";
 import type { CellValue } from "../types";
+import { UNKNOWN } from "../types";
 
 export type SortDirection = "asc" | "desc";
 
@@ -36,6 +37,13 @@ export function nextSort(
  * Postgres output.
  */
 export function compareCells(a: CellValue, b: CellValue): number {
+  // An unknown cell is not a value, so the direction does not move it:
+  // it stays at the end either way. `sortedIndices` guards this too, but
+  // `compareCells` is exported on its own and must not throw here.
+  if (a === UNKNOWN && b === UNKNOWN) return 0;
+  if (a === UNKNOWN) return 1;
+  if (b === UNKNOWN) return -1;
+
   if (a === null && b === null) return 0;
   if (a === null) return 1;
   if (b === null) return -1;
@@ -74,6 +82,13 @@ export function sortedIndices(
   return order.sort((left, right) => {
     const a = rows[left][sort.column];
     const b = rows[right][sort.column];
+
+    // An unknown cell is not a value, so the direction does not move
+    // it: it stays at the end either way, unlike null below which
+    // flips with the direction.
+    if (a === UNKNOWN && b === UNKNOWN) return 0;
+    if (a === UNKNOWN) return 1;
+    if (b === UNKNOWN) return -1;
 
     // Nulls sort last ascending and first descending, so the pin
     // itself flips with `sign` rather than being fixed at one end.

@@ -1,6 +1,7 @@
 import type { CellValue } from "../types";
+import { UNKNOWN } from "../types";
 
-export type CellKind = "null" | "bool" | "number" | "json" | "text";
+export type CellKind = "null" | "bool" | "number" | "json" | "text" | "unknown";
 
 export interface FormattedCell {
   text: string;
@@ -15,6 +16,7 @@ export interface FormattedCell {
  * one, which changes what query you write next.
  */
 export function formatCell(value: CellValue): FormattedCell {
+  if (value === UNKNOWN) return { text: "—", kind: "unknown" };
   if (value === null) return { text: "NULL", kind: "null" };
   if (typeof value === "boolean") {
     return { text: value ? "true" : "false", kind: "bool" };

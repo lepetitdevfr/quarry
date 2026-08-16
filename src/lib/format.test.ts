@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { formatCell } from "./format";
+import { UNKNOWN } from "../types";
 
 describe("formatCell", () => {
   it("renders null distinctly from an empty string", () => {
@@ -23,5 +24,10 @@ describe("formatCell", () => {
 
   it("passes strings through untouched", () => {
     expect(formatCell("hello")).toEqual({ text: "hello", kind: "text" });
+  });
+
+  it("renders an unknown cell distinctly from NULL", () => {
+    expect(formatCell(UNKNOWN)).toEqual({ text: "—", kind: "unknown" });
+    expect(formatCell(null)).toEqual({ text: "NULL", kind: "null" });
   });
 });

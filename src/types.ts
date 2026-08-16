@@ -89,11 +89,21 @@ export interface AppliedRow {
   deleted: boolean;
 }
 
+/**
+ * No value exists for this cell yet — a computed column on a row that
+ * was just inserted. `RETURNING` can only name real table columns, and
+ * nothing here parses the user's SQL to rediscover what an expression
+ * meant, so the honest answer is "unknown", which is a different thing
+ * from a real SQL NULL.
+ */
+export const UNKNOWN = Symbol("unknown");
+
 export type CellValue =
   | string
   | number
   | boolean
   | null
+  | typeof UNKNOWN
   | Record<string, unknown>
   | unknown[];
 

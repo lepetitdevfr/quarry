@@ -43,6 +43,7 @@ describe("compareCells", () => {
 
 import { nextSort, sortedIndices } from "./gridSort";
 import type { CellValue } from "../types";
+import { UNKNOWN } from "../types";
 
 const ROWS: CellValue[][] = [
   ["carol", 30],
@@ -108,6 +109,17 @@ describe("sortedIndices", () => {
     const nulls: CellValue[][] = [[null], [null], [null]];
     expect(sortedIndices(nulls, { column: 0, direction: "asc" })).toEqual([
       0, 1, 2,
+    ]);
+  });
+
+  it("sorts unknown cells last in both directions", () => {
+    // Not a value, so flipping the direction should not move it.
+    const rows: CellValue[][] = [[UNKNOWN], [2], [1]];
+    expect(sortedIndices(rows, { column: 0, direction: "asc" })).toEqual([
+      2, 1, 0,
+    ]);
+    expect(sortedIndices(rows, { column: 0, direction: "desc" })).toEqual([
+      1, 2, 0,
     ]);
   });
 });

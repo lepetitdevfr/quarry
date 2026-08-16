@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { toCsv, toJson, toSqlInsert, toTsv } from "./exportRows";
 import type { CellValue, ColumnMeta } from "../types";
+import { UNKNOWN } from "../types";
 
 const COLUMNS: ColumnMeta[] = [
   { name: "id", type_name: "int4" },
@@ -98,6 +99,22 @@ describe("toJson", () => {
 
   it("is an empty array for no rows", () => {
     expect(JSON.parse(toJson(COLUMNS, []))).toEqual([]);
+  });
+});
+
+describe("unknown cell", () => {
+  it("exports an unknown cell as an empty field, like a null", () => {
+    // It must never reach String(), which would ship "Symbol(unknown)"
+    // into a user's CSV.
+    expect(toCsv([{ name: "a", type_name: "text" }], [[UNKNOWN]])).toBe(
+      "a\n",
+    );
+    expect(toTsv([{ name: "a", type_name: "text" }], [[UNKNOWN]], false)).toBe(
+      "",
+    );
+    expect(toJson([{ name: "a", type_name: "text" }], [[UNKNOWN]])).toContain(
+      '"a": null',
+    );
   });
 });
 

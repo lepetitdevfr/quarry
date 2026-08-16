@@ -1,4 +1,5 @@
 import type { CellValue, ColumnMeta } from "../types";
+import { UNKNOWN } from "../types";
 
 /**
  * Serialize result rows for the clipboard and for files.
@@ -13,7 +14,7 @@ import type { CellValue, ColumnMeta } from "../types";
 
 /** The text of one cell, before any format-specific quoting. */
 function cellText(value: CellValue): string {
-  if (value === null) return "";
+  if (value === UNKNOWN || value === null) return "";
   if (typeof value === "object") return JSON.stringify(value);
   return String(value);
 }
@@ -50,8 +51,11 @@ export function toJson(columns: ColumnMeta[], rows: CellValue[][]): string {
     const out: Record<string, CellValue> = {};
     columns.forEach((c, i) => {
       // Raw value, not `cellText`: JSON should carry a real null and
-      // keep a jsonb column as structure rather than as a string.
-      out[c.name] = row[i] ?? null;
+      // keep a jsonb column as structure rather than as a string. An
+      // unknown cell has no JSON representation of its own, so it
+      // collapses to null like an absent value does.
+      const cell = row[i];
+      out[c.name] = cell === UNKNOWN ? null : (cell ?? null);
     });
     return out;
   });

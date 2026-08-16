@@ -145,6 +145,11 @@ button:disabled {
   font-style: italic;
 }
 
+.cell-unknown {
+  color: var(--muted);
+  font-style: italic;
+}
+
 .cell-number {
   text-align: right;
 }
