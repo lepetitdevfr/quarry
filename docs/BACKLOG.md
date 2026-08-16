@@ -291,12 +291,35 @@ not.
 — identity from `table_oid`, generated SQL, the transaction with its rowcount
 assert — now exists, so each is much cheaper than it would have been before.
 
-- **Insert rows from the grid.** Needs an empty pending row, awareness of
-  `NOT NULL` and defaults, and returning the generated key to display.
-  Deletion shipped 2026-08-16 (`plans/2026-08-16-delete-rows.md`) and reused
-  the editing machinery whole; insert does not, and has real design questions,
-  so give it the normal spec-then-plan flow rather than folding the design
-  into a plan as the delete work did.
+- **Insert rows from the grid — SHIPPED** 2026-08-16, with its own spec
+  (`specs/2026-08-16-insert-rows-design.md`) and plan
+  (`plans/2026-08-16-insert-rows.md`), as this entry asked for. It brought
+  enum and boolean selectors with it, on existing rows as well as new ones.
+- **Inserting an empty string into a text column.** Committing an empty
+  input returns an insert cell to *untouched*, which is what makes "give me
+  the default back" possible without another chord — so `''` and untouched
+  are the same gesture and an empty string cannot be inserted from the grid.
+  Accepted deliberately in §5 of the insert spec. Rare, and the workaround
+  is one hand-written `INSERT`. A fix would need a second gesture, and the
+  chord space around `⌘⌫` is already crowded.
+- **A stored generated column is still offered as editable.**
+  `decide_editability` marks any resolved non-key column `editable: true`, so
+  a `GENERATED ALWAYS AS (…) STORED` column opens an editor and then fails at
+  the server with `column "shout" can only be updated to DEFAULT`.
+  Pre-existing — the catalog metadata to know better did not exist until the
+  insert stage added it — and now a one-line fix: reuse the `is_generated`
+  helper in the per-column *edit* verdict the way the insert verdict already
+  does. Left out of the insert stage to keep that diff to inserting.
+- **A modal insert form for wide tables.** A form with one labelled field per
+  column is honestly easier to fill than a horizontally scrolled grid row.
+  Rejected for v1 in §12 of the insert spec because it is a second editing
+  surface with its own staging and validation. Revisit if filling rows in the
+  grid turns out to hurt in practice.
+- **Foreign-key value suggestions, and choices from a `CHECK` constraint.**
+  The enum and boolean selectors come free from the driver's type metadata. A
+  foreign key would need a lookup against another table, and a
+  `check (x in (…))` would need constraint-expression parsing — the thing the
+  editing design refuses to do. Both are real features, not fields.
 - **Editing a primary key.** Mechanically fine — the `WHERE` uses the original
   value — but excluded from v1 because it is rare and it is the one edit that
   can orphan a foreign key silently.
@@ -318,6 +341,27 @@ assert — now exists, so each is much cheaper than it would have been before.
 yet" since the first stage, through nine further stages. Rewritten this stage
 because inline editing was the last planned feature and the claim had become
 actively misleading — it told a reader the write-guard did not exist.
+
+## The test database was Postgres 11 — RESOLVED
+
+**Found:** 2026-08-16, while adding the catalog columns the insert stage
+needs. **Closed:** the same day, in `de7ce48`.
+
+`tests/common/mod.rs` called `Postgres::default()`, and
+`testcontainers-modules` 0.15 defaults that to **`postgres:11-alpine`** — a
+2018 release, older than anything this app is meant to connect to, and older
+than the `postgres:17` every `docker run` line in these docs uses. It surfaced
+only because `pg_attribute.attgenerated` arrived in Postgres 12, so the new
+catalog query failed against it.
+
+Now pinned to `17-alpine`. The full suite passed either side of the pin
+(219 tests), so nothing was relying on old-server behaviour — but every
+database-backed proof this project has recorded before that commit, including
+the write-guard's, was made against a server nobody runs.
+
+**Worth remembering:** a test container's default tag is a version choice, and
+leaving it implicit means the choice gets made by a crate's release cadence
+rather than by the project.
 
 ## An unidentified flake in the Rust suite
 

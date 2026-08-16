@@ -10,10 +10,15 @@ library and a production write-guard.
 All planned stages are done: connect and run SQL, the query library with tabs,
 saved connections, the schema tree with autocomplete, preview and table-detail
 tabs, grid sort/resize, copy and export, the production write-guard, and inline
-row editing.
+row editing with deletion and insertion.
 
 **Inline row editing.** Double-click a cell to edit it, `⌘⌫` to set NULL,
-`⇧⌘⌫` to stage the row for deletion (press again to undo).
+`⇧⌘⌫` to stage the row for deletion (press again to undo), `⇧⌘N` to stage a
+new row at the bottom of the grid. An enum or boolean cell offers its values
+as a list rather than free text. On a new row, a cell left empty takes the
+column's default — the placeholder says whether that default is a value or
+`NULL` — and a column the database fills in itself, like a `serial` key or a
+generated column, cannot be typed into at all.
 Changes stage as highlighted pending diffs with a bottom bar showing the count;
 Confirm applies them in one transaction, and `View SQL` shows the generated
 statements first if you want them. A result is editable only when it comes from
@@ -91,7 +96,8 @@ npm run tauri build
 | `⇧⌘↵` | Run the whole buffer |
 | `↵` / double-click | Edit the focused grid cell |
 | `⌘⌫` | Stage SQL `NULL` in the focused cell |
-| `⇧⌘⌫` | Stage the selected row for deletion, or undo it |
+| `⇧⌘⌫` | Stage the selected row for deletion, or undo it (discards a staged new row) |
+| `⇧⌘N` | Stage a new row in the result grid |
 | `esc` | Cancel the cell edit in progress |
 | `⌘W` | Close the active tab (the window, once no tabs are left) |
 | `⇧⌘W` | Close the window |
