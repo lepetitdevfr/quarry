@@ -120,14 +120,7 @@ assert — now exists, so each is much cheaper than it would have been before.
   Accepted deliberately in §5 of the insert spec. Rare, and the workaround
   is one hand-written `INSERT`. A fix would need a second gesture, and the
   chord space around `⌘⌫` is already crowded.
-- **A stored generated column is still offered as editable.**
-  `decide_editability` marks any resolved non-key column `editable: true`, so
-  a `GENERATED ALWAYS AS (…) STORED` column opens an editor and then fails at
-  the server with `column "shout" can only be updated to DEFAULT`.
-  Pre-existing — the catalog metadata to know better did not exist until the
-  insert stage added it — and now a one-line fix: reuse the `is_generated`
-  helper in the per-column *edit* verdict the way the insert verdict already
-  does. Left out of the insert stage to keep that diff to inserting.
+
 - **A modal insert form for wide tables.** A form with one labelled field per
   column is honestly easier to fill than a horizontally scrolled grid row.
   Rejected for v1 in §12 of the insert spec because it is a second editing
