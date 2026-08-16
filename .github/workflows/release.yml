@@ -7,8 +7,14 @@ name: Release
 on:
   push:
     tags: ["v*"]
-  # Lets a build be rehearsed without tagging: the release step is skipped.
+  # Lets a build be rehearsed without tagging: the publish step is skipped.
   workflow_dispatch:
+
+env:
+  # The public repo the .dmg is published to. This repo stays private, and a
+  # private repo's release assets cannot be downloaded without a token — so
+  # the artifact goes somewhere public while the source does not.
+  RELEASES_REPO: lepetitdevfr/quarry-releases
 
 jobs:
   release:
@@ -16,10 +22,6 @@ jobs:
     # ships for. An Intel build would need a second matrix entry with
     # `--target x86_64-apple-darwin`.
     runs-on: macos-14
-
-    permissions:
-      # Required to create the release and attach files to it.
-      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -37,22 +39,43 @@ jobs:
 
       - run: npm ci
 
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build the app
+        run: npm run tauri build
+
+      # Named with the tag so a downloaded file says which version it is —
+      # every release otherwise produces an identically named Quarry_0.1.0
+      # once the config version stops being bumped by hand.
+      - name: Collect the .dmg
+        id: dmg
+        run: |
+          src=$(ls src-tauri/target/release/bundle/dmg/*.dmg | head -1)
+          out="Quarry-${{ github.ref_name }}-aarch64.dmg"
+          mv "$src" "$out"
+          echo "path=$out" >> "$GITHUB_OUTPUT"
+
+      # Uploaded on every run, tag or not, so a dispatch rehearsal still
+      # produces something to open and check before anything is published.
+      - uses: actions/upload-artifact@v4
         with:
-          tagName: ${{ github.ref_name }}
-          releaseName: Quarry ${{ github.ref_name }}
-          releaseBody: |
-            Unsigned build. macOS will refuse it on first open until the
-            quarantine flag is cleared:
+          name: dmg
+          path: ${{ steps.dmg.outputs.path }}
+
+      - name: Publish to the public releases repo
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          repository: ${{ env.RELEASES_REPO }}
+          # A fine-grained PAT scoped to the releases repo only, with
+          # Contents: read and write. The default GITHUB_TOKEN cannot reach
+          # another repository.
+          token: ${{ secrets.RELEASES_TOKEN }}
+          tag_name: ${{ github.ref_name }}
+          name: Quarry ${{ github.ref_name }}
+          files: ${{ steps.dmg.outputs.path }}
+          body: |
+            Apple Silicon build, unsigned. macOS quarantines it and will
+            refuse the first open until the flag is cleared:
 
             ```bash
             xattr -dr com.apple.quarantine /Applications/Quarry.app
             ```
-
-            See the README for what changed.
-          # Published straight away rather than left as a draft: a release
-          # nobody can see is indistinguishable from a failed build.
-          releaseDraft: false
-          prerelease: false
