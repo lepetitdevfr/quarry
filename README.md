@@ -185,6 +185,12 @@ cd src-tauri && cargo clippy --all-targets -- -D warnings && cargo fmt --check
 All of these pass on `main`; there are no known-failing baselines, so a failure
 is something you just changed.
 
+**Releasing is manual.** Actions → Release → Run workflow. semantic-release
+reads the commits since the last tag, picks the version, writes the changelog,
+tags, then builds and publishes. Merging to `main` does not release: three
+platforms take about twenty minutes and most commits do not deserve a build.
+Tick *dry run* to rehearse without publishing.
+
 CI runs all of it: an Ubuntu job runs the full Rust suite, database tests
 included, and a macOS job runs clippy, fmt, the unit tests and a build. Both
 exist for a reason — Linux has the Docker daemon testcontainers needs, macOS

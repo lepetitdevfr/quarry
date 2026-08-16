@@ -1,14 +1,20 @@
 name: Release
 
-# Push to main and semantic-release decides, from the commit messages, whether
-# there is a release and what version it is. `feat:` bumps the minor, `fix:`
-# and `refactor:` the patch, a `BREAKING CHANGE:` footer the major; `docs:`,
-# `test:`, `ci:` and `chore:` release nothing.
+# Releasing is a decision, not a side effect of merging: this runs only when
+# you start it. Three platforms take about twenty minutes, and most commits do
+# not deserve a release.
+#
+# semantic-release still picks the version from the commit messages when it
+# runs — `feat:` bumps the minor, `fix:` and `refactor:` the patch, a
+# `BREAKING CHANGE:` footer the major; `docs:`, `test:`, `ci:` and `chore:`
+# release nothing at all, which is how a run can end with no version to build.
 on:
-  push:
-    branches: [main]
-  # Rehearsal: builds every platform and uploads artifacts, releases nothing.
   workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Rehearse: build every platform, publish nothing"
+        type: boolean
+        default: false
 
 concurrency:
   group: release
@@ -46,7 +52,7 @@ jobs:
 
       - name: Version and changelog
         id: semantic
-        if: github.event_name == 'push'
+        if: inputs.dry_run != true
         uses: cycjimmy/semantic-release-action@v4
         with:
           semantic_version: 24
@@ -60,7 +66,9 @@ jobs:
 
   build:
     needs: version
-    if: needs.version.outputs.published == 'true' || github.event_name == 'workflow_dispatch'
+    # A rehearsal always builds; a real run only when there was something to
+    # release.
+    if: needs.version.outputs.published == 'true' || inputs.dry_run == true
 
     strategy:
       # One platform failing must not cost the others: macOS is the supported
@@ -91,6 +99,9 @@ jobs:
           # version bump it committed. On a rehearsal there is no tag, so the
           # branch tip is what gets built.
           ref: ${{ needs.version.outputs.published == 'true' && format('v{0}', needs.version.outputs.version) || github.ref }}
+          # The tag semantic-release pushed moments ago may not be visible to
+          # this checkout yet; fetching tags explicitly avoids a race.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
