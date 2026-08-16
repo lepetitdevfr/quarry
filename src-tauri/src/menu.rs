@@ -16,8 +16,18 @@
 //! `⌘A` work inside the SQL editor on macOS, and dropping them would
 //! break text editing across the whole app. If a future Tauri version
 //! adds to the default menu, this will not pick it up.
+//!
+//! This module holds the only `cfg(target_os)` in the crate, and the
+//! whole custom menu sits behind it, because both reasons the menu
+//! exists are macOS reasons. AppKit is what swallows `⌘W` before the
+//! webview sees it, and an AppKit menu is what routes clipboard and
+//! undo commands into a WKWebView at all; on Windows and Linux the
+//! webview handles `Ctrl+C`/`Ctrl+V`/`Ctrl+Z` itself and nothing
+//! intercepts `Ctrl+W`. There is no problem to solve off macOS, so
+//! those builds take Tauri's default menu unchanged. Keep new
+//! `cfg(target_os)` gates out of the rest of the crate.
 
-use tauri::menu::{AboutMetadata, Menu, MenuItem, PredefinedMenuItem, Submenu};
+use tauri::menu::Menu;
 use tauri::{AppHandle, Emitter, Manager, Runtime};
 
 /// Menu item id for Close Tab. The frontend never sees this; it sees
@@ -31,8 +41,11 @@ pub const CLOSE_WINDOW_ID: &str = "close_window";
 /// means — which tab is active is its state, not ours.
 pub const CLOSE_TAB_EVENT: &str = "menu://close-tab";
 
-/// Build the menu.
+/// Build the menu. See the module comment for why this is macOS-only.
+#[cfg(target_os = "macos")]
 pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+    use tauri::menu::{AboutMetadata, MenuItem, PredefinedMenuItem, Submenu};
+
     let pkg_info = app.package_info();
     let config = app.config();
     let about_metadata = AboutMetadata {
@@ -64,7 +77,6 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         &[
             &PredefinedMenuItem::minimize(app, None)?,
             &PredefinedMenuItem::maximize(app, None)?,
-            #[cfg(target_os = "macos")]
             &PredefinedMenuItem::separator(app)?,
             &close_window,
         ],
@@ -73,7 +85,6 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
     Menu::with_items(
         app,
         &[
-            #[cfg(target_os = "macos")]
             &Submenu::with_items(
                 app,
                 pkg_info.name.clone(),
@@ -107,7 +118,6 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                     &PredefinedMenuItem::select_all(app, None)?,
                 ],
             )?,
-            #[cfg(target_os = "macos")]
             &Submenu::with_items(
                 app,
                 "View",
@@ -118,6 +128,12 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
             &Submenu::with_items(app, "Help", true, &[])?,
         ],
     )
+}
+
+/// Everywhere else, the default menu already does the right thing.
+#[cfg(not(target_os = "macos"))]
+pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
+    Menu::default(app)
 }
 
 /// Handle a click on one of the two custom items.
