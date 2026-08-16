@@ -530,12 +530,30 @@ pub fn delete_connection(
 pub fn resolve_password(
     supplied: Option<String>,
     load: impl FnOnce() -> Result<Option<String>, AppError>,
-) -> Result<Option<String>, AppError> {
+) -> Result<ResolvedPassword, AppError> {
     // An empty field is the absence of a password, not a password.
     match supplied.filter(|p| !p.is_empty()) {
-        Some(typed) => Ok(Some(typed)),
-        None => load(),
+        Some(typed) => Ok(ResolvedPassword {
+            password: Some(typed),
+            from_user: true,
+        }),
+        None => Ok(ResolvedPassword {
+            password: load()?,
+            from_user: false,
+        }),
     }
+}
+
+/// A password and where it came from.
+///
+/// The provenance is the point: only a password the user typed is worth
+/// writing back. Re-saving one that was just read from the Keychain
+/// costs a second authorisation prompt — and a third and fourth when the
+/// write fails on a rebuilt binary and falls back to delete-then-set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedPassword {
+    pub password: Option<String>,
+    pub from_user: bool,
 }
 
 /// Connect to a saved connection, replacing any current one.
@@ -551,7 +569,8 @@ pub async fn connect_saved(
 ) -> Result<ConnectionInfo, AppError> {
     let record = state.library.connection(&id)?;
 
-    let password = resolve_password(password, || crate::secrets::load_password(&id))?;
+    let resolved = resolve_password(password, || crate::secrets::load_password(&id))?;
+    let password = resolved.password;
 
     let cfg = ConnectionConfig {
         host: record.host.clone(),
@@ -606,8 +625,10 @@ pub async fn connect_saved(
     // inside `save_password`, leaving the old entry in place so the
     // write that follows collides with it. The user stays connected;
     // they are simply asked for the password again next time.
-    if let Some(pw) = password {
-        let _ = state.library.save_connection_password(&id, &pw);
+    if resolved.from_user {
+        if let Some(pw) = password {
+            let _ = state.library.save_connection_password(&id, &pw);
+        }
     }
     state.library.touch_connection(&id)?;
 

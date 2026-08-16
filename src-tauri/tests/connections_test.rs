@@ -182,7 +182,8 @@ fn a_typed_password_wins_without_reading_the_keychain() {
     })
     .unwrap();
 
-    assert_eq!(resolved.as_deref(), Some("typed"));
+    assert_eq!(resolved.password.as_deref(), Some("typed"));
+    assert!(resolved.from_user, "a typed password is the user's");
     assert!(
         !consulted,
         "a supplied password must not trigger a Keychain read, which is the \
@@ -198,7 +199,11 @@ fn an_empty_typed_password_falls_back_to_the_keychain() {
         quarry_lib::commands::resolve_password(Some("".into()), || Ok(Some("stored".into())))
             .unwrap();
 
-    assert_eq!(resolved.as_deref(), Some("stored"));
+    assert_eq!(resolved.password.as_deref(), Some("stored"));
+    assert!(
+        !resolved.from_user,
+        "it came from the Keychain, not the user"
+    );
 }
 
 #[test]
@@ -218,5 +223,21 @@ fn a_keychain_failure_is_surfaced_when_nothing_was_typed() {
 #[test]
 fn no_password_anywhere_is_not_an_error() {
     let resolved = quarry_lib::commands::resolve_password(None, || Ok(None)).unwrap();
-    assert_eq!(resolved, None);
+    assert_eq!(resolved.password, None);
+}
+
+#[test]
+fn a_password_read_from_the_keychain_is_not_written_back() {
+    // Writing it back costs another authorisation prompt for no gain —
+    // and after a rebuild the write fails and falls back to
+    // delete-then-set, which is two more. Four prompts to open an app
+    // that already had the password.
+    let resolved =
+        quarry_lib::commands::resolve_password(None, || Ok(Some("stored".into()))).unwrap();
+
+    assert_eq!(resolved.password.as_deref(), Some("stored"));
+    assert!(
+        !resolved.from_user,
+        "only a typed password may be saved back to the Keychain"
+    );
 }
