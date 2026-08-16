@@ -123,7 +123,23 @@ makes every launch fail with `no such column`.
 deleting the migration and watching the test fail. A migration test that
 passes without the migration is worse than no test.
 
-## Tab storage cleanups
+## Tab storage cleanups — RESOLVED
+
+**Found:** 2026-08-15, in code review of the table-detail stage.
+**Closed:** 2026-08-16, all three, after first doing the `store.rs` split
+below — these cleanups were the "stage that next grows the tab code" that
+entry was waiting for.
+
+Two notes worth keeping. The column-name change turned out to have a
+coverage gap behind it: the preview-slot *update* path in
+`open_table_tab` bound `schema` and `table` adjacently but no test
+asserted either field, so the swap it guards against was only covered on
+the insert path. `double_clicking_pins_the_tab_that_was_a_preview` now
+uses a distinct schema name and asserts both. And `close_tab` still holds
+a clear-then-set pair, correctly, inside its transaction — it is now the
+only two-statement activation left in the file.
+
+The original entry follows.
 
 **Found:** 2026-08-15, in code review of the table-detail stage. All three
 touch pre-existing code or are preference calls, so they were kept out of that
@@ -148,9 +164,15 @@ stage deliberately.
   family: `update tabs set is_active = (id = ?1)`. Blast radius is UI state,
   not saved queries, and clicking a tab recovers it.
 
-## Split `store.rs` along the tabs seam
+## Split `store.rs` along the tabs seam — RESOLVED
 
-**Deferred:** 2026-08-15, raised in code review.
+**Deferred:** 2026-08-15, raised in code review. **Closed:** 2026-08-16,
+as the first commit of the tab storage cleanups above, exactly as this
+entry recommended. A pure move: 740 lines became `store/mod.rs` (381) and
+`store/tabs.rs` (367), with no visibility changes needed and no behaviour
+change, verified by the suite passing either side of it.
+
+The original entry follows.
 
 `store.rs` is ~700 lines holding four concerns: collections, queries, tabs, and
 mirror-file side effects. Tabs is now the largest at roughly 200 lines, and it
