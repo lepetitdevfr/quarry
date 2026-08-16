@@ -11,6 +11,7 @@ interface Props {
   onNewQueryInCollection: (collectionId: string) => void;
   onRenameQuery: (id: string, name: string) => void;
   onDeleteQuery: (id: string) => void;
+  onMoveQuery: (id: string, collectionId: string | null) => void;
   onRenameCollection: (id: string, name: string) => void;
   onDeleteCollection: (id: string) => void;
   creating: Creating | null;
@@ -71,6 +72,7 @@ export function Sidebar(props: Props) {
           onOpen={props.onOpen}
           onRenameQuery={props.onRenameQuery}
           onDeleteQuery={props.onDeleteQuery}
+          onMoveQuery={props.onMoveQuery}
           onRenameCollection={props.onRenameCollection}
           onDeleteCollection={props.onDeleteCollection}
           onNewQueryInCollection={props.onNewQueryInCollection}

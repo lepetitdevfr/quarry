@@ -37,7 +37,8 @@ the reasoning; do not re-derive them.
 - One stage per branch. Process scales to the stage: lean by default (short
   plan, one subagent, no brainstorm or spec); the full brainstorm → spec → plan
   flow only for write paths or open design questions. Say which was picked.
-- Subagent-driven execution is the default — do not ask which mode.
+- Work inline in the main thread. Subagents are off — they start cold and
+  re-derive context the main thread already holds.
 - **Ask for mutation results as evidence, not assurances.** Tests in this
   project have passed with the code under them deleted. Delete the code, watch
   the test fail, restore it, and report both outputs.

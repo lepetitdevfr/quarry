@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { RenameInput } from "./RenameInput";
-import { buildTree, isDirty } from "../lib/tree";
+import { buildTree, isDirty, moveTargets } from "../lib/tree";
 import type { LibraryTree, Query, TreeNode } from "../types";
 
 /** What is currently being named — a brand-new query or collection,
@@ -17,6 +17,7 @@ interface Props {
   onOpen: (queryId: string) => void;
   onRenameQuery: (id: string, name: string) => void;
   onDeleteQuery: (id: string) => void;
+  onMoveQuery: (id: string, collectionId: string | null) => void;
   onRenameCollection: (id: string, name: string) => void;
   onDeleteCollection: (id: string) => void;
   onNewQueryInCollection: (collectionId: string) => void;
@@ -31,6 +32,7 @@ export function QueryTree({
   onOpen,
   onRenameQuery,
   onDeleteQuery,
+  onMoveQuery,
   onRenameCollection,
   onDeleteCollection,
   onNewQueryInCollection,
@@ -41,6 +43,26 @@ export function QueryTree({
   const { roots, looseQueries } = buildTree(library);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [renaming, setRenaming] = useState<string | null>(null);
+  // Which query's move menu is open. One at a time: two open menus in a
+  // narrow sidebar cover the tree they are meant to move things within.
+  const [moving, setMoving] = useState<string | null>(null);
+
+  // A menu that survives a click elsewhere reads as stuck. Mousedown
+  // rather than click, so it closes on the press that starts an action
+  // somewhere else rather than after it completes.
+  useEffect(() => {
+    if (moving === null) return;
+    const close = () => setMoving(null);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMoving(null);
+    };
+    window.addEventListener("mousedown", close);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("mousedown", close);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [moving]);
 
   function toggle(id: string) {
     setCollapsed((prev) => {
@@ -54,6 +76,7 @@ export function QueryTree({
   function renderQuery(query: Query, depth: number) {
     const active = query.id === activeQueryId;
     const dirty = isDirty(query);
+    const targets = moveTargets(library, query);
 
     if (renaming === query.id) {
       return (
@@ -82,6 +105,17 @@ export function QueryTree({
         {dirty && <span className="dirty-dot" title="unsaved changes">•</span>}
         <button
           className="row-action"
+          title="Move to…"
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMoving((open) => (open === query.id ? null : query.id));
+          }}
+        >
+          ⋯
+        </button>
+        <button
+          className="row-action"
           title="Delete query"
           onClick={(e) => {
             e.stopPropagation();
@@ -90,6 +124,33 @@ export function QueryTree({
         >
           ×
         </button>
+
+        {moving === query.id && (
+          <div
+            className="move-menu"
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+          >
+            {targets.length === 0 ? (
+              // Nowhere to go: one collection that the query already
+              // lives in, or none at all. Saying so beats an empty box.
+              <span className="move-empty">No other collection</span>
+            ) : (
+              targets.map((target) => (
+                <button
+                  key={target.id ?? "root"}
+                  className="move-option"
+                  onClick={() => {
+                    onMoveQuery(query.id, target.id);
+                    setMoving(null);
+                  }}
+                >
+                  {target.label}
+                </button>
+              ))
+            )}
+          </div>
+        )}
       </div>
     );
   }

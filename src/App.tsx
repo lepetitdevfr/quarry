@@ -822,6 +822,7 @@ export default function App() {
           }
           onRenameQuery={(id, name) => void actions.renameQuery(id, name)}
           onDeleteQuery={requestDeleteQuery}
+          onMoveQuery={(id, collectionId) => void actions.moveQuery(id, collectionId)}
           onRenameCollection={(id, name) => void actions.renameCollection(id, name)}
           onDeleteCollection={requestDeleteCollection}
           creating={creating}

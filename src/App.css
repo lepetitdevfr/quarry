@@ -1338,3 +1338,53 @@ button,
     transition-duration: 0.01ms !important;
   }
 }
+
+/* ---- move a query to another collection -------------------------- */
+
+/* Anchored to the row rather than the sidebar: the row is what the menu
+   is about, and a sidebar-anchored popover drifts away from its target
+   as the tree scrolls. */
+.move-menu {
+  position: absolute;
+  right: var(--s-2);
+  top: calc(100% - 2px);
+  z-index: 10;
+  min-width: 160px;
+  max-height: 220px;
+  overflow-y: auto;
+  padding: var(--s-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
+}
+
+.tree-row.query {
+  position: relative;
+}
+
+.move-option {
+  display: block;
+  width: 100%;
+  height: var(--h-row);
+  padding: 0 var(--s-2);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--text);
+  font-size: var(--t-sm);
+  font-weight: 400;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.move-option:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.move-empty {
+  display: block;
+  padding: var(--s-1) var(--s-2);
+  color: var(--faint);
+  font-size: var(--t-sm);
+}

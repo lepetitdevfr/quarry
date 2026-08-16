@@ -16,38 +16,21 @@ cut to keep that stage tight; none is hard once the tree exists.
   means assembling columns, defaults, keys, and indexes from the catalog —
   the introspection stage already gathers everything needed.
 
-## Move a query between collections (UI only)
+## Move a query between collections — RESOLVED
 
-**Deferred:** 2026-08-14, end of Stage 2. Not urgent, but not forgotten.
+**Deferred:** 2026-08-14. **Closed:** 2026-08-16, with option 1 as this entry
+recommended: a `⋯` menu on the query row listing every other collection.
 
-The backend is already done and tested:
+The decision lives in `moveTargets` in `src/lib/tree.ts` with unit tests — full
+paths as labels so two folders sharing a name stay distinguishable, the
+query's current home left out because a menu entry that does nothing reads as
+a bug, and the top level offered only when the query is filed somewhere.
+`QueryTree` renders it and calls the `actions.moveQuery` that already existed.
 
-- `Store::move_query` (`src-tauri/src/library/store.rs`) reparents the row and
-  relocates its `.sql` mirror file
-- the `move_query` IPC command is registered in `src-tauri/src/commands.rs`
-- `ipc.moveQuery` and `actions.moveQuery` exist on the frontend
-- `moves_a_query_to_another_collection` covers it in `tests/library_test.rs`
+**Still open:** drag and drop, and reordering. Reordering needs the backend
+work this entry always named — today only a query's parent can change, so
+sibling `position` recalculation does not exist.
 
-Missing: any way to trigger it. There are no drag handlers anywhere in `src/`,
-and no move affordance in `QueryTree.tsx`.
-
-Why it slipped: the design spec calls for "drag to reorder/move", but the
-Stage 2 plan only gave the tree tasks for rename, create, and delete. The store
-work covered moving because it belonged there; the UI task was never written.
-
-**Two options, in the order recommended:**
-
-1. **"Move to…" in a row menu** — right-click or a `⋯` button listing
-   collections. Small, keyboard-accessible, uses `actions.moveQuery` exactly as
-   it stands today. No backend change needed.
-2. **Drag and drop** — closer to the spec and to Insomnia. Drag a query onto a
-   collection to move it, drag between rows to reorder. Needs drop targets and
-   drag-over affordances, and **reordering needs new backend work**: today only
-   the parent can change, so sibling `position` recalculation does not exist
-   yet.
-
-Do (1) first; do (2) together with the `position` work rather than rushing
-both.
 
 ## Recover from a poisoned mutex instead of panicking — RESOLVED
 

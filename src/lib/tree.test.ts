@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildTree, effectiveSql, isDirty } from "./tree";
+import { buildTree, effectiveSql, isDirty, moveTargets } from "./tree";
 import type { Collection, LibraryTree, Query } from "../types";
 
 function collection(id: string, parent: string | null, pos = 100): Collection {
@@ -113,5 +113,60 @@ describe("isDirty", () => {
 
   it("is true when the draft differs", () => {
     expect(isDirty({ ...query("q", null), draft_sql: "select 2" })).toBe(true);
+  });
+});
+
+describe("moveTargets", () => {
+  const library = {
+    collections: [
+      { id: "a", parent_id: null, name: "Reports", position: 1, created_at: "" },
+      { id: "b", parent_id: "a", name: "Weekly", position: 1, created_at: "" },
+      { id: "c", parent_id: null, name: "Admin", position: 2, created_at: "" },
+    ],
+    queries: [],
+  };
+
+  const query = (collection_id: string | null) => ({
+    id: "q1",
+    collection_id,
+    name: "q",
+    sql: "",
+    draft_sql: null,
+    position: 1,
+    created_at: "",
+    updated_at: "",
+  });
+
+  it("labels a nested collection with its full path", () => {
+    const targets = moveTargets(library, query(null));
+    expect(targets.find((t) => t.id === "b")?.label).toBe("Reports / Weekly");
+  });
+
+  it("offers the top level only when the query is in a collection", () => {
+    // Moving a loose query to the top level is where it already is, so
+    // offering it would be an action that does nothing.
+    expect(moveTargets(library, query(null)).some((t) => t.id === null)).toBe(false);
+    expect(moveTargets(library, query("a")).some((t) => t.id === null)).toBe(true);
+  });
+
+  it("leaves out the collection the query is already in", () => {
+    const targets = moveTargets(library, query("a"));
+    expect(targets.some((t) => t.id === "a")).toBe(false);
+    expect(targets.some((t) => t.id === "b")).toBe(true);
+  });
+
+  it("sorts by path so the list is stable and scannable", () => {
+    const labels = moveTargets(library, query(null)).map((t) => t.label);
+    expect(labels).toEqual(["Admin", "Reports", "Reports / Weekly"]);
+  });
+
+  it("keeps a collection whose parent is missing rather than dropping it", () => {
+    // Same reasoning as buildTree: a bad reference must not make a
+    // folder unreachable.
+    const orphaned = {
+      ...library,
+      collections: [{ id: "z", parent_id: "gone", name: "Orphan", position: 1, created_at: "" }],
+    };
+    expect(moveTargets(orphaned, query(null)).map((t) => t.label)).toEqual(["Orphan"]);
   });
 });
