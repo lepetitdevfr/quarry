@@ -332,13 +332,14 @@ fn next_tab_position(conn: &Connection) -> Result<i64, AppError> {
     Ok(max + POSITION_GAP)
 }
 
-/// Make one tab active and clear the flag on every other tab. Done in
-/// two statements inside the caller's lock, so no other thread can
-/// observe two active tabs.
+/// Make one tab active and clear the flag on every other tab.
+///
+/// One statement rather than a clear-then-set pair: the pair commits an
+/// intermediate state with no tab active, which a crash in the gap would
+/// make durable. Here every row's flag is rewritten in the same
+/// autocommitted statement, so that state never exists on disk.
 fn activate(conn: &Connection, id: &str) -> Result<(), AppError> {
-    conn.execute("update tabs set is_active = 0", [])
-        .map_err(sql_err)?;
-    conn.execute("update tabs set is_active = 1 where id = ?1", params![id])
+    conn.execute("update tabs set is_active = (id = ?1)", params![id])
         .map_err(sql_err)?;
     Ok(())
 }
