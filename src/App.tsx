@@ -34,12 +34,16 @@ import {
 } from "./lib/ipc";
 import {
   applyPatches,
-  count as pendingCount,
+  emptyDeletes,
   emptyPending,
+  isDeleted,
   stage,
+  toRowDeletes,
   toRowEdits,
+  toggleDelete,
+  totalPending,
 } from "./lib/pendingEdits";
-import type { Pending } from "./lib/pendingEdits";
+import type { Pending, PendingDeletes } from "./lib/pendingEdits";
 import { formatCountdown } from "./lib/guard";
 import { DEFAULT_SIDEBAR_WIDTH } from "./lib/layout";
 import type { SortState } from "./lib/gridSort";
@@ -110,6 +114,11 @@ export default function App() {
   // Cell edits staged against `result`, and the statements the backend
   // would run for them while the SQL panel is open.
   const [pending, setPending] = useState<Pending>(emptyPending());
+  // Rows staged for deletion, and the row the grid currently has
+  // selected — the toolbar's Delete row button acts on it, and the
+  // selection lives inside the grid.
+  const [deletes, setDeletes] = useState<PendingDeletes>(emptyDeletes());
+  const [selectedRow, setSelectedRow] = useState<number | null>(null);
   const [editSql, setEditSql] = useState<EditStatement[] | null>(null);
   const [applying, setApplying] = useState(false);
 
@@ -237,10 +246,24 @@ export default function App() {
     setEditSql(null);
   }
 
+  function onToggleDelete(row: number) {
+    const next = toggleDelete(pending, deletes, row);
+    setPending(next.pending);
+    setDeletes(next.deletes);
+    // The shown SQL is about a set of changes that just changed.
+    setEditSql(null);
+  }
+
   async function onViewSql() {
     if (!result) return;
     try {
-      setEditSql(await previewEdits(result.edit, toRowEdits(pending, result)));
+      setEditSql(
+        await previewEdits(
+          result.edit,
+          toRowEdits(pending, result),
+          toRowDeletes(deletes, result),
+        ),
+      );
     } catch (e) {
       setError(asAppError(e));
     }
@@ -253,11 +276,16 @@ export default function App() {
       const applied = await applyRowEdits(
         result.edit,
         toRowEdits(pending, result),
+        toRowDeletes(deletes, result),
       );
       // Patch with what the database returned, not with what was
       // typed: a trigger or a type coercion may have changed it.
+      // Deleted rows leave the grid, which shifts every index after
+      // them. Safe only because every staged key is cleared here too.
       setResult(applyPatches(result, applied));
       setPending(emptyPending());
+      setDeletes(emptyDeletes());
+      setSelectedRow(null);
       setEditSql(null);
       setError(null);
     } catch (e) {
@@ -338,8 +366,10 @@ export default function App() {
       try {
         setResult(await execute(sql));
         setRanSql(sql);
-        // Staged edits belong to the rows they were staged against.
+        // Staged changes belong to the rows they were staged against.
         setPending(emptyPending());
+        setDeletes(emptyDeletes());
+        setSelectedRow(null);
         setEditSql(null);
       } catch (e) {
         setError(asAppError(e));
@@ -553,6 +583,8 @@ export default function App() {
         await connActions.connect(id, password);
         setResult(null);
         setPending(emptyPending());
+        setDeletes(emptyDeletes());
+        setSelectedRow(null);
         setEditSql(null);
         setError(null);
         setPickerOpen(false);
@@ -810,6 +842,11 @@ export default function App() {
                   canExportSql={tableTarget !== null}
                   busy={exporting}
                   onExport={(f) => void exportResult(f)}
+                  canDelete={canEditRows && selectedRow !== null}
+                  deleting={selectedRow !== null && isDeleted(deletes, selectedRow)}
+                  onDeleteRow={() => {
+                    if (selectedRow !== null) onToggleDelete(selectedRow);
+                  }}
                 />
                 <ResultGrid
                   result={result}
@@ -819,16 +856,20 @@ export default function App() {
                   serverSorted={serverSorted}
                   pending={canEditRows ? pending : null}
                   onStage={onStage}
+                  deletes={canEditRows ? deletes : null}
+                  onToggleDelete={onToggleDelete}
+                  onSelectRow={setSelectedRow}
                 />
                 {canEditRows && (
                   <EditBar
-                    count={pendingCount(pending)}
+                    count={totalPending(pending, deletes)}
                     statements={editSql}
                     busy={applying}
                     onViewSql={() => void onViewSql()}
                     onHideSql={() => setEditSql(null)}
                     onCancel={() => {
                       setPending(emptyPending());
+                      setDeletes(emptyDeletes());
                       setEditSql(null);
                     }}
                     onConfirm={() => void onConfirmEdits()}
@@ -852,6 +893,11 @@ export default function App() {
                   canExportSql={tableTarget !== null}
                   busy={exporting}
                   onExport={(f) => void exportResult(f)}
+                  canDelete={canEditRows && selectedRow !== null}
+                  deleting={selectedRow !== null && isDeleted(deletes, selectedRow)}
+                  onDeleteRow={() => {
+                    if (selectedRow !== null) onToggleDelete(selectedRow);
+                  }}
                 />
                 <ResultGrid
                   result={result}
@@ -861,16 +907,20 @@ export default function App() {
                   serverSorted={serverSorted}
                   pending={canEditRows ? pending : null}
                   onStage={onStage}
+                  deletes={canEditRows ? deletes : null}
+                  onToggleDelete={onToggleDelete}
+                  onSelectRow={setSelectedRow}
                 />
                 {canEditRows && (
                   <EditBar
-                    count={pendingCount(pending)}
+                    count={totalPending(pending, deletes)}
                     statements={editSql}
                     busy={applying}
                     onViewSql={() => void onViewSql()}
                     onHideSql={() => setEditSql(null)}
                     onCancel={() => {
                       setPending(emptyPending());
+                      setDeletes(emptyDeletes());
                       setEditSql(null);
                     }}
                     onConfirm={() => void onConfirmEdits()}

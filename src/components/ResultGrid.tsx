@@ -13,8 +13,8 @@ import {
   initialWidths,
   resized,
 } from "../lib/gridWidths";
-import { cellText, isPending, pendingValue } from "../lib/pendingEdits";
-import type { Pending } from "../lib/pendingEdits";
+import { cellText, isDeleted, isPending, pendingValue } from "../lib/pendingEdits";
+import type { Pending, PendingDeletes } from "../lib/pendingEdits";
 import type { QueryResult } from "../types";
 
 interface Props {
@@ -36,6 +36,15 @@ interface Props {
    */
   pending: Pending | null;
   onStage: (row: number, col: number, value: string | null) => void;
+  /** Staged row deletions, or null when editing is off entirely. */
+  deletes: PendingDeletes | null;
+  onToggleDelete: (row: number) => void;
+  /**
+   * The selected row, as an index into `result.rows`, or null when
+   * nothing is selected. Reported upwards because the Delete row button
+   * lives in the toolbar, outside this component.
+   */
+  onSelectRow: (row: number | null) => void;
 }
 
 const ROW_HEIGHT = 28;
@@ -48,6 +57,9 @@ export function ResultGrid({
   serverSorted,
   pending,
   onStage,
+  deletes,
+  onToggleDelete,
+  onSelectRow,
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -127,6 +139,18 @@ export function ResultGrid({
   const range =
     selectedAll ??
     (anchor && focus ? selectionRange(anchor, focus) : null);
+
+  // The anchor is a display position, so the row it names changes when
+  // the grid is re-sorted. Deriving the underlying index on every render
+  // — rather than storing it when the click happens — is what keeps the
+  // toolbar's Delete row button pointed at the row you can see.
+  const selectedRow = anchor ? (order[anchor.row] ?? null) : null;
+  useEffect(() => {
+    onSelectRow(selectedRow);
+    // `onSelectRow` is a fresh arrow on every parent render; watching it
+    // would loop.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedRow]);
 
   // Cmd+C copies the selection as TSV; Cmd+A selects everything.
   //
@@ -299,6 +323,11 @@ export function ResultGrid({
             return (
               <tr
                 key={item.key}
+                className={
+                  deletes && isDeleted(deletes, order[item.index])
+                    ? "deleted"
+                    : undefined
+                }
                 style={{
                   position: "absolute",
                   transform: `translateY(${item.start}px)`,
@@ -357,6 +386,21 @@ export function ResultGrid({
                           e.preventDefault();
                           openEditor(rowIndex, i);
                         }
+                        // Shift+Cmd+Backspace stages the whole row for
+                        // deletion. Checked before the plain chord, and
+                        // the plain chord excludes Shift, so the two
+                        // cannot both fire. Not plain Backspace, which
+                        // would make one stray keypress destructive.
+                        if (
+                          (e.metaKey || e.ctrlKey) &&
+                          e.shiftKey &&
+                          e.key === "Backspace" &&
+                          deletes !== null
+                        ) {
+                          e.preventDefault();
+                          onToggleDelete(rowIndex);
+                          return;
+                        }
                         // Cmd+Backspace stages an explicit SQL NULL.
                         // Typing nothing means the empty string, which
                         // is a different value — the grid has always
@@ -364,6 +408,7 @@ export function ResultGrid({
                         // keep them apart.
                         if (
                           (e.metaKey || e.ctrlKey) &&
+                          !e.shiftKey &&
                           e.key === "Backspace" &&
                           canEdit(i)
                         ) {

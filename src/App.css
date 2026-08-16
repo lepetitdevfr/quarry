@@ -981,6 +981,17 @@ button.link {
   border-color: var(--accent);
 }
 
+/* Pushes the destructive action away from the export group, so Delete
+   row is never the button next to the one you meant to press. */
+.grid-toolbar-gap {
+  margin-left: auto;
+}
+
+.grid-toolbar button.danger:hover:not(:disabled) {
+  color: var(--error);
+  border-color: var(--error);
+}
+
 /* ---- write guard ------------------------------------------------ */
 
 /* The unlock dialog's card, in the same family as .confirm-dialog and
@@ -1076,6 +1087,17 @@ button.link {
 .result-grid td.pending {
   background: color-mix(in srgb, var(--pending) 22%, transparent);
   box-shadow: inset 2px 0 0 var(--pending);
+}
+
+/* A row staged for deletion. Struck through and dimmed rather than
+   tinted: the row is not changing value, it is going away, and the
+   strikethrough says that without competing with the pending-cell
+   amber on a row that holds both. */
+.result-grid tr.deleted td {
+  color: var(--muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--error);
+  box-shadow: inset 2px 0 0 var(--error);
 }
 
 /* A cell that cannot be edited while the rest of the row can. Not an

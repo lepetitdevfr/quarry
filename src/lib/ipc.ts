@@ -10,6 +10,7 @@ import type {
   LibraryTree,
   Query,
   QueryResult,
+  RowDelete,
   RowEdit,
   Schema,
   Tab,
@@ -30,17 +31,20 @@ export async function execute(sql: string): Promise<QueryResult> {
 export async function previewEdits(
   edit: EditInfo,
   rows: RowEdit[],
+  deletes: RowDelete[],
 ): Promise<EditStatement[]> {
-  return invoke<EditStatement[]>("preview_edits", { edit, rows });
+  return invoke<EditStatement[]>("preview_edits", { edit, rows, deletes });
 }
 
-/// Applies staged cell edits in one transaction, returning what the
-/// database stored for each edited cell.
+/// Applies staged cell edits and row deletions in one transaction,
+/// returning what the database stored for each edited cell and which
+/// rows are gone.
 export async function applyRowEdits(
   edit: EditInfo,
   rows: RowEdit[],
+  deletes: RowDelete[],
 ): Promise<AppliedRow[]> {
-  return invoke<AppliedRow[]>("apply_row_edits", { edit, rows });
+  return invoke<AppliedRow[]>("apply_row_edits", { edit, rows, deletes });
 }
 
 export async function disconnect(): Promise<void> {

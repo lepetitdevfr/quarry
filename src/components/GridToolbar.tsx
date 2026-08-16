@@ -9,9 +9,25 @@ interface Props {
   canExportSql: boolean;
   busy: boolean;
   onExport: (format: ExportFormat) => void;
+  /**
+   * Whether the selected row can be staged for deletion. The button is
+   * disabled rather than absent when nothing is selected, so the
+   * affordance stays discoverable.
+   */
+  canDelete: boolean;
+  /** Whether that row is already staged, so the button can undo it. */
+  deleting: boolean;
+  onDeleteRow: () => void;
 }
 
-export function GridToolbar({ canExportSql, busy, onExport }: Props) {
+export function GridToolbar({
+  canExportSql,
+  busy,
+  onExport,
+  canDelete,
+  deleting,
+  onDeleteRow,
+}: Props) {
   return (
     <div className="grid-toolbar">
       <span className="grid-toolbar-label">Export</span>
@@ -26,6 +42,19 @@ export function GridToolbar({ canExportSql, busy, onExport }: Props) {
           SQL
         </button>
       )}
+      <span className="grid-toolbar-gap" />
+      <button
+        className="danger"
+        disabled={busy || !canDelete}
+        title={
+          canDelete
+            ? "Shift+Cmd+Backspace"
+            : "select a row in an editable result to delete it"
+        }
+        onClick={onDeleteRow}
+      >
+        {deleting ? "Undo delete" : "Delete row"}
+      </button>
     </div>
   );
 }

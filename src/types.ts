@@ -56,12 +56,22 @@ export interface RowEdit {
   cells: CellEdit[];
 }
 
+/** Mirrors Rust `RowDelete`: one row to delete, addressed by its key. */
+export interface RowDelete {
+  row: number;
+  pk: string[];
+}
+
+/** Mirrors Rust `StatementKind`. */
+export type StatementKind = "update" | "delete";
+
 /** Mirrors Rust `Statement`, for the View SQL panel. */
 export interface EditStatement {
   sql: string;
   params: (string | null)[];
   row: number;
   returned: number[];
+  kind: StatementKind;
 }
 
 /** Mirrors Rust `AppliedCell`. The value is what the database stored. */
@@ -73,7 +83,10 @@ export interface AppliedCell {
 /** Mirrors Rust `AppliedRow`. */
 export interface AppliedRow {
   row: number;
+  /** Always empty for a deleted row: there is nothing left to patch. */
   cells: AppliedCell[];
+  /** The row is gone: drop it from the grid rather than patching it. */
+  deleted: boolean;
 }
 
 export type CellValue =

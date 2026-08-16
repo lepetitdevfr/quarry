@@ -3,11 +3,16 @@ import {
   applyPatches,
   cellText,
   count,
+  emptyDeletes,
   emptyPending,
+  isDeleted,
   isPending,
   pendingValue,
   stage,
+  toRowDeletes,
   toRowEdits,
+  toggleDelete,
+  totalPending,
   editingBlockedReason,
 } from "./pendingEdits";
 import type { QueryResult } from "../types";
@@ -125,7 +130,7 @@ describe("toRowEdits", () => {
 describe("applyPatches", () => {
   it("replaces cells with what the database returned", () => {
     const patched = applyPatches(result(), [
-      { row: 0, cells: [{ column: 1, value: "shouty@x.co" }] },
+      { row: 0, cells: [{ column: 1, value: "shouty@x.co" }], deleted: false },
     ]);
 
     expect(patched.rows[0][1]).toBe("shouty@x.co");
@@ -135,8 +140,142 @@ describe("applyPatches", () => {
 
   it("does not mutate the result it was given", () => {
     const original = result();
-    applyPatches(original, [{ row: 0, cells: [{ column: 1, value: "x@x.co" }] }]);
+    applyPatches(original, [
+      { row: 0, cells: [{ column: 1, value: "x@x.co" }], deleted: false },
+    ]);
     expect(original.rows[0][1]).toBe("a@x.co");
+  });
+
+  it("drops a deleted row", () => {
+    const patched = applyPatches(threeRows(), [
+      { row: 1, cells: [], deleted: true },
+    ]);
+
+    expect(patched.rows).toEqual([
+      [1, "a@x.co"],
+      [3, "c@x.co"],
+    ]);
+    expect(patched.row_count).toBe(2);
+  });
+
+  it("drops several rows by their original index", () => {
+    // Dropping one at a time would shift the indexes under the next
+    // patch and remove the wrong row.
+    const patched = applyPatches(threeRows(), [
+      { row: 0, cells: [], deleted: true },
+      { row: 1, cells: [], deleted: true },
+    ]);
+
+    expect(patched.rows).toEqual([[3, "c@x.co"]]);
+  });
+
+  it("patches the survivors before the rows around them move", () => {
+    const patched = applyPatches(threeRows(), [
+      { row: 0, cells: [], deleted: true },
+      { row: 2, cells: [{ column: 1, value: "patched@x.co" }], deleted: false },
+    ]);
+
+    expect(patched.rows).toEqual([
+      [2, "b@x.co"],
+      [3, "patched@x.co"],
+    ]);
+  });
+});
+
+function threeRows(): QueryResult {
+  const r = result();
+  r.rows = [
+    [1, "a@x.co"],
+    [2, "b@x.co"],
+    [3, "c@x.co"],
+  ];
+  r.row_count = 3;
+  return r;
+}
+
+describe("toggleDelete", () => {
+  it("stages a row deletion", () => {
+    const { deletes } = toggleDelete(emptyPending(), emptyDeletes(), 1);
+    expect(isDeleted(deletes, 1)).toBe(true);
+    expect(deletes.size).toBe(1);
+  });
+
+  it("unstages a row that is already staged", () => {
+    const first = toggleDelete(emptyPending(), emptyDeletes(), 1);
+    const second = toggleDelete(first.pending, first.deletes, 1);
+    expect(isDeleted(second.deletes, 1)).toBe(false);
+    expect(second.deletes.size).toBe(0);
+  });
+
+  it("drops that row's cell edits when it stages the deletion", () => {
+    // Applying both would UPDATE a row that is about to disappear.
+    const pending = stage(emptyPending(), threeRows(), 1, 1, "z@x.co");
+    const next = toggleDelete(pending, emptyDeletes(), 1);
+    expect(isPending(next.pending, 1, 1)).toBe(false);
+  });
+
+  it("leaves other rows' cell edits alone", () => {
+    let pending = stage(emptyPending(), threeRows(), 0, 1, "y@x.co");
+    pending = stage(pending, threeRows(), 1, 1, "z@x.co");
+    const next = toggleDelete(pending, emptyDeletes(), 1);
+    expect(isPending(next.pending, 0, 1)).toBe(true);
+    expect(count(next.pending)).toBe(1);
+  });
+
+  it("does not restore dropped cell edits when unstaged", () => {
+    // Unstaging a deletion cannot resurrect edits it dropped, and
+    // pretending otherwise would need history this module does not keep.
+    const pending = stage(emptyPending(), threeRows(), 1, 1, "z@x.co");
+    const first = toggleDelete(pending, emptyDeletes(), 1);
+    const second = toggleDelete(first.pending, first.deletes, 1);
+    expect(count(second.pending)).toBe(0);
+  });
+
+  it("does not mutate what it was given", () => {
+    const pending = stage(emptyPending(), threeRows(), 1, 1, "z@x.co");
+    const deletes = emptyDeletes();
+    toggleDelete(pending, deletes, 1);
+    expect(deletes.size).toBe(0);
+    expect(isPending(pending, 1, 1)).toBe(true);
+  });
+});
+
+describe("totalPending", () => {
+  it("counts edited cells and deleted rows together", () => {
+    let pending = stage(emptyPending(), threeRows(), 0, 1, "y@x.co");
+    pending = stage(pending, threeRows(), 1, 1, "z@x.co");
+    const next = toggleDelete(pending, emptyDeletes(), 2);
+    // Two cells staged, one of which survived; plus one deletion.
+    expect(totalPending(next.pending, next.deletes)).toBe(3);
+  });
+
+  it("is zero when nothing is staged", () => {
+    expect(totalPending(emptyPending(), emptyDeletes())).toBe(0);
+  });
+});
+
+describe("toRowDeletes", () => {
+  it("carries the key value as text, in a stable order", () => {
+    let deletes = toggleDelete(emptyPending(), emptyDeletes(), 2).deletes;
+    deletes = toggleDelete(emptyPending(), deletes, 0).deletes;
+
+    // Sorted by row so the generated SQL — and the View SQL panel —
+    // does not depend on the order the rows happened to be clicked.
+    expect(toRowDeletes(deletes, threeRows())).toEqual([
+      { row: 0, pk: ["1"] },
+      { row: 2, pk: ["3"] },
+    ]);
+  });
+
+  it("returns nothing when nothing is staged", () => {
+    expect(toRowDeletes(emptyDeletes(), threeRows())).toEqual([]);
+  });
+
+  it("throws when a key value is NULL", () => {
+    const r = threeRows();
+    r.rows[0][0] = null;
+    const { deletes } = toggleDelete(emptyPending(), emptyDeletes(), 0);
+    expect(() => toRowDeletes(deletes, r)).toThrow(/primary key/i);
   });
 });
 
