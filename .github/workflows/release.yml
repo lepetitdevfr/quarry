@@ -39,26 +39,69 @@ jobs:
 
       - run: npm ci
 
+      # The .app is bundled first and separately. DMG creation is the flaky
+      # step on a headless runner — it drives hdiutil and, on some images,
+      # Finder via AppleScript — and a DMG problem should not cost the build
+      # that already succeeded.
       - name: Build the app
-        run: npm run tauri build
+        run: npm run tauri build -- --bundles app --verbose
 
-      # Named with the tag so a downloaded file says which version it is —
-      # every release otherwise produces an identically named Quarry_0.1.0
-      # once the config version stops being bumped by hand.
-      - name: Collect the .dmg
+      # `hdiutil` intermittently reports "Resource busy" on CI when a volume
+      # from an earlier attempt is still detaching, so one retry after a
+      # pause fixes most failures. `--verbose` keeps the real error visible
+      # when it does not.
+      - name: Bundle the .dmg
+        id: bundle
+        continue-on-error: true
+        run: |
+          npm run tauri build -- --bundles dmg --verbose \
+            || (echo "retrying dmg bundle"; sleep 15; npm run tauri build -- --bundles dmg --verbose)
+
+      # Renamed with the tag so a downloaded file says which version it is:
+      # Tauri names every build from the config version, which stops being
+      # bumped by hand sooner or later. Ships whichever bundles exist. A .zip of the .app is a perfectly good
+      # macOS download — it is what many notarised apps distribute — so a
+      # failed DMG degrades the release rather than blocking it.
+      - name: Collect the artifacts
         id: dmg
         run: |
-          src=$(ls src-tauri/target/release/bundle/dmg/*.dmg | head -1)
-          out="Quarry-${{ github.ref_name }}-aarch64.dmg"
-          mv "$src" "$out"
-          echo "path=$out" >> "$GITHUB_OUTPUT"
+          set -euo pipefail
+          version="${{ github.ref_name }}"
+          out=""
+
+          dmg=$(ls src-tauri/target/release/bundle/dmg/*.dmg 2>/dev/null | head -1 || true)
+          if [ -n "$dmg" ]; then
+            mv "$dmg" "Quarry-$version-aarch64.dmg"
+            out="Quarry-$version-aarch64.dmg"
+          else
+            echo "::warning::no .dmg was produced — publishing the .app as a zip instead"
+          fi
+
+          app=$(ls -d src-tauri/target/release/bundle/macos/*.app 2>/dev/null | head -1 || true)
+          if [ -n "$app" ]; then
+            # ditto, not zip: it preserves the resource forks and symlinks an
+            # .app bundle needs to stay launchable.
+            ditto -c -k --keepParent "$app" "Quarry-$version-aarch64.app.zip"
+            out="$out"$'\n'"Quarry-$version-aarch64.app.zip"
+          fi
+
+          if [ -z "$out" ]; then
+            echo "neither a .dmg nor an .app was built"
+            exit 1
+          fi
+
+          {
+            echo "paths<<EOF"
+            echo "$out"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
 
       # Uploaded on every run, tag or not, so a dispatch rehearsal still
       # produces something to open and check before anything is published.
       - uses: actions/upload-artifact@v4
         with:
-          name: dmg
-          path: ${{ steps.dmg.outputs.path }}
+          name: bundles
+          path: ${{ steps.dmg.outputs.paths }}
 
       - name: Publish to the public releases repo
         if: startsWith(github.ref, 'refs/tags/')
@@ -71,7 +114,7 @@ jobs:
           token: ${{ secrets.RELEASES_TOKEN }}
           tag_name: ${{ github.ref_name }}
           name: Quarry ${{ github.ref_name }}
-          files: ${{ steps.dmg.outputs.path }}
+          files: ${{ steps.dmg.outputs.paths }}
           body: |
             Apple Silicon build, unsigned. macOS quarantines it and will
             refuse the first open until the flag is cleared:
