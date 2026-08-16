@@ -37,10 +37,33 @@ thiserror = "2.0.20"
 tokio-postgres-rustls = "0.14.0"
 rustls = "0.23.43"
 webpki-roots = "1.0.9"
-security-framework = "3.7.0"
 rusqlite = { version = "0.40.2", features = ["bundled"] }
 sqlparser = "0.58"
 dirs = "6.0.0"
+
+# `keyring` has no default backend: with no store feature enabled it
+# compiles fine and silently keeps passwords in an in-process mock that
+# vanishes at exit. That failure is invisible — the round-trip tests in
+# secrets.rs would still pass — so the backend is named per platform
+# rather than left to defaults.
+[target.'cfg(target_os = "macos")'.dependencies]
+keyring = { version = "3", features = ["apple-native"] }
+# Kept only to read the OSStatus back out of the error `keyring` boxes,
+# for the errSecAuthFailed message in secrets.rs. It must stay on the
+# same major as keyring's own `security-framework` dependency: a
+# downcast across two majors is a different type and would never match,
+# silently costing us that message.
+security-framework = "3.7.0"
+
+# `linux-native` (the kernel keyutils store) rather than Secret Service,
+# which needs a D-Bus session bus and an unlocked keyring daemon —
+# neither of which exists on a headless CI runner, where these tests
+# have to pass.
+[target.'cfg(target_os = "linux")'.dependencies]
+keyring = { version = "3", features = ["linux-native"] }
+
+[target.'cfg(target_os = "windows")'.dependencies]
+keyring = { version = "3", features = ["windows-native"] }
 
 [dev-dependencies]
 tempfile = "3.27.0"
