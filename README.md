@@ -69,7 +69,11 @@ classifier is not enough to write to production.
 [**Latest release**](https://github.com/lepetitdevfr/quarry-releases/releases/latest)
 · [Download page](https://lepetitdevfr.github.io/quarry-releases/)
 
-**macOS (Apple Silicon)** is the supported build: a `.dmg`, or a `.zip` of the
+**Everything here is beta.** Quarry is pre-1.0 and unsigned, and one person
+has used it in earnest. It reads and writes real databases — keep the
+write-guard on for anything that matters.
+
+**macOS (Apple Silicon)** is the tested build: a `.dmg`, or a `.zip` of the
 `.app`. **Linux (`.deb`, `.AppImage`) and Windows (`.msi`, `.exe`) are beta** —
 they build in CI and have never been run on a real machine. Their credential
 stores, kernel keyutils and Credential Manager, are compiled but unexercised,
@@ -148,10 +152,10 @@ Stop it with `docker stop quarry-smoke`.
 Honest list, not a roadmap. Items with a plan behind them are in
 [`docs/BACKLOG.md`](docs/BACKLOG.md).
 
-- **macOS is the only supported platform.** Linux and Windows builds are
-  published as beta: they compile and package in CI, but nothing has run them,
-  their credential backends have never been exercised, and the fonts and
-  shortcut labels assume a Mac.
+- **All builds are beta, macOS included.** Pre-1.0, unsigned, and exercised by
+  one person on one machine. Linux and Windows are further back still: they
+  compile and package in CI but have never been run, their credential backends
+  are unexercised, and the fonts and shortcut labels assume a Mac.
 - **Downloads are unsigned.** They install, but macOS quarantines them until
   you clear the flag (see [Download](#download)). Signing needs a paid Apple
   Developer account.

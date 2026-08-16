@@ -194,7 +194,11 @@ jobs:
 
             ---
 
-            ### macOS (Apple Silicon) — supported
+            **Every build here is beta.** Quarry is pre-1.0, unsigned, and has
+            been used in earnest by one person. Back up anything you point it
+            at, and keep the write-guard on for production connections.
+
+            ### macOS (Apple Silicon) — beta, tested
 
             Unsigned, so macOS quarantines it and refuses the first open:
 
@@ -202,7 +206,7 @@ jobs:
             xattr -dr com.apple.quarantine /Applications/Quarry.app
             ```
 
-            ### Linux and Windows — beta, untested
+            ### Linux and Windows — beta, never run
 
             These build in CI and have **never been run on a real machine**.
             The credential store in particular — kernel keyutils on Linux,
