@@ -18,6 +18,9 @@ const MUTED = "#8b93a1";
 const BORDER = "#2c3038";
 const ACCENT = "#4f8ef7";
 const SELECTION = "#2d4a7c";
+// Dimmer, for a selection left behind when focus moves elsewhere: still
+// findable, but not competing with whatever now has the cursor.
+const SELECTION_BLUR = "#23344f";
 
 export const quarryEditorTheme = EditorView.theme(
   {
@@ -35,10 +38,22 @@ export const quarryEditorTheme = EditorView.theme(
       borderLeftColor: ACCENT,
       borderLeftWidth: "2px",
     },
-    // Both selectors are needed: CodeMirror uses the ::selection
-    // pseudo-element when the editor has focus and .cm-selectionBackground
-    // when it does not.
-    "&.cm-focused .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
+    // Selection is drawn by CodeMirror, not by the browser: the
+    // `drawSelection` extension in basicSetup forces the native
+    // ::selection transparent at Prec.highest and paints
+    // .cm-selectionBackground divs instead. So a ::selection rule here
+    // is dead weight, and the div is the only thing worth styling.
+    //
+    // The focused selector has to be spelled out to this depth because
+    // CodeMirror's own base theme claims
+    // `&dark.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground`
+    // — five classes. A shorter selector loses on specificity, and the
+    // base colour it falls back to is #233, which on this background is
+    // a highlight you cannot see.
+    ".cm-selectionBackground": {
+      backgroundColor: SELECTION_BLUR,
+    },
+    "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground":
       {
         backgroundColor: SELECTION,
       },
