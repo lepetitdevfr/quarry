@@ -66,6 +66,14 @@ Rust integration tests need Docker; they start Postgres 17 via testcontainers.
   a plain copy of a WAL database captures no tables.
 - `src-tauri/src/menu.rs` hand-rolls the macOS menu so ⌘W closes a tab. Its
   Edit submenu is what makes ⌘C/⌘V/⌘Z work in the SQL editor — do not prune it.
+- **When a Tauri API does nothing and reports nothing, check
+  `src-tauri/capabilities/default.json` first.** `core:default` is narrower
+  than it looks: window dragging needed `core:window:allow-start-dragging`
+  added explicitly, and the denial was silent. Capability changes need a
+  `tauri dev` restart — they compile into the binary.
+- The window has no title bar (`titleBarStyle: "Overlay"`). A 28px
+  `.drag-strip` carries the traffic lights and the window drag; its height and
+  `.app.with-sidebar`'s `padding-top` must stay equal.
 - GitHub lists "claude" as a contributor. That is a cached GitHub statistic,
   not a git problem; the repo is clean. Do not rewrite history over it.
 
