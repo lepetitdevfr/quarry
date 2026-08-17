@@ -1,6 +1,6 @@
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
-import { acceptCompletion } from "@codemirror/autocomplete";
+import { acceptCompletion, startCompletion } from "@codemirror/autocomplete";
 import { keymap, type EditorView } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { useCallback, useMemo, useRef } from "react";
@@ -61,12 +61,20 @@ export function SqlEditor({
         keymap.of([
           {
             key: "Tab",
-            // The wrapper binds Tab to indent, which shadows the
-            // completion list: pressing Tab on a highlighted suggestion
-            // indented the line instead of accepting it. `acceptCompletion`
-            // returns false when no completion is open, so the binding
-            // falls through and Tab still indents everywhere else.
-            run: acceptCompletion,
+            // Tab belongs to completion here, and to nothing else. It
+            // accepts the highlighted suggestion, or asks for suggestions
+            // when none are showing. It never indents — SQL is written,
+            // not laid out — and it never moves focus, because leaving
+            // the editor mid-statement is not what the key means inside
+            // one.
+            //
+            // Always returns true, even when both commands decline:
+            // returning false hands the key back to the browser, which
+            // is exactly the focus jump this replaces.
+            run: (view) => {
+              acceptCompletion(view) || startCompletion(view);
+              return true;
+            },
           },
           {
             key: "Mod-Enter",
