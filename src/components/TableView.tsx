@@ -10,6 +10,8 @@ interface Props {
   mode: TableMode;
   onModeChange: (mode: TableMode) => void;
   onRefreshSchema: () => void;
+  /** Rendered above the grid in data mode — the SQL behind the rows. */
+  editor?: React.ReactNode;
   /** Rendered under the toggle in data mode — the result grid. */
   children?: React.ReactNode;
 }
@@ -21,6 +23,7 @@ export function TableView({
   mode,
   onModeChange,
   onRefreshSchema,
+  editor,
   children,
 }: Props) {
   return (
@@ -48,7 +51,13 @@ export function TableView({
       </header>
 
       {mode === "data" ? (
-        children
+        // The query is shown, not hidden behind the tab: a Data tab is a
+        // SELECT like any other, and the fastest way to filter one row out
+        // of a thousand is to edit the WHERE that is already there.
+        <>
+          {editor}
+          {children}
+        </>
       ) : detail === null ? (
         <p className="table-view-empty">
           {schemaName}.{tableName} is not in this database.{" "}

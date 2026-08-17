@@ -133,6 +133,15 @@ export default function App() {
   // whatever replaced it.
   const [inserts, setInserts] = useState<PendingInserts>(emptyInserts());
   const [selectedRow, setSelectedRow] = useState<number | null>(null);
+  // The SQL behind a Data tab, shown in an editor above the grid. Held
+  // here rather than in the tab record: it is a scratch edit of a
+  // generated query, and persisting it would make a table tab reopen
+  // showing something other than the table.
+  const [tableSql, setTableSql] = useState("");
+  // Once the user edits it the tab stops being a generated preview, which
+  // is what stops a sort from regenerating the query and discarding the
+  // edit.
+  const [tableSqlEdited, setTableSqlEdited] = useState(false);
   const [editSql, setEditSql] = useState<EditStatement[] | null>(null);
   const [applying, setApplying] = useState(false);
 
@@ -407,8 +416,18 @@ export default function App() {
       setText("");
       return;
     }
-    // A table tab has no editor buffer; leave the editor's text alone.
-    if (activeTab.target_table) return;
+    // A table tab has no editor buffer of its own; its Data-mode editor
+    // is seeded from the table it points at, so switching to one must
+    // reseed rather than leave the previous table's query on screen.
+    if (activeTab.target_table) {
+      const [schemaName, tableName] = [
+        activeTab.target_schema ?? "public",
+        activeTab.target_table,
+      ];
+      setTableSql(previewSql(schemaName, tableName));
+      setTableSqlEdited(false);
+      return;
+    }
     const query = queryById(activeTab.query_id);
     setText(query ? effectiveSql(query) : (activeTab.scratch_sql ?? ""));
     // Only re-run when the tab identity changes, not on every keystroke.
@@ -479,7 +498,10 @@ export default function App() {
     async (schemaName: string, tableName: string) => {
       setSort(null);
       await actions.openTableTab(schemaName, tableName, "data", "preview");
-      await runSql(previewSql(schemaName, tableName));
+      const sql = previewSql(schemaName, tableName);
+      setTableSql(sql);
+      setTableSqlEdited(false);
+      await runSql(sql);
     },
     [actions, runSql],
   );
@@ -497,7 +519,12 @@ export default function App() {
       if (!activeTab || !tableTarget) return;
       setSort(null);
       await actions.setTabMode(activeTab.id, next);
-      if (next === "data") await runSql(previewSql(tableTarget.schema, tableTarget.table));
+      if (next === "data") {
+        const sql = previewSql(tableTarget.schema, tableTarget.table);
+        setTableSql(sql);
+        setTableSqlEdited(false);
+        await runSql(sql);
+      }
     },
     [activeTab, tableTarget, actions, runSql],
   );
@@ -511,7 +538,11 @@ export default function App() {
     async (next: SortState | null) => {
       setSort(next);
 
-      if (!tableTarget || activeTab?.mode !== "data") return;
+      // An edited Data tab is somebody's own SELECT now. Regenerating the
+      // preview here would silently throw their edit away on the first
+      // column click, so it sorts its fetched rows instead, exactly as a
+      // query tab does.
+      if (!tableTarget || activeTab?.mode !== "data" || tableSqlEdited) return;
 
       const column = next === null ? undefined : result?.columns[next.column]?.name;
       await runSql(
@@ -522,11 +553,13 @@ export default function App() {
         ),
       );
     },
-    [tableTarget, activeTab?.mode, result, runSql],
+    [tableTarget, activeTab?.mode, result, runSql, tableSqlEdited],
   );
 
-  // Whether the rows already arrived in database order.
-  const serverSorted = tableTarget !== null && activeTab?.mode === "data";
+  // Whether the rows already arrived in database order. An edited Data
+  // tab has not been re-run with an ORDER BY, so its rows have not.
+  const serverSorted =
+    tableTarget !== null && activeTab?.mode === "data" && !tableSqlEdited;
 
   const [exporting, setExporting] = useState(false);
 
@@ -939,6 +972,18 @@ export default function App() {
             mode={activeTab?.mode ?? "structure"}
             onModeChange={(next) => void changeTableMode(next)}
             onRefreshSchema={() => void refreshDbSchema()}
+            editor={
+              <SqlEditor
+                value={tableSql}
+                onChange={(next) => {
+                  setTableSql(next);
+                  setTableSqlEdited(true);
+                }}
+                onRun={(sql) => run(sql ?? tableSql)}
+                busy={busy}
+                completionSchema={completionSchema}
+              />
+            }
           >
             {result && (
               <>
