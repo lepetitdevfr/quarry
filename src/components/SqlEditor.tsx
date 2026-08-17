@@ -104,6 +104,12 @@ export function SqlEditor({
         value={value}
         height="200px"
         theme="none"
+        // Tab does not indent. It accepts a completion when one is open
+        // (see the keymap above) and otherwise moves focus out of the
+        // editor, which is what a Tab key does everywhere else and what
+        // keyboard navigation expects. SQL here is written, not laid
+        // out; nobody indents a WHERE clause by hand.
+        indentWithTab={false}
         extensions={extensions}
         onChange={onChange}
         onCreateEditor={(view) => {
