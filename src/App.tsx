@@ -691,6 +691,19 @@ export default function App() {
     [library, actions],
   );
 
+  // Stable identities for the Data tab's editor. Inline arrows here would
+  // change on every render — and the guard countdown re-renders this
+  // component once a second — which churns the editor's own listeners.
+  const onTableSqlChange = useCallback((next: string) => {
+    setTableSql(next);
+    setTableSqlEdited(true);
+  }, []);
+
+  const onRunTableSql = useCallback(
+    (sql?: string) => run(sql ?? tableSql),
+    [run, tableSql],
+  );
+
   const switchTo = useCallback(
     async (id: string, password?: string) => {
       setConnectError(null);
@@ -975,11 +988,8 @@ export default function App() {
             editor={
               <SqlEditor
                 value={tableSql}
-                onChange={(next) => {
-                  setTableSql(next);
-                  setTableSqlEdited(true);
-                }}
-                onRun={(sql) => run(sql ?? tableSql)}
+                onChange={onTableSqlChange}
+                onRun={onRunTableSql}
                 busy={busy}
                 completionSchema={completionSchema}
               />

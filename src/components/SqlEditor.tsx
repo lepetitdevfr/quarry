@@ -30,19 +30,26 @@ export function SqlEditor({
   // changes identity.
   const viewRef = useRef<EditorView | null>(null);
 
-  const runStatement = useCallback(
-    (view: EditorView) => {
-      const sql = statementAt(
-        view.state.doc.toString(),
-        view.state.selection.main.head,
-      );
-      // An empty buffer, or one holding nothing but comments. Running it
-      // would ask Postgres to prepare nothing and report an error for a
-      // keypress that did not mean anything.
-      if (sql) onRun(sql);
-    },
-    [onRun],
-  );
+  // `onRun` behind a ref so the extension array below does not depend on
+  // it. A caller passing an inline arrow — which App does for the Data
+  // tab — gives it a new identity on every render, and App re-renders
+  // once a second while the guard countdown polls. Rebuilding the
+  // extensions reconfigures CodeMirror, and a reconfigure closes an open
+  // completion list: the suggestions appeared and vanished a second
+  // later, in time with the cursor blink.
+  const onRunRef = useRef(onRun);
+  onRunRef.current = onRun;
+
+  const runStatement = useCallback((view: EditorView) => {
+    const sql = statementAt(
+      view.state.doc.toString(),
+      view.state.selection.main.head,
+    );
+    // An empty buffer, or one holding nothing but comments. Running it
+    // would ask Postgres to prepare nothing and report an error for a
+    // keypress that did not mean anything.
+    if (sql) onRunRef.current(sql);
+  }, []);
   // Prec.highest ensures Cmd+Enter reaches us before CodeMirror's own
   // bindings. useMemo keeps the extension array stable across renders,
   // which stops CodeMirror from tearing down its state on every keystroke.
@@ -94,14 +101,14 @@ export function SqlEditor({
             // worth or it fails. Kept because a selection-free "run
             // everything" is what you want on a single-statement tab.
             run: () => {
-              onRun();
+              onRunRef.current();
               return true;
             },
           },
         ]),
       ),
     ],
-    [onRun, runStatement, completionSchema],
+    [runStatement, completionSchema],
   );
 
   return (
