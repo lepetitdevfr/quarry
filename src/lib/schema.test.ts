@@ -111,9 +111,15 @@ describe("buildCompletionSchema", () => {
     expect(built["users"]).toEqual(["id", "email"]);
   });
 
-  it("does not expose non-public tables unqualified", () => {
+  it("exposes a non-public table unqualified when the name is unique", () => {
+    // This reverses an earlier decision to qualify everything outside
+    // `public`. In practice a WHERE clause refers to the table by its
+    // bare name — `from analytics.events where events.user_id ...` —
+    // which is ordinary SQL, and completing nothing there was the more
+    // surprising behaviour of the two.
     const built = buildCompletionSchema(SCHEMA);
-    expect(built["events"]).toBeUndefined();
+    expect(built["events"]).toEqual(["user_id"]);
+    expect(built["analytics.events"]).toEqual(["user_id"]);
   });
 
   it("returns an empty object for a null schema", () => {
@@ -258,5 +264,71 @@ describe("previewSql", () => {
     expect(
       previewSql("public", "users", { column: 'we"ird', direction: "asc" }),
     ).toBe('select * from "public"."users" order by "we""ird" asc limit 500');
+  });
+});
+
+describe("buildCompletionSchema unqualified names", () => {
+  const table = (schema: string, name: string, columns: string[]) => ({
+    schema,
+    name,
+    columns: columns.map((c) => ({
+      name: c,
+      type_name: "text",
+      nullable: true,
+      default: null,
+      is_primary_key: false,
+      references: null,
+    })),
+    indexes: [],
+    constraints: [],
+    stats: null,
+    comment: null,
+    triggers: [],
+    dependents: [],
+  });
+
+  const schemaWith = (...nodes: { name: string; tables: ReturnType<typeof table>[] }[]) => ({
+    schemas: nodes,
+  });
+
+  it("completes a table in a non-public schema by its bare name", () => {
+    // `select * from od_pdp.invoice where invoice.` — nobody re-qualifies
+    // in the WHERE, and Postgres does not require it.
+    const built = buildCompletionSchema(
+      schemaWith({ name: "od_pdp", tables: [table("od_pdp", "invoice", ["id", "reason"])] }),
+    );
+
+    expect(built["od_pdp.invoice"]).toEqual(["id", "reason"]);
+    expect(built["invoice"]).toEqual(["id", "reason"]);
+  });
+
+  it("lets public win when two schemas share a table name", () => {
+    // Unqualified SQL resolves through search_path, which starts at
+    // public — so the bare name should complete what the query would
+    // actually hit.
+    const built = buildCompletionSchema(
+      schemaWith(
+        { name: "od_pdp", tables: [table("od_pdp", "invoice", ["reason"])] },
+        { name: "public", tables: [table("public", "invoice", ["total"])] },
+      ),
+    );
+
+    expect(built["invoice"]).toEqual(["total"]);
+    expect(built["od_pdp.invoice"]).toEqual(["reason"]);
+  });
+
+  it("leaves an ambiguous bare name out rather than guessing", () => {
+    // Two non-public schemas, same table name, no search_path answer.
+    // Completing one of them would be wrong half the time.
+    const built = buildCompletionSchema(
+      schemaWith(
+        { name: "a", tables: [table("a", "invoice", ["x"])] },
+        { name: "b", tables: [table("b", "invoice", ["y"])] },
+      ),
+    );
+
+    expect(built["invoice"]).toBeUndefined();
+    expect(built["a.invoice"]).toEqual(["x"]);
+    expect(built["b.invoice"]).toEqual(["y"]);
   });
 });

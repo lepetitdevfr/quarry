@@ -104,16 +104,41 @@ export function buildCompletionSchema(
 
   const built: Record<string, string[]> = {};
 
+  // How many schemas hold a table of each name, so a bare name is only
+  // offered when it means one thing.
+  const owners = new Map<string, string[]>();
+  for (const node of schema.schemas) {
+    for (const table of node.tables) {
+      owners.set(table.name, [...(owners.get(table.name) ?? []), node.name]);
+    }
+  }
+
   for (const node of schema.schemas) {
     for (const table of node.tables) {
       const columns = table.columns.map((c) => c.name);
       built[`${node.name}.${table.name}`] = columns;
-      if (node.name === "public") built[table.name] = columns;
+
+      // The bare name too, because nobody re-qualifies in a WHERE:
+      // `select * from od_pdp.invoice where invoice.reason is not null`
+      // is ordinary SQL, and Postgres resolves the alias from the FROM.
+      //
+      // Only when it is unambiguous. Where two schemas share a name,
+      // public wins — unqualified SQL resolves through search_path,
+      // which starts there, so completing public's columns matches what
+      // the query would actually hit. Two non-public schemas have no
+      // such answer, and guessing would be wrong half the time, so the
+      // bare name is left out and the qualified one still works.
+      const holders = owners.get(table.name) ?? [];
+      const unambiguous = holders.length === 1;
+      if (unambiguous || node.name === "public") {
+        built[table.name] = columns;
+      }
     }
   }
 
   return built;
 }
+
 
 /** How many rows a table preview fetches. */
 export const PREVIEW_LIMIT = 500;
