@@ -1,3 +1,19 @@
+## [0.3.0](https://github.com/lepetitdevfr/quarry/compare/v0.2.0...v0.3.0) (2026-08-17)
+
+### Features
+
+* **ui:** show and edit the query behind a Data tab ([882f988](https://github.com/lepetitdevfr/quarry/commit/882f9887a88f31a672ddf4c4906e3881c04fd051))
+* **ui:** tell the user when a newer version is published ([f73248f](https://github.com/lepetitdevfr/quarry/commit/f73248fb262e0d4accad4bc540afe062c0ac5964))
+
+### Fixes
+
+* **ci:** repair the release workflow yaml ([06abe5e](https://github.com/lepetitdevfr/quarry/commit/06abe5e6349921e625bb1701d79f54725d4eea1d))
+* **editor:** accept the completion with tab instead of indenting ([d1c0fb3](https://github.com/lepetitdevfr/quarry/commit/d1c0fb39454ba6d10a1b85bef004e847a4ed531f))
+* **editor:** complete columns for a table named without its schema ([edeaceb](https://github.com/lepetitdevfr/quarry/commit/edeaceba8d10bbcd129070fd5e2aa6370e055bc4))
+* **editor:** make tab open or accept suggestions, never leave the editor ([3a65ac3](https://github.com/lepetitdevfr/quarry/commit/3a65ac38a13bd5087532dc5d57d746d48ea06243))
+* **editor:** stop a re-render from closing the suggestion list ([b44e150](https://github.com/lepetitdevfr/quarry/commit/b44e150b54eb30414a018348ec1b86934afc998b))
+* **editor:** stop tab from indenting ([34a2260](https://github.com/lepetitdevfr/quarry/commit/34a22606838839dd62ae95296285c8208303e4bb))
+
 ## [0.2.0](https://github.com/lepetitdevfr/quarry/compare/v0.1.1...v0.2.0) (2026-08-16)
 
 ### Features
