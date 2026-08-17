@@ -90,6 +90,14 @@ This is not a workaround for a broken app — it is what an app without a $99/yr
 Apple Developer signature looks like on macOS. If that trade is not acceptable,
 build from source below; the result is identical.
 
+## Staying up to date
+
+Quarry checks the releases repo once at launch and shows a quiet banner when a
+newer version exists. It links to the download page rather than installing
+anything: builds are unsigned and there is no updater, so an app that replaced
+itself would be claiming more than it can honestly do. "Stop checking" in the
+banner turns the check off for good.
+
 ## Requirements
 
 - macOS (Apple Silicon), Xcode Command Line Tools

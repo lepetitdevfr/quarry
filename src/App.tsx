@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import iconUrl from "./assets/icon.png";
 import { listen } from "@tauri-apps/api/event";
+import { getVersion } from "@tauri-apps/api/app";
 import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 // Aliased: this module already has a `save` callback for Cmd+S.
 import { save as saveFileDialog } from "@tauri-apps/plugin-dialog";
@@ -20,6 +21,7 @@ import { StatusBar } from "./components/StatusBar";
 import { TabBar } from "./components/TabBar";
 import { TableView } from "./components/TableView";
 import { UnlockDialog } from "./components/UnlockDialog";
+import { UpdateBanner } from "./components/UpdateBanner";
 import { useConnections } from "./hooks/useConnections";
 import { useLibrary } from "./hooks/useLibrary";
 import { useSchema } from "./hooks/useSchema";
@@ -55,6 +57,7 @@ import type {
   PendingInserts,
 } from "./lib/pendingEdits";
 import { formatCountdown } from "./lib/guard";
+import { shouldNotify } from "./lib/updates";
 import { DEFAULT_SIDEBAR_WIDTH } from "./lib/layout";
 import type { SortState } from "./lib/gridSort";
 import { sortedIndices } from "./lib/gridSort";
@@ -76,6 +79,14 @@ import "./App.css";
 
 /** How long the "Saved" indicator stays visible after a save. */
 const SAVED_FLASH_MS = 2000;
+
+/** Where releases are published — the public repo, not this one. */
+const RELEASES_API =
+  "https://api.github.com/repos/lepetitdevfr/quarry-releases/releases/latest";
+const RELEASES_PAGE = "https://lepetitdevfr.github.io/quarry-releases/";
+/** localStorage keys for the update check's two pieces of state. */
+const UPDATE_CHECK_KEY = "quarry.updateCheck";
+const UPDATE_DISMISSED_KEY = "quarry.updateDismissed";
 
 /**
  * Whether deleting this collection would also delete queries — directly
@@ -292,6 +303,55 @@ export default function App() {
       window.clearInterval(handle);
     };
   }, [connection]);
+
+  // A newer published release, when there is one worth mentioning.
+  const [update, setUpdate] = useState<{ version: string; url: string } | null>(
+    null,
+  );
+
+  // Checked once per launch, against the public releases repo. Not a
+  // background poll: a database client that talks to github.com on a
+  // timer is a surprise, and once per start is enough for an app people
+  // quit at the end of the day.
+  useEffect(() => {
+    const enabled = localStorage.getItem(UPDATE_CHECK_KEY) !== "off";
+    if (!enabled) return;
+
+    let cancelled = false;
+    void (async () => {
+      try {
+        const [current, response] = await Promise.all([
+          getVersion(),
+          fetch(RELEASES_API),
+        ]);
+        if (!response.ok || cancelled) return;
+        const release = (await response.json()) as {
+          tag_name?: string;
+          html_url?: string;
+        };
+        if (cancelled || !release.tag_name) return;
+
+        const latest = release.tag_name.replace(/^v/i, "");
+        if (
+          shouldNotify({
+            current,
+            latest,
+            dismissed: localStorage.getItem(UPDATE_DISMISSED_KEY),
+            enabled: true,
+          })
+        ) {
+          setUpdate({ version: latest, url: release.html_url ?? RELEASES_PAGE });
+        }
+      } catch {
+        // Offline, rate-limited, or GitHub is down. An update check is
+        // not worth an error in front of someone trying to run a query.
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const locked =
     guard?.policy === "read_only" && guard.unlocked_seconds_remaining === null;
@@ -906,6 +966,20 @@ export default function App() {
               Relock
             </button>
           </div>
+        )}
+        {update && (
+          <UpdateBanner
+            version={update.version}
+            url={update.url}
+            onDismiss={() => {
+              localStorage.setItem(UPDATE_DISMISSED_KEY, update.version);
+              setUpdate(null);
+            }}
+            onDisable={() => {
+              localStorage.setItem(UPDATE_CHECK_KEY, "off");
+              setUpdate(null);
+            }}
+          />
         )}
         <header className="top-bar">
           <span

@@ -1435,3 +1435,32 @@ button,
   color: var(--muted);
   font-size: var(--t-sm);
 }
+
+/* ---- update notice ------------------------------------------------ */
+
+/* Above the tab bar, below the drag strip: it is about the app itself,
+   not about the connection or the query. Quiet by design — a new version
+   is news, not a problem. */
+.update-banner {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: var(--s-2) var(--s-3);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--accent) 12%, var(--panel));
+  font-size: var(--t-sm);
+}
+
+.update-text {
+  flex: 1;
+}
+
+.update-banner a {
+  color: var(--accent);
+}
+
+.update-banner button {
+  height: 22px;
+  padding: 0 var(--s-2);
+  font-size: var(--t-sm);
+}
