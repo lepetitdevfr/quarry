@@ -1,5 +1,6 @@
 import CodeMirror from "@uiw/react-codemirror";
 import { sql, PostgreSQL } from "@codemirror/lang-sql";
+import { acceptCompletion } from "@codemirror/autocomplete";
 import { keymap, type EditorView } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { useCallback, useMemo, useRef } from "react";
@@ -58,6 +59,15 @@ export function SqlEditor({
       }),
       Prec.highest(
         keymap.of([
+          {
+            key: "Tab",
+            // The wrapper binds Tab to indent, which shadows the
+            // completion list: pressing Tab on a highlighted suggestion
+            // indented the line instead of accepting it. `acceptCompletion`
+            // returns false when no completion is open, so the binding
+            // falls through and Tab still indents everywhere else.
+            run: acceptCompletion,
+          },
           {
             key: "Mod-Enter",
             // The statement the cursor is in, not the buffer. Postgres
