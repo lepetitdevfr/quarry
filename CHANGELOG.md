@@ -1,3 +1,17 @@
+## [0.4.0](https://github.com/lepetitdevfr/quarry/compare/v0.3.0...v0.4.0) (2026-08-18)
+
+### Features
+
+* **grid:** stage new rows above the results, not below them ([99e7612](https://github.com/lepetitdevfr/quarry/commit/99e7612f96856abadeaa7e0fc4e9282efc3a60b1))
+* **ui:** implement the UI/UX audit's P0 and P1 items ([7789e70](https://github.com/lepetitdevfr/quarry/commit/7789e7047253673245a1e68c0a0c6b284b6a84ef))
+
+### Fixes
+
+* **app:** suppress the webview's own context menu outside text fields ([f91b56d](https://github.com/lepetitdevfr/quarry/commit/f91b56dc48fabc2afc6dc9a7ceff8af65def1cb4))
+* **grid:** make the header sticky, and pin staged rows beneath it ([d40dd6b](https://github.com/lepetitdevfr/quarry/commit/d40dd6bd4533a43046e9a1e39e717c206f8d7e89))
+* **grid:** remove the gap between staged rows and the first result row ([3f3e74b](https://github.com/lepetitdevfr/quarry/commit/3f3e74bd9731bca03f2b32a27566a6d23aaed548))
+* **ui:** make the grid menu's Delete row legible and stop tree rows selecting ([fd82ee0](https://github.com/lepetitdevfr/quarry/commit/fd82ee0f9e7fe6f9803d8c3588c616cc93a5ff6f))
+
 ## [0.3.0](https://github.com/lepetitdevfr/quarry/compare/v0.2.0...v0.3.0) (2026-08-17)
 
 ### Features
