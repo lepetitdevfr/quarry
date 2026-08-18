@@ -697,7 +697,15 @@ export function ResultGrid({
                 }
                 style={{
                   position: "absolute",
-                  transform: `translateY(${item.start}px)`,
+                  // `item.start` is measured from the top of the scroll
+                  // container, so it includes `scrollMargin` — while
+                  // these rows are positioned against a tbody that
+                  // already begins below the staged block. Without the
+                  // subtraction every row sits one staged row too low,
+                  // leaving a gap under the staged block exactly its
+                  // own height. `getTotalSize` already nets it out, so
+                  // the tbody's height needs no such correction.
+                  transform: `translateY(${item.start - virtualizer.options.scrollMargin}px)`,
                   height: `${ROW_HEIGHT}px`,
                 }}
               >
