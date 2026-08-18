@@ -69,7 +69,7 @@
 
 - [ ] `docs/BACKLOG.md`: close "CI cannot run the integration tests"; rewrite "Windows and Linux support" to cover only what remains — builds, installers, signing, fonts, shortcut labels, real-machine testing.
 - [ ] `README.md`: the Development section's CI paragraph currently says the integration tests are a local gate. Correct it.
-- [ ] `docs/ORIENTATION.md`: note that `secrets.rs` is now portable and that `menu.rs` holds the only `cfg(target_os)`.
+- [ ] `CLAUDE.md` (then at `docs/ORIENTATION.md`): note that `secrets.rs` is now portable and that `menu.rs` holds the only `cfg(target_os)`.
 - [ ] Commit — `docs: record the cross-platform port`.
 
 ## Verification

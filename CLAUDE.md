@@ -1,14 +1,19 @@
-# Orientation
+# Quarry — working notes for Claude
 
-**Read this file at the start of a session. Nothing else, until a task needs
-it.** It replaces reading the design specs and stage plans up front, which cost
-thousands of lines before any work began.
+**This file is loaded automatically. Read nothing else until a task needs it.**
+It exists so a session does not start by reading the design specs and stage
+plans, which cost thousands of lines before any work began.
 
 ## What Quarry is
 
 A keyboard-first PostgreSQL desktop client for macOS. Tauri 2 + Rust backend
-(`src-tauri/`), React 19 + TypeScript frontend (`src/`). Fourteen stages
-shipped; see the tags in `git tag` for the sequence.
+(`src-tauri/`), React 19 + TypeScript frontend (`src/`). See `git tag` for the
+sequence of shipped stages, and `README.md` for what it does.
+
+Releases are manual: Actions → Release → Run workflow. semantic-release picks
+the version from the commit messages, builds macOS, Linux and Windows, and
+publishes to the **public** repo `lepetitdevfr/quarry-releases` — this repo
+stays private.
 
 ## The load-bearing decisions
 

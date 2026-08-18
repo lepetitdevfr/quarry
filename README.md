@@ -233,6 +233,7 @@ table rather than a sample.
 | `src-tauri/src/schema/` | Catalog introspection |
 | `src-tauri/src/menu.rs` | The app menu, so ⌘W closes a tab |
 | `src-tauri/src/secrets.rs` | Keychain access |
+| `CLAUDE.md` | Orientation for a new contributor, human or otherwise |
 | `docs/superpowers/specs/` | Design specs, one per feature that needed one |
 | `docs/superpowers/plans/` | Per-stage implementation plans |
 | `docs/BACKLOG.md` | Deferred work, each entry with its reasoning |
