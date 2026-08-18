@@ -317,6 +317,30 @@ export default function App() {
     };
   }, []);
 
+  // The webview brings its own context menu — Reload and Inspect
+  // Element — and it appears anywhere the app does not claim the
+  // right-click for itself. Reload is the problem: this is a desktop
+  // app, not a page, and reloading it drops the connection, the result
+  // on screen and any staged edits, with nothing to say that is what
+  // the click meant.
+  //
+  // Text fields keep theirs. That menu carries Cut/Copy/Paste,
+  // spelling and the input methods people expect in a field, and none
+  // of it is reachable any other way.
+  useEffect(() => {
+    function onContextMenu(e: MouseEvent) {
+      const target = e.target as HTMLElement | null;
+      if (
+        target?.closest("input, textarea, [contenteditable='true'], .cm-editor")
+      ) {
+        return;
+      }
+      e.preventDefault();
+    }
+    document.addEventListener("contextmenu", onContextMenu);
+    return () => document.removeEventListener("contextmenu", onContextMenu);
+  }, []);
+
   // ⌘1…⌘9 activate a tab by position. Unlike ⌘W and ⌘T these are not
   // claimed by any menu item, so they do reach the webview and can be
   // an ordinary listener. ⌘9 is the last tab, not the ninth — the
