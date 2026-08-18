@@ -9,6 +9,8 @@ import { ConfirmDialog } from "./components/ConfirmDialog";
 import { ConnectionEditor } from "./components/ConnectionEditor";
 import { ConnectionPicker } from "./components/ConnectionPicker";
 import { EditBar } from "./components/EditBar";
+import { ErrorPanel } from "./components/ErrorPanel";
+import { PaneResizer } from "./components/PaneResizer";
 import { GridToolbar } from "./components/GridToolbar";
 import type { ExportFormat } from "./components/GridToolbar";
 import { PasswordRetry } from "./components/PasswordRetry";
@@ -58,7 +60,12 @@ import type {
 } from "./lib/pendingEdits";
 import { formatCountdown } from "./lib/guard";
 import { shouldNotify } from "./lib/updates";
-import { DEFAULT_SIDEBAR_WIDTH } from "./lib/layout";
+import {
+  DEFAULT_EDITOR_HEIGHT,
+  DEFAULT_SIDEBAR_WIDTH,
+  clampEditorHeight,
+} from "./lib/layout";
+import { isTruncated } from "./lib/gridSort";
 import type { SortState } from "./lib/gridSort";
 import { sortedIndices } from "./lib/gridSort";
 import { toCsv, toJson, toSqlInsert } from "./lib/exportRows";
@@ -131,6 +138,26 @@ export default function App() {
   const [result, setResult] = useState<QueryResult | null>(null);
   const [error, setError] = useState<AppErrorPayload | null>(null);
   const [busy, setBusy] = useState(false);
+  // Seconds the in-flight statement has been running. A query that
+  // takes a while used to look identical to one that had finished: the
+  // Run button said "Running…" and nothing else moved.
+  const [elapsed, setElapsed] = useState(0);
+  // How many changes the last confirmed batch applied, shown briefly.
+  // Applying used to be silent — the bar vanished and the grid patched.
+  const [appliedCount, setAppliedCount] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!busy) {
+      setElapsed(0);
+      return;
+    }
+    const started = performance.now();
+    const handle = window.setInterval(
+      () => setElapsed((performance.now() - started) / 1000),
+      100,
+    );
+    return () => window.clearInterval(handle);
+  }, [busy]);
 
   // Cell edits staged against `result`, and the statements the backend
   // would run for them while the SQL panel is open.
@@ -159,6 +186,32 @@ export default function App() {
   // Deliberately not persisted: one integer of UI state, restored by a
   // single drag.
   const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_SIDEBAR_WIDTH);
+  // The editor/results split, on the same terms. It was a hard-coded
+  // 200px, which is about nine lines — shorter than most real queries
+  // and impossible to trade against the grid.
+  const [editorHeight, setEditorHeight] = useState(DEFAULT_EDITOR_HEIGHT);
+  const paneRef = useRef<HTMLDivElement>(null);
+
+  const resizeEditor = useCallback((clientY: number) => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const { top, height } = pane.getBoundingClientRect();
+    setEditorHeight(clampEditorHeight(clientY - top, height));
+  }, []);
+
+  const nudgeEditor = useCallback((delta: number) => {
+    const pane = paneRef.current;
+    if (!pane) return;
+    const { height } = pane.getBoundingClientRect();
+    setEditorHeight((current) => clampEditorHeight(current + delta, height));
+  }, []);
+
+  // Handed over by whichever SqlEditor is mounted, so the error panel
+  // can put the cursor on the character Postgres complained about.
+  const goToPosition = useRef<((position: number) => void) | null>(null);
+  const onEditorReady = useCallback((go: (position: number) => void) => {
+    goToPosition.current = go;
+  }, []);
 
   const { library, tabs, activeTab, loaded, queryById, autosave, actions } =
     useLibrary();
@@ -224,12 +277,65 @@ export default function App() {
     };
   });
 
+  // The rest of the tab family, on the same terms and for the same
+  // reason: the menu owns the accelerator, this owns the decision. One
+  // ref holding the current handlers, subscribed once — see the note
+  // above for why depending on `tabs` directly would be worse.
+  const tabCommands = useRef({
+    next: () => {},
+    previous: () => {},
+    newTab: () => {},
+  });
   useEffect(() => {
-    const pending = listen("menu://close-tab", () => onCloseTab.current());
+    // Wraps at both ends: with three tabs open, "next" from the last
+    // one has an obvious answer and refusing to give it is just a dead
+    // key.
+    const step = (delta: number) => {
+      if (tabs.length < 2) return;
+      const current = tabs.findIndex((t) => t.is_active);
+      const next = (current + delta + tabs.length) % tabs.length;
+      void actions.activateTab(tabs[next].id);
+    };
+    tabCommands.current = {
+      next: () => step(1),
+      previous: () => step(-1),
+      newTab: () => void actions.newTab(),
+    };
+  });
+
+  useEffect(() => {
+    const subscriptions = [
+      listen("menu://close-tab", () => onCloseTab.current()),
+      listen("menu://new-tab", () => tabCommands.current.newTab()),
+      listen("menu://next-tab", () => tabCommands.current.next()),
+      listen("menu://prev-tab", () => tabCommands.current.previous()),
+    ];
     return () => {
-      void pending.then((unlisten) => unlisten());
+      for (const pending of subscriptions) {
+        void pending.then((unlisten) => unlisten());
+      }
     };
   }, []);
+
+  // ⌘1…⌘9 activate a tab by position. Unlike ⌘W and ⌘T these are not
+  // claimed by any menu item, so they do reach the webview and can be
+  // an ordinary listener. ⌘9 is the last tab, not the ninth — the
+  // convention every browser uses.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
+      if (!/^[1-9]$/.test(e.key)) return;
+      if (tabs.length === 0) return;
+      e.preventDefault();
+      const digit = Number(e.key);
+      const index = digit === 9 ? tabs.length - 1 : digit - 1;
+      const target = tabs[index];
+      if (target) void actions.activateTab(target.id);
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabs]);
 
   const {
     schema: dbSchema,
@@ -425,6 +531,7 @@ export default function App() {
       // typed: a trigger or a type coercion may have changed it.
       // Deleted rows leave the grid, which shifts every index after
       // them. Safe only because every staged key is cleared here too.
+      const count = totalPending(pending, deletes, inserts);
       setResult(applyPatches(result, applied));
       setPending(emptyPending());
       setDeletes(emptyDeletes());
@@ -432,6 +539,10 @@ export default function App() {
       setSelectedRow(null);
       setEditSql(null);
       setError(null);
+      // Confirming used to be the one action in the app with no
+      // acknowledgement at all: the bar disappeared and that was that.
+      setAppliedCount(count);
+      window.setTimeout(() => setAppliedCount(null), SAVED_FLASH_MS);
     } catch (e) {
       // The whole batch rolled back, so the staged edits stay staged —
       // the user can fix the offending cell and confirm again.
@@ -566,12 +677,26 @@ export default function App() {
     [actions, runSql],
   );
 
-  // Double-click: structure, pinned — an explicit "keep this one".
+  // Structure, pinned — an explicit "keep this one". Reached from the
+  // tree's context menu or ⇧↵, never from a bare click: it used to be
+  // the double-click, whose first click had already opened a data tab
+  // and run its query.
   const openTableStructure = useCallback(
     async (schemaName: string, tableName: string) => {
       await actions.openTableTab(schemaName, tableName, "structure", "pinned");
     },
     [actions],
+  );
+
+  const closeOtherTabs = useCallback(
+    async (keepId: string) => {
+      // Sequential rather than Promise.all: each close returns the new
+      // tab list, and firing them together races over which reply wins.
+      for (const tab of tabs.filter((t) => t.id !== keepId)) {
+        await actions.closeTab(tab.id);
+      }
+    },
+    [tabs, actions],
   );
 
   const changeTableMode = useCallback(
@@ -620,6 +745,19 @@ export default function App() {
   // tab has not been re-run with an ORDER BY, so its rows have not.
   const serverSorted =
     tableTarget !== null && activeTab?.mode === "data" && !tableSqlEdited;
+
+  // The rows on screen answer a statement the buffer no longer holds.
+  // Not an error — they are real rows — but a grid that silently
+  // belongs to an older version of the query is how you end up reading
+  // the wrong answer confidently.
+  const currentSql = tableTarget ? tableSql : text;
+  const stale =
+    result !== null && ranSql !== "" && !currentSql.includes(ranSql);
+
+  // The row count is the statement's LIMIT rather than the size of the
+  // answer. The grid already flagged this for a local sort; the status
+  // bar is where it belongs for everything else.
+  const truncated = result !== null && isTruncated(result.rows.length, ranSql);
 
   const [exporting, setExporting] = useState(false);
 
@@ -724,7 +862,7 @@ export default function App() {
     (id: string) => {
       setConfirmRequest({
         message: "Delete this query? This cannot be undone.",
-        confirmLabel: "Delete",
+        confirmLabel: "Delete query",
         onConfirm: () => {
           void actions.deleteQuery(id);
           setConfirmRequest(null);
@@ -737,11 +875,11 @@ export default function App() {
   const requestDeleteCollection = useCallback(
     (id: string) => {
       const message = collectionHasQueries(library, id)
-        ? "Delete this collection and everything in it? This cannot be undone."
-        : "Delete this collection? This cannot be undone.";
+        ? "Delete this folder and everything in it? This cannot be undone."
+        : "Delete this folder? This cannot be undone.";
       setConfirmRequest({
         message,
-        confirmLabel: "Delete",
+        confirmLabel: "Delete folder",
         onConfirm: () => {
           void actions.deleteCollection(id);
           setConfirmRequest(null);
@@ -873,7 +1011,7 @@ export default function App() {
               onDelete={(id) =>
                 setConfirmRequest({
                   message: "Delete this connection and its saved password?",
-                  confirmLabel: "Delete",
+                  confirmLabel: "Delete connection",
                   onConfirm: () => {
                     void connActions.remove(id);
                     setConfirmRequest(null);
@@ -939,17 +1077,20 @@ export default function App() {
           schemaError={schemaError}
           connected={connection !== null}
           onRefreshSchema={() => void refreshDbSchema()}
-          onTableClick={(s, t) => void openTableData(s, t)}
-          onTableDoubleClick={(s, t) => void openTableStructure(s, t)}
+          onOpenTableData={(s, t) => void openTableData(s, t)}
+          onOpenTableStructure={(s, t) => void openTableStructure(s, t)}
+          activeTable={tableTarget}
         />
       </div>
       <SidebarResizer onResize={setSidebarWidth} />
 
-      <div className="main-pane">
+      <div className="main-pane" ref={paneRef}>
         {locked && (
           <div className="lock-banner">
             <span>Locked · writes and row editing are refused</span>
-            <button onClick={() => setUnlockOpen(true)}>Unlock…</button>
+            <button className="btn-small" onClick={() => setUnlockOpen(true)}>
+              Unlock…
+            </button>
           </div>
         )}
         {unlocked && (
@@ -959,6 +1100,7 @@ export default function App() {
               {formatCountdown(guard?.unlocked_seconds_remaining ?? 0)}
             </span>
             <button
+              className="btn-small"
               onClick={() => {
                 void relock().then(async () => setGuard(await guardStatus()));
               }}
@@ -1001,10 +1143,19 @@ export default function App() {
                     connections.find((c) => c.id === connection.id)?.colour ?? "#888",
                 }}
               />
-              {connections.find((c) => c.id === connection.id)?.name ?? connection.dbname}
+              <span className="connection-name">
+                {connections.find((c) => c.id === connection.id)?.name ??
+                  connection.dbname}
+              </span>
               <span className="caret">▾</span>
             </button>
-            <span className="connection-target">
+            {/* Ellipsized in CSS, so the full target has to be reachable
+                some other way — a managed-Postgres host is longer than
+                this bar on any window narrower than the desk. */}
+            <span
+              className="connection-target"
+              title={`${connection.user}@${connection.host}:${connection.port}/${connection.dbname}`}
+            >
               {connection.user}@{connection.host}:{connection.port}/{connection.dbname}
             </span>
 
@@ -1025,7 +1176,7 @@ export default function App() {
                 onDelete={(id) =>
                   setConfirmRequest({
                     message: "Delete this connection and its saved password?",
-                    confirmLabel: "Delete",
+                    confirmLabel: "Delete connection",
                     onConfirm: () => {
                       void connActions.remove(id);
                       setConfirmRequest(null);
@@ -1035,9 +1186,21 @@ export default function App() {
               />
             )}
           </div>
-          <button className="save-button" onClick={() => void save()}>
-            Save ⌘S
-          </button>
+          {/* Demoted from a filled accent button. Saving is on ⌘S, the
+              text autosaves as you type, and this was the loudest
+              control in the window for the least frequent decision —
+              which pulled the eye away from the connection identity
+              next to it. Hidden on a table tab, where "save" has no
+              query to name. */}
+          {!tableTarget && (
+            <button
+              className="btn-small"
+              title="Save this query (⌘S)"
+              onClick={() => void save()}
+            >
+              Save
+            </button>
+          )}
         </header>
 
         <TabBar
@@ -1045,6 +1208,7 @@ export default function App() {
           queryById={queryById}
           onActivate={(id) => void actions.activateTab(id)}
           onClose={(id) => void actions.closeTab(id)}
+          onCloseOthers={(id) => void closeOtherTabs(id)}
           onNew={() => void actions.newTab()}
           namingTabId={namingTabId}
           onCommitName={(name) => void commitNameAndSave(name)}
@@ -1060,13 +1224,22 @@ export default function App() {
             onModeChange={(next) => void changeTableMode(next)}
             onRefreshSchema={() => void refreshDbSchema()}
             editor={
-              <SqlEditor
-                value={tableSql}
-                onChange={onTableSqlChange}
-                onRun={onRunTableSql}
-                busy={busy}
-                completionSchema={completionSchema}
-              />
+              <>
+                <SqlEditor
+                  value={tableSql}
+                  onChange={onTableSqlChange}
+                  onRun={onRunTableSql}
+                  busy={busy}
+                  completionSchema={completionSchema}
+                  height={editorHeight}
+                  onReady={onEditorReady}
+                />
+                <PaneResizer
+                  label="Resize editor"
+                  onDrag={resizeEditor}
+                  onNudge={nudgeEditor}
+                />
+              </>
             }
           >
             {result && (
@@ -1127,6 +1300,13 @@ export default function App() {
               onRun={run}
               busy={busy}
               completionSchema={completionSchema}
+              height={editorHeight}
+              onReady={onEditorReady}
+            />
+            <PaneResizer
+              label="Resize editor"
+              onDrag={resizeEditor}
+              onNudge={nudgeEditor}
             />
             {result && (
               <>
@@ -1182,14 +1362,32 @@ export default function App() {
         {error?.kind === "write_blocked" && locked && (
           <div className="guard-denial">
             <span>{error.message}</span>
-            <button onClick={() => setUnlockOpen(true)}>Unlock…</button>
+            <button className="btn-small" onClick={() => setUnlockOpen(true)}>
+              Unlock…
+            </button>
           </div>
+        )}
+        {/* A guard denial already has its own strip with the way out, so
+            it does not also get the panel. Everything else does: the
+            status bar is one non-wrapping line, and a constraint
+            violation quoting its own expression does not fit on one. */}
+        {error && error.kind !== "write_blocked" && (
+          <ErrorPanel
+            error={error}
+            onGoToPosition={(position) => goToPosition.current?.(position)}
+            onDismiss={() => setError(null)}
+          />
         )}
         <StatusBar
           result={result}
           error={error}
           saved={showSaved}
           locked={locked}
+          busy={busy}
+          elapsed={elapsed}
+          stale={stale}
+          truncated={truncated}
+          applied={appliedCount}
         />
       </div>
 

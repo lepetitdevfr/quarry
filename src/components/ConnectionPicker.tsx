@@ -52,7 +52,7 @@ export function ConnectionPicker({
             >
               <span className="dot" style={{ background: c.colour }} />
               <span className="picker-name">{c.name}</span>
-              <span className="picker-tag">{c.tag}</span>
+              <span className="picker-tag overline">{c.tag}</span>
               <span className="picker-target">
                 {c.user}@{c.host}:{c.port}/{c.dbname}
               </span>

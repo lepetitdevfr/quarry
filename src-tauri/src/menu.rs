@@ -37,9 +37,22 @@ pub const CLOSE_TAB_ID: &str = "close_tab";
 /// Menu item id for Close Window.
 pub const CLOSE_WINDOW_ID: &str = "close_window";
 
+/// Menu item ids for the rest of the tab family. Same reason as Close
+/// Tab: on macOS these accelerators are swallowed by AppKit before the
+/// webview sees them, so a `keydown` listener in the frontend cannot
+/// have them. The menu owns the key and forwards the intent.
+pub const NEW_TAB_ID: &str = "new_tab";
+pub const NEXT_TAB_ID: &str = "next_tab";
+pub const PREV_TAB_ID: &str = "prev_tab";
+
 /// Emitted when Close Tab is chosen. The frontend decides what closing
 /// means — which tab is active is its state, not ours.
 pub const CLOSE_TAB_EVENT: &str = "menu://close-tab";
+
+/// The same contract for the other three.
+pub const NEW_TAB_EVENT: &str = "menu://new-tab";
+pub const NEXT_TAB_EVENT: &str = "menu://next-tab";
+pub const PREV_TAB_EVENT: &str = "menu://prev-tab";
 
 /// Build the menu. See the module comment for why this is macOS-only.
 #[cfg(target_os = "macos")]
@@ -70,6 +83,25 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         Some("Shift+CmdOrCtrl+W"),
     )?;
 
+    // Tab navigation. `⌘T`, `⇧⌘[` and `⇧⌘]` are what every editor and
+    // browser on this platform uses, and an app that keeps its work in
+    // tabs and calls itself keyboard-first cannot be missing them.
+    let new_tab = MenuItem::with_id(app, NEW_TAB_ID, "New Tab", true, Some("CmdOrCtrl+T"))?;
+    let next_tab = MenuItem::with_id(
+        app,
+        NEXT_TAB_ID,
+        "Next Tab",
+        true,
+        Some("Shift+CmdOrCtrl+]"),
+    )?;
+    let prev_tab = MenuItem::with_id(
+        app,
+        PREV_TAB_ID,
+        "Previous Tab",
+        true,
+        Some("Shift+CmdOrCtrl+["),
+    )?;
+
     let window_menu = Submenu::with_items(
         app,
         "Window",
@@ -77,6 +109,9 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         &[
             &PredefinedMenuItem::minimize(app, None)?,
             &PredefinedMenuItem::maximize(app, None)?,
+            &PredefinedMenuItem::separator(app)?,
+            &next_tab,
+            &prev_tab,
             &PredefinedMenuItem::separator(app)?,
             &close_window,
         ],
@@ -100,7 +135,7 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                     &PredefinedMenuItem::quit(app, None)?,
                 ],
             )?,
-            &Submenu::with_items(app, "File", true, &[&close_tab])?,
+            &Submenu::with_items(app, "File", true, &[&new_tab, &close_tab])?,
             // Do not touch this submenu. These predefined items are how
             // copy, paste, undo and select-all reach the webview on
             // macOS; without them the SQL editor loses them entirely.
@@ -146,6 +181,15 @@ pub fn on_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
             // A failure here means no frontend is listening, which is
             // not worth crashing the app over.
             let _ = app.emit(CLOSE_TAB_EVENT, ());
+        }
+        NEW_TAB_ID => {
+            let _ = app.emit(NEW_TAB_EVENT, ());
+        }
+        NEXT_TAB_ID => {
+            let _ = app.emit(NEXT_TAB_EVENT, ());
+        }
+        PREV_TAB_ID => {
+            let _ = app.emit(PREV_TAB_EVENT, ());
         }
         CLOSE_WINDOW_ID => {
             if let Some(window) = app.get_webview_window("main") {

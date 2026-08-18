@@ -5,7 +5,7 @@ import { keymap, type EditorView } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
 import { useCallback, useMemo, useRef } from "react";
 import { quarryEditorExtensions } from "./editorTheme";
-import { statementAt } from "../lib/statements";
+import { statementRangeAt } from "../lib/statements";
 
 interface Props {
   value: string;
@@ -15,6 +15,15 @@ interface Props {
   busy: boolean;
   /** Table name → column names, from `buildCompletionSchema`. */
   completionSchema: Record<string, string[]>;
+  /** Pane height in pixels, owned by the caller's drag handle. */
+  height: number;
+  /**
+   * Handed a function that moves the cursor to a character offset
+   * within the statement last run from this editor. The error panel
+   * calls it; only the editor knows where that statement started in the
+   * buffer, so the mapping cannot live in App.
+   */
+  onReady?: (goToPosition: (position: number) => void) => void;
 }
 
 export function SqlEditor({
@@ -23,6 +32,8 @@ export function SqlEditor({
   onRun,
   busy,
   completionSchema,
+  height,
+  onReady,
 }: Props) {
   // The toolbar button has no key event to read a cursor from, so it
   // borrows the editor's own view. Held in a ref rather than state:
@@ -40,11 +51,19 @@ export function SqlEditor({
   const onRunRef = useRef(onRun);
   onRunRef.current = onRun;
 
+  // Where in the buffer the statement we last sent began. Postgres
+  // reports an error position relative to the statement it received,
+  // which is one statement out of this buffer — without this offset the
+  // position points at the wrong place in anything but a single-statement
+  // tab.
+  const lastRunStart = useRef(0);
+
   const runStatement = useCallback((view: EditorView) => {
-    const sql = statementAt(
+    const { sql, start } = statementRangeAt(
       view.state.doc.toString(),
       view.state.selection.main.head,
     );
+    lastRunStart.current = start;
     // An empty buffer, or one holding nothing but comments. Running it
     // would ask Postgres to prepare nothing and report an error for a
     // keypress that did not mean anything.
@@ -112,12 +131,15 @@ export function SqlEditor({
   );
 
   return (
-    <div className="sql-editor">
+    // The height is dragged, so it is set here rather than on the
+    // CodeMirror instance: the instance fills the pane (see .sql-editor
+    // in App.css), and the pane is what the divider resizes.
+    <div className="sql-editor" style={{ height: `${height}px` }}>
       {/* theme="none" disables the wrapper's built-in light theme so
           quarryEditorTheme is the only one applied. */}
       <CodeMirror
         value={value}
-        height="200px"
+        height="100%"
         theme="none"
         // Tab does not indent. It accepts a completion when one is open
         // (see the keymap above) and otherwise moves focus out of the
@@ -129,6 +151,19 @@ export function SqlEditor({
         onChange={onChange}
         onCreateEditor={(view) => {
           viewRef.current = view;
+          onReady?.((position) => {
+            // Postgres counts from 1, and from the start of the
+            // statement it was sent.
+            const offset = Math.min(
+              view.state.doc.length,
+              Math.max(0, lastRunStart.current + position - 1),
+            );
+            view.dispatch({
+              selection: { anchor: offset },
+              scrollIntoView: true,
+            });
+            view.focus();
+          });
         }}
       />
       <div className="editor-toolbar">

@@ -12,15 +12,29 @@ import { tags } from "@lezer/highlight";
  * palette changes.
  */
 
-const BG = "#1a1d23";
-const TEXT = "#e5e7eb";
-const MUTED = "#8b93a1";
-const BORDER = "#2c3038";
-const ACCENT = "#4f8ef7";
-const SELECTION = "#2d4a7c";
+// Read from the stylesheet rather than restated here. The previous
+// literals had drifted: the editor background was #1a1d23, which is
+// neither --bg nor --panel, so the seam where the editor met the grid
+// was a third dark the palette never defined.
+const token = (name: string, fallback: string): string => {
+  if (typeof window === "undefined") return fallback;
+  const value = getComputedStyle(document.documentElement)
+    .getPropertyValue(name)
+    .trim();
+  return value === "" ? fallback : value;
+};
+
+// The editor is a content surface, like the grid and the inputs — so it
+// sits on --bg, not on the chrome colour.
+const BG = token("--bg", "#16181d");
+const TEXT = token("--text", "#e5e7eb");
+const MUTED = token("--muted", "#8b93a1");
+const BORDER = token("--border", "#2c3038");
+const ACCENT = token("--accent", "#4f8ef7");
+const SELECTION = token("--selection", "#2d4a7c");
 // Dimmer, for a selection left behind when focus moves elsewhere: still
 // findable, but not competing with whatever now has the cursor.
-const SELECTION_BLUR = "#23344f";
+const SELECTION_BLUR = token("--selection-blur", "#23344f");
 
 export const quarryEditorTheme = EditorView.theme(
   {
@@ -75,11 +89,11 @@ export const quarryEditorTheme = EditorView.theme(
       backgroundColor: "rgba(255, 255, 255, 0.03)",
     },
     ".cm-activeLineGutter": {
-      backgroundColor: "#20242b",
+      backgroundColor: token("--hover", "#22262e"),
       color: TEXT,
     },
     ".cm-selectionMatch": {
-      backgroundColor: "#2f3a4d",
+      backgroundColor: SELECTION_BLUR,
     },
     "&.cm-focused": {
       outline: "none",

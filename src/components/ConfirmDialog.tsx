@@ -3,6 +3,12 @@ import { useEffect, useRef } from "react";
 interface Props {
   message: string;
   confirmLabel: string;
+  /**
+   * Whether confirming destroys something. Every current caller does —
+   * but the flag stays explicit rather than assumed, so a future
+   * non-destructive confirmation does not inherit red styling.
+   */
+  destructive?: boolean;
   onConfirm: () => void;
   onCancel: () => void;
 }
@@ -10,20 +16,32 @@ interface Props {
 /**
  * A small in-app confirmation modal, replacing `window.confirm` (which
  * a Tauri WKWebView does not implement — it silently no-ops instead of
- * showing a dialog). Focus moves to the confirm button on mount so
- * Escape/Enter land on this dialog rather than on the editor
- * underneath, and Tab is trapped between the two buttons.
+ * showing a dialog).
+ *
+ * Focus lands on **Cancel**, and Enter is left to whichever button holds
+ * focus rather than being wired to confirm at the dialog level. Both are
+ * deliberate reversals: this dialog's only callers delete a query, a
+ * collection and everything in it, or a connection and its stored
+ * password, and every one of those messages ends "This cannot be
+ * undone." A dialog that destroys on a reflexive Return is the thing
+ * this app exists to not be.
  */
-export function ConfirmDialog({ message, confirmLabel, onConfirm, onCancel }: Props) {
+export function ConfirmDialog({
+  message,
+  confirmLabel,
+  destructive = true,
+  onConfirm,
+  onCancel,
+}: Props) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    confirmRef.current?.focus();
+    cancelRef.current?.focus();
   }, []);
 
   return (
-    <div className="confirm-overlay" onClick={onCancel}>
+    <div className="modal-backdrop" onClick={onCancel}>
       <div
         className="confirm-dialog"
         role="alertdialog"
@@ -36,9 +54,6 @@ export function ConfirmDialog({ message, confirmLabel, onConfirm, onCancel }: Pr
           if (e.key === "Escape") {
             e.preventDefault();
             onCancel();
-          } else if (e.key === "Enter") {
-            e.preventDefault();
-            onConfirm();
           } else if (e.key === "Tab") {
             e.preventDefault();
             if (document.activeElement === confirmRef.current) cancelRef.current?.focus();
@@ -49,7 +64,7 @@ export function ConfirmDialog({ message, confirmLabel, onConfirm, onCancel }: Pr
         <p>{message}</p>
         <div className="confirm-actions">
           <button
-            className="confirm-cancel"
+            className="secondary"
             type="button"
             ref={cancelRef}
             onClick={onCancel}
@@ -57,7 +72,7 @@ export function ConfirmDialog({ message, confirmLabel, onConfirm, onCancel }: Pr
             Cancel
           </button>
           <button
-            className="confirm-confirm"
+            className={destructive ? "danger" : undefined}
             type="button"
             ref={confirmRef}
             onClick={onConfirm}

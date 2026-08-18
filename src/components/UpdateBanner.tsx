@@ -22,13 +22,13 @@ export function UpdateBanner({ version, url, onDismiss, onDisable }: Props) {
           See what changed ↗
         </a>
       </span>
-      <button className="secondary" onClick={onDismiss}>
+      <button className="btn-small" onClick={onDismiss}>
         Not now
       </button>
       {/* Turning the check off entirely is one click, not buried in a
           settings screen: an app that phones home should be easy to
           stop. */}
-      <button className="secondary" onClick={onDisable}>
+      <button className="btn-small" onClick={onDisable}>
         Stop checking
       </button>
     </div>

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { statementAt } from "./statements";
+import { statementAt, statementRangeAt } from "./statements";
 
 describe("statementAt: semicolons that are not separators", () => {
   it("ignores a semicolon inside a string literal", () => {
@@ -116,5 +116,37 @@ describe("statementAt: cursor position", () => {
     expect(statementAt(sql, -5)).toBe("select 1");
     expect(() => statementAt(sql, 1000)).not.toThrow();
     expect(statementAt(sql, 1000)).toBe("select 3");
+  });
+});
+
+describe("statementRangeAt", () => {
+  it("reports where the statement it returns begins", () => {
+    const text = "select 1;\nselect 2;";
+    const second = statementRangeAt(text, 12);
+    expect(second.sql).toBe("select 2");
+    // "select 1;\n" is ten characters, so the second statement starts
+    // at ten — not at nine, which is where the raw segment starts
+    // before its leading newline is trimmed off.
+    expect(second.start).toBe(10);
+    expect(text.slice(second.start, second.start + 6)).toBe("select");
+  });
+
+  it("skips leading whitespace and comments the way the trim does", () => {
+    const text = "  -- a note\n  select 42;";
+    const only = statementRangeAt(text, text.length);
+    expect(only.sql).toBe("-- a note\n  select 42");
+    expect(only.start).toBe(2);
+    expect(text.slice(only.start, only.start + 2)).toBe("--");
+  });
+
+  it("agrees with statementAt on the statement itself", () => {
+    const text = "select 1;\n\nselect 2;\n";
+    for (const cursor of [0, 5, 9, 11, 15, 20, text.length]) {
+      expect(statementRangeAt(text, cursor).sql).toBe(statementAt(text, cursor));
+    }
+  });
+
+  it("has nothing to point at in an empty buffer", () => {
+    expect(statementRangeAt("   \n  ", 2)).toEqual({ sql: "", start: 0 });
   });
 });

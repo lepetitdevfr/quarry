@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { ContextMenu, useContextMenu, type MenuItem } from "./ContextMenu";
 import { RenameInput } from "./RenameInput";
 import { buildTree, isDirty, moveTargets } from "../lib/tree";
 import type { LibraryTree, Query, TreeNode } from "../types";
@@ -43,26 +44,7 @@ export function QueryTree({
   const { roots, looseQueries } = buildTree(library);
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set());
   const [renaming, setRenaming] = useState<string | null>(null);
-  // Which query's move menu is open. One at a time: two open menus in a
-  // narrow sidebar cover the tree they are meant to move things within.
-  const [moving, setMoving] = useState<string | null>(null);
-
-  // A menu that survives a click elsewhere reads as stuck. Mousedown
-  // rather than click, so it closes on the press that starts an action
-  // somewhere else rather than after it completes.
-  useEffect(() => {
-    if (moving === null) return;
-    const close = () => setMoving(null);
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setMoving(null);
-    };
-    window.addEventListener("mousedown", close);
-    window.addEventListener("keydown", onKey);
-    return () => {
-      window.removeEventListener("mousedown", close);
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [moving]);
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   function toggle(id: string) {
     setCollapsed((prev) => {
@@ -73,10 +55,59 @@ export function QueryTree({
     });
   }
 
+  /**
+   * A query row's menu.
+   *
+   * "Move to…" used to be a `⋯` button opening a popover anchored to the
+   * row, and Delete a second hover-only `×` beside it — two glyph
+   * targets on a 26px row, neither reachable without a pointer. Both are
+   * rows in here now, where they can be labelled and, in Delete's case,
+   * marked as the destructive one.
+   */
+  function queryMenu(query: Query): MenuItem[] {
+    const targets = moveTargets(library, query);
+    return [
+      { label: "Open", shortcut: "↵", onSelect: () => onOpen(query.id) },
+      { label: "Rename…", shortcut: "F2", onSelect: () => setRenaming(query.id) },
+      { separator: true },
+      ...(targets.length === 0
+        ? [
+            {
+              label: "Move to…",
+              disabled: true,
+              title: "No other folder to move this into",
+              onSelect: () => {},
+            },
+          ]
+        : targets.map((target) => ({
+            label: `Move to ${target.label}`,
+            onSelect: () => onMoveQuery(query.id, target.id),
+          }))),
+      { separator: true },
+      {
+        label: "Delete query",
+        danger: true,
+        onSelect: () => onDeleteQuery(query.id),
+      },
+    ];
+  }
+
+  function collectionMenu(id: string): MenuItem[] {
+    return [
+      { label: "New query here", onSelect: () => onNewQueryInCollection(id) },
+      { label: "Rename…", shortcut: "F2", onSelect: () => setRenaming(id) },
+      { separator: true },
+      {
+        label: "Delete folder",
+        danger: true,
+        onSelect: () => onDeleteCollection(id),
+      },
+    ];
+  }
+
   function renderQuery(query: Query, depth: number) {
     const active = query.id === activeQueryId;
     const dirty = isDirty(query);
-    const targets = moveTargets(library, query);
 
     if (renaming === query.id) {
       return (
@@ -97,60 +128,43 @@ export function QueryTree({
       <div
         key={query.id}
         className={`tree-row query${active ? " active" : ""}`}
+        role="treeitem"
+        aria-selected={active}
+        tabIndex={0}
         style={{ paddingLeft: 8 + depth * 12 }}
         onClick={() => onOpen(query.id)}
-        onDoubleClick={() => setRenaming(query.id)}
+        onContextMenu={(e) => openMenu(e, queryMenu(query))}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            onOpen(query.id);
+          }
+          // F2 is the platform rename key, and it is discoverable now
+          // that the context menu prints it next to Rename.
+          if (e.key === "F2") {
+            e.preventDefault();
+            setRenaming(query.id);
+          }
+        }}
       >
+        {/* Aligns queries with the collection rows above them. */}
+        <span className="twisty" />
         <span className="tree-name">{query.name}</span>
         {dirty && <span className="dirty-dot" title="unsaved changes">•</span>}
         <button
           className="row-action"
-          title="Move to…"
+          title="More…"
           onMouseDown={(e) => e.stopPropagation()}
           onClick={(e) => {
             e.stopPropagation();
-            setMoving((open) => (open === query.id ? null : query.id));
+            // Same menu the right-click opens, from the row's own
+            // button — so the actions are reachable by pointer without
+            // knowing to right-click, and by keyboard via the button.
+            openMenu(e, queryMenu(query));
           }}
         >
           ⋯
         </button>
-        <button
-          className="row-action"
-          title="Delete query"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteQuery(query.id);
-          }}
-        >
-          ×
-        </button>
-
-        {moving === query.id && (
-          <div
-            className="move-menu"
-            onMouseDown={(e) => e.stopPropagation()}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {targets.length === 0 ? (
-              // Nowhere to go: one collection that the query already
-              // lives in, or none at all. Saying so beats an empty box.
-              <span className="move-empty">No other collection</span>
-            ) : (
-              targets.map((target) => (
-                <button
-                  key={target.id ?? "root"}
-                  className="move-option"
-                  onClick={() => {
-                    onMoveQuery(query.id, target.id);
-                    setMoving(null);
-                  }}
-                >
-                  {target.label}
-                </button>
-              ))
-            )}
-          </div>
-        )}
       </div>
     );
   }
@@ -174,15 +188,28 @@ export function QueryTree({
         ) : (
           <div
             className="tree-row collection"
+            role="treeitem"
+            aria-expanded={!isCollapsed}
+            tabIndex={0}
             style={{ paddingLeft: 8 + depth * 12 }}
             onClick={() => toggle(node.collection.id)}
-            onDoubleClick={() => setRenaming(node.collection.id)}
+            onContextMenu={(e) => openMenu(e, collectionMenu(node.collection.id))}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                toggle(node.collection.id);
+              }
+              if (e.key === "F2") {
+                e.preventDefault();
+                setRenaming(node.collection.id);
+              }
+            }}
           >
-            <span className="chevron">{isCollapsed ? "▸" : "▾"}</span>
+            <span className="twisty">{isCollapsed ? "▸" : "▾"}</span>
             <span className="tree-name">{node.collection.name}</span>
             <button
               className="row-action"
-              title="New query in this collection"
+              title="New query in this folder"
               onClick={(e) => {
                 e.stopPropagation();
                 onNewQueryInCollection(node.collection.id);
@@ -192,13 +219,14 @@ export function QueryTree({
             </button>
             <button
               className="row-action"
-              title="Delete collection and everything in it"
+              title="More…"
+              onMouseDown={(e) => e.stopPropagation()}
               onClick={(e) => {
                 e.stopPropagation();
-                onDeleteCollection(node.collection.id);
+                openMenu(e, collectionMenu(node.collection.id));
               }}
             >
-              ×
+              ⋯
             </button>
           </div>
         )}
@@ -229,18 +257,19 @@ export function QueryTree({
   }
 
   return (
-    <div className="query-tree">
+    <div className="query-tree" role="tree">
       {roots.map((node) => renderNode(node, 0))}
       {looseQueries.map((query) => renderQuery(query, 0))}
       {creatingAtRoot && (
         <RenameInput
           initial=""
           depth={0}
-          placeholder={creating.kind === "collection" ? "Collection name" : "Query name"}
+          placeholder={creating.kind === "collection" ? "Folder name" : "Query name"}
           onCommit={onCommitCreate}
           onCancel={onCancelCreate}
         />
       )}
+      <ContextMenu menu={menu} onClose={closeMenu} />
     </div>
   );
 }

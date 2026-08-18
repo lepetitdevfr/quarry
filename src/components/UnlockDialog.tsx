@@ -19,7 +19,20 @@ export function UnlockDialog({ connectionName, onConfirm, onCancel }: Props) {
 
   return (
     <div className="modal-backdrop">
-      <div className="modal">
+      <div
+        className="modal"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Unlock ${connectionName}`}
+        onKeyDown={(e) => {
+          // Escape was handled on the input alone, so it did nothing
+          // once focus moved to either button.
+          if (e.key === "Escape") {
+            e.preventDefault();
+            onCancel();
+          }
+        }}
+      >
         <h2>Unlock {connectionName}</h2>
         <p className="modal-body">
           This is a production connection. Writes are blocked until you
@@ -39,7 +52,9 @@ export function UnlockDialog({ connectionName, onConfirm, onCancel }: Props) {
           spellCheck={false}
         />
         <div className="modal-actions">
-          <button onClick={onCancel}>Cancel</button>
+          <button className="secondary" onClick={onCancel}>
+            Cancel
+          </button>
           <button
             className="danger"
             disabled={!matches}

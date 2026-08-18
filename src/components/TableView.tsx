@@ -74,7 +74,7 @@ export function TableView({
               {detail.facts && (
                 <div className="fact-row">
                   <span className="fact">
-                    <span className="fact-label">Rows</span>
+                    <span className="overline">Rows</span>
                     {/* "estimated" is not decoration: this is
                         pg_class.reltuples, the planner's figure, and it
                         can be well out of date. */}
@@ -82,7 +82,7 @@ export function TableView({
                     <span className="fact-note">estimated</span>
                   </span>
                   <span className="fact">
-                    <span className="fact-label">Size</span>
+                    <span className="overline">Size</span>
                     <span className="fact-value">{detail.facts.size}</span>
                     <span className="fact-note">with indexes</span>
                   </span>
@@ -93,7 +93,7 @@ export function TableView({
           )}
 
           <section>
-            <h3>Columns</h3>
+            <h3 className="overline">Columns</h3>
             {detail.columns.length === 0 ? (
               <p className="none">None</p>
             ) : (
@@ -126,7 +126,7 @@ export function TableView({
           </section>
 
           <section>
-            <h3>Indexes</h3>
+            <h3 className="overline">Indexes</h3>
             {detail.indexes.length === 0 ? (
               <p className="none">None</p>
             ) : (
@@ -147,7 +147,7 @@ export function TableView({
           </section>
 
           <section>
-            <h3>Triggers</h3>
+            <h3 className="overline">Triggers</h3>
             {detail.triggers.length === 0 ? (
               <p className="none">None</p>
             ) : (
@@ -163,7 +163,7 @@ export function TableView({
           </section>
 
           <section>
-            <h3>Used by</h3>
+            <h3 className="overline">Used by</h3>
             {detail.dependents.length === 0 ? (
               <p className="none">No views read this table</p>
             ) : (
@@ -178,7 +178,7 @@ export function TableView({
           </section>
 
           <section>
-            <h3>Constraints</h3>
+            <h3 className="overline">Constraints</h3>
             {detail.constraints.length === 0 ? (
               <p className="none">None</p>
             ) : (

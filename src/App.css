@@ -12,8 +12,21 @@
 
   /* Tertiary text: twisties, badges, section headers. Splitting this out
      of --muted is what gives the UI hierarchy — one grey for six roles
-     meant nothing separated visually. */
-  --faint: #6b7280;
+     meant nothing separated visually.
+
+     Lightened from #6b7280, which sat at 3.6:1 on --panel. This tier
+     carries 10px overlines, so it is the one place where a contrast
+     shortfall lands on the smallest text in the app. */
+  --faint: #79818f;
+
+  /* Interaction states. Previously six literals scattered through the
+     file; a palette that lives in three places is a palette that
+     drifts. --selection is the editor's, kept here so the editor theme
+     and the app cannot disagree about it. */
+  --hover: #22262e;
+  --selected: #2a3446;
+  --selection: #2d4a7c;
+  --selection-blur: #23344f;
 
   /* spacing — 4px base */
   --s-1: 4px;
@@ -33,8 +46,22 @@
   --t-base: 13px;     /* body */
   --t-lg: 15px;       /* dialog titles */
 
+  /* Three steps, and only three: small inline controls, ordinary
+     controls and menus, dialogs. Radius drift is the loudest tell that
+     a UI was assembled rather than designed. */
+  --radius-sm: 4px;
   --radius: 6px;
   --radius-lg: 10px;
+
+  /* Stacking order, in one place. Content sits below all of it. */
+  --z-banner: 20;
+  --z-menu: 30;
+  --z-dialog: 40;
+  /* One mono stack, named once. It was written out six times in five
+     slightly different forms, which is how a font stack ends up
+     rendering data in two typefaces on the same screen. */
+  --mono: ui-monospace, "SF Mono", Menlo, monospace;
+
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
   font-size: var(--t-base);
 }
@@ -73,7 +100,7 @@ body {
   left: 0;
   right: 0;
   height: 28px;
-  z-index: 20;
+  z-index: var(--z-banner);
   background: var(--panel);
   border-bottom: 1px solid var(--border);
 }
@@ -107,11 +134,127 @@ button:disabled {
   opacity: 0.5;
 }
 
+/* One focus ring for the whole app. The grid cell already had exactly
+   this treatment and was the only control in the app that showed focus
+   at all — which is a hard thing to defend in something that calls
+   itself keyboard-first. Inset so it never widens a control or gets
+   clipped by an overflow:hidden parent. */
+:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+
+/* A quiet 22px button: toolbars, banners, inline actions. Was written
+   out four times with three different borders and two radii. */
+.btn-small {
+  height: 22px;
+  padding: 0 var(--s-2);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: var(--t-sm);
+  font-weight: 400;
+}
+
+.btn-small:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+/* Uppercase label: section headers, group titles, badges, toolbar
+   labels. Four near-identical implementations before, two of which
+   relied on the markup being literally uppercase — which defeats any
+   later restyle and reads wrong to a screen reader. */
+.overline {
+  font-size: var(--t-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--faint);
+}
+
+/* The editor pane. Its height is dragged, so it is a sized flex item
+   with the CodeMirror instance filling whatever it was given. */
+.sql-editor {
+  display: flex;
+  flex-direction: column;
+  flex: none;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The CodeMirror wrapper and the editor itself both have to be told to
+   fill, or the editor keeps its own intrinsic height inside a pane that
+   is now taller than it. */
+.sql-editor > div:first-child {
+  flex: 1;
+  min-height: 0;
+}
+
+.sql-editor .cm-editor {
+  height: 100%;
+}
+
+.sql-editor .cm-scroller {
+  overflow: auto;
+}
+
+/* One control in a 44px band was most of this strip's cost. The button
+   keeps its accent — it is the primary action of the pane — at the
+   height the rest of the app's bar controls use. */
 .editor-toolbar {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
-  padding: var(--s-2);
+  gap: var(--s-2);
+  flex: none;
+  padding: var(--s-1) var(--s-2);
   border-bottom: 1px solid var(--border);
+}
+
+.editor-toolbar button {
+  height: 22px;
+  padding: 0 var(--s-3);
+  font-size: var(--t-sm);
+}
+
+/* Horizontal counterpart to .sidebar-resizer, between the editor and
+   the results. Same 7px hit area straddling a 1px line. */
+.pane-resizer {
+  flex: none;
+  height: 7px;
+  margin: -3px 0;
+  cursor: row-resize;
+  position: relative;
+  z-index: 5;
+  background: transparent;
+}
+
+.pane-resizer::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 3px;
+  height: 1px;
+  background: var(--border);
+}
+
+.pane-resizer:hover::after,
+.pane-resizer:active::after,
+.pane-resizer:focus-visible::after {
+  background: var(--accent);
+}
+
+.pane-resizer:focus-visible {
+  outline: none;
+}
+
+/* Nothing came back. Without this the sticky header sits over an empty
+   scroll area, which reads as "still loading" rather than "no rows". */
+.grid-empty {
+  padding: var(--s-4);
+  color: var(--muted);
+  text-align: center;
 }
 
 .result-grid {
@@ -162,9 +305,12 @@ button:disabled {
 .result-grid td {
   padding: var(--s-1) var(--s-3);
   border-bottom: 1px solid var(--border);
-  font-family: ui-monospace, "SF Mono", monospace;
+  font-family: var(--mono);
   white-space: nowrap;
-  max-width: 340px;
+  /* No max-width: the width is set per cell from the dragged column
+     width, and a cap here silently refused to widen a column past
+     340px — exactly what someone dragging a JSON column is trying to
+     do. Truncation is already `overflow: hidden` plus that width. */
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -196,7 +342,7 @@ button:disabled {
 
 .sqlstate {
   margin-right: 8px;
-  font-family: ui-monospace, monospace;
+  font-family: var(--mono);
 }
 
 .error {
@@ -247,8 +393,10 @@ button:disabled {
 }
 
 .sidebar-resizer:hover,
-.sidebar-resizer:active {
+.sidebar-resizer:active,
+.sidebar-resizer:focus-visible {
   background: var(--accent);
+  outline: none;
 }
 
 .sidebar-section {
@@ -256,24 +404,61 @@ button:disabled {
   flex-direction: column;
   overflow-y: auto;
   flex: 1;
+  min-height: 0;
 }
 
+/* The schema section takes the height the splitter gave it; the query
+   tree below takes whatever is left. Only one of the two is measured,
+   or dragging one would fight the other for the remainder. */
+.sidebar-section.sized {
+  flex: none;
+}
+
+/* Layout only — the label styling comes from .overline on the text. */
 .sidebar-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   padding: var(--s-2) var(--s-3);
-  font-size: var(--t-xs);
-  letter-spacing: 0.06em;
-  color: var(--faint);
   position: sticky;
   top: 0;
+  z-index: 1;
   background: var(--panel);
 }
 
+
+/* Draggable, not decorative. A 1px line between two panes reads as a
+   handle whether or not it is one, and the schema tree is where the
+   vertical space in this sidebar actually needs to go. The border is
+   drawn by a child so the hit area can be taller than the line. */
 .sidebar-splitter {
+  flex: none;
+  height: 7px;
+  margin: -3px 0;
+  cursor: row-resize;
+  position: relative;
+  z-index: 2;
+  background: transparent;
+}
+
+.sidebar-splitter::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 3px;
   height: 1px;
   background: var(--border);
+}
+
+.sidebar-splitter:hover::after,
+.sidebar-splitter:active::after,
+.sidebar-splitter:focus-visible::after {
+  background: var(--accent);
+}
+
+.sidebar-splitter:focus-visible {
+  outline: none;
 }
 
 .main-pane {
@@ -301,11 +486,27 @@ button:disabled {
 }
 
 .tree-row:hover {
-  background: #22262e;
+  background: var(--hover);
 }
 
 .tree-row.active {
-  background: #2a3446;
+  background: var(--selected);
+}
+
+/* The keyboard cursor, shown only while the tree actually has focus.
+   Unscoped, the row it starts on is highlighted from launch, which
+   reads as "this table is open" when nothing is. */
+.schema-rows:focus-within .tree-row.selected {
+  background: var(--selected);
+}
+
+/* Keyboard focus on a tree row is the same state as selecting it with
+   the pointer, so it looks like it rather than growing a second ring
+   inside a full-width row. */
+.tree-row:focus-visible {
+  outline: none;
+  background: var(--selected);
+  box-shadow: inset 2px 0 0 var(--accent);
 }
 
 .tree-name {
@@ -314,29 +515,42 @@ button:disabled {
   text-overflow: ellipsis;
 }
 
-.chevron {
-  width: 10px;
-  color: var(--muted);
-}
-
 .tree-empty {
   padding: var(--s-2) var(--s-3);
   color: var(--muted);
 }
 
+/* Glyph buttons. A fixed square rather than padding around a character:
+   `×`, `⋯`, `+` and `✎` have wildly different advance widths, and
+   without a box they sit at four different optical sizes and four
+   different hit targets. */
 .row-action,
 .tab-close,
 .tab-new {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
   background: none;
   border: none;
+  border-radius: var(--radius-sm);
   color: var(--faint);
-  padding: 0 var(--s-1);
+  padding: 0;
   font-size: var(--t-base);
+  line-height: 1;
   opacity: 0;
 }
 
+/* Hover reveals these — and so does focus. An action that only exists
+   while a pointer is over it does not exist at all for anyone driving
+   the app from the keyboard, which was true of every row action here
+   except the connection picker's. */
 .tree-row:hover .row-action,
+.tree-row:focus-within .row-action,
 .tab:hover .tab-close,
+.tab:focus-within .tab-close,
 .sidebar-header .row-action,
 /* Connection rows reveal their edit/delete buttons on hover too. Without
    this the buttons render at opacity 0 forever, since a picker row is a
@@ -347,9 +561,18 @@ button:disabled {
   opacity: 1;
 }
 
+/* The sidebar header's "+ Query" / "+ Folder" are the same quiet class
+   but carry words, so they keep their intrinsic width. */
+.row-action.text {
+  width: auto;
+  padding: 0 var(--s-1);
+  font-size: var(--t-sm);
+}
+
 .row-action:hover,
 .tab-close:hover {
   color: var(--text);
+  background: var(--hover);
 }
 
 .rename-input {
@@ -358,7 +581,7 @@ button:disabled {
   background: var(--bg);
   color: var(--text);
   border: 1px solid var(--accent);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
 }
 
 .dirty-dot {
@@ -398,44 +621,20 @@ button:disabled {
   text-overflow: ellipsis;
 }
 
-.save-button {
-  padding: 0 var(--s-3);
-  font-size: var(--t-base);
-}
-
 .sidebar-header-actions {
   display: flex;
-  gap: 6px;
+  gap: var(--s-1);
 }
 
 .saved-indicator {
-  margin-left: 8px;
+  margin-left: var(--s-2);
   color: var(--accent);
   font-weight: 500;
-}
-
-.confirm-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 100;
-}
-
-.confirm-dialog {
-  width: 320px;
-  max-width: calc(100vw - 32px);
-  padding: var(--s-4);
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
+  animation: rise 150ms ease-out;
 }
 
 .confirm-dialog p {
-  margin: 0 0 16px;
+  margin: 0 0 var(--s-4);
   color: var(--text);
   line-height: 1.4;
 }
@@ -443,12 +642,7 @@ button:disabled {
 .confirm-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-}
-
-.confirm-cancel {
-  background: var(--border);
-  color: var(--text);
+  gap: var(--s-2);
 }
 
 .password-retry {
@@ -493,9 +687,31 @@ button:disabled {
   background: var(--border);
 }
 
+/* Ellipsized, with the full value in the title. A managed-Postgres host
+   plus a database name is comfortably longer than this bar, and without
+   a cap it pushed the header's own controls off the right edge. */
 .connection-target {
   color: var(--muted);
-  font-family: ui-monospace, "SF Mono", monospace;
+  font-family: var(--mono);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.connection-trigger .connection-name {
+  max-width: 200px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The caret in the connection trigger: recessive, and never the reason
+   the button is one character wider than its label. */
+.caret {
+  color: var(--faint);
+  font-size: var(--t-xs);
+  line-height: 1;
 }
 
 .tag-stripe {
@@ -517,7 +733,7 @@ button:disabled {
   position: absolute;
   top: 100%;
   left: 0;
-  z-index: 20;
+  z-index: var(--z-menu);
   min-width: 340px;
   padding: var(--s-2);
   border: 1px solid var(--border);
@@ -570,16 +786,13 @@ button:disabled {
 }
 
 .picker-tag {
-  color: var(--faint);
-  text-transform: uppercase;
-  font-size: var(--t-xs);
-  letter-spacing: 0.06em;
+  flex: none;
 }
 
 .picker-target {
   margin-left: auto;
   color: var(--muted);
-  font-family: ui-monospace, monospace;
+  font-family: var(--mono);
   font-size: var(--t-sm);
 }
 
@@ -652,20 +865,12 @@ button:disabled {
   letter-spacing: 0.04em;
 }
 
+/* Card geometry comes from the shared `.modal` rule above; this is the
+   form layout only. */
 .connection-editor {
   display: flex;
   flex-direction: column;
-  width: 380px;
-  padding: var(--s-5);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--panel);
-}
-
-.connection-editor h2 {
-  margin: 0 0 var(--s-4);
-  font-size: var(--t-lg);
-  font-weight: 600;
+  box-sizing: border-box;
 }
 
 .connection-editor label {
@@ -702,9 +907,6 @@ button:disabled {
 
 .group-title {
   margin-bottom: var(--s-3);
-  font-size: var(--t-xs);
-  letter-spacing: 0.08em;
-  color: var(--faint);
 }
 
 .field-row {
@@ -748,10 +950,13 @@ button.secondary {
   border: 1px solid var(--border);
 }
 
+/* One backdrop for every dialog in the app. There used to be two, at
+   different z-indexes, which meant which dialog could cover which was
+   decided by which stylesheet block you happened to be in. */
 .modal-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 30;
+  z-index: var(--z-dialog);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -857,73 +1062,74 @@ button.link {
   min-height: 0;
 }
 
+/* This whole section was written in literal px — 12px and 13px where
+   the scale says 11 and 13, 6/8/12/16/20px where the scale says
+   --s-*. The values below are the nearest scale steps, which is what
+   the section was approximating. */
 .table-view-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 8px 12px;
+  gap: var(--s-3);
+  padding: var(--s-2) var(--s-3);
   border-bottom: 1px solid var(--border);
 }
 
 .table-view-name {
-  font-family: ui-monospace, "SF Mono", monospace;
-  font-size: 13px;
+  font-family: var(--mono);
+  font-size: var(--t-base);
 }
 
 .segmented {
   display: inline-flex;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius);
   overflow: hidden;
 }
 
 .segmented button {
-  padding: 3px 10px;
-  font-size: 12px;
+  height: 22px;
+  padding: 0 var(--s-3);
+  font-size: var(--t-sm);
   background: none;
   border: none;
+  border-radius: 0;
   color: var(--muted);
+  font-weight: 400;
   cursor: pointer;
 }
 
 .segmented button.active {
-  background: var(--panel);
+  background: var(--selected);
   color: var(--text);
 }
 
 .table-view-body {
   overflow: auto;
-  padding: 12px;
+  padding: var(--s-3);
 }
 
 .table-view-body section {
-  margin-bottom: 20px;
+  margin-bottom: var(--s-5);
 }
 
 .table-view-body h3 {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--muted);
-  margin-bottom: 6px;
+  margin-bottom: var(--s-2);
 }
 
 .table-view-body h4 {
-  font-size: 12px;
+  font-size: var(--t-sm);
   color: var(--muted);
-  margin: 8px 0 4px;
+  margin: var(--s-2) 0 var(--s-1);
 }
 
 .table-view-body .none {
   color: var(--muted);
-  font-size: 13px;
 }
 
 .detail-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 13px;
 }
 
 .detail-table th {
@@ -931,43 +1137,43 @@ button.link {
   font-weight: 500;
   color: var(--muted);
   border-bottom: 1px solid var(--border);
-  padding: 4px 8px;
+  padding: var(--s-1) var(--s-2);
 }
 
 .detail-table td {
-  padding: 4px 8px;
+  padding: var(--s-1) var(--s-2);
   border-bottom: 1px solid var(--border);
 }
 
 .detail-table .mono,
 .detail-list code {
-  font-family: ui-monospace, "SF Mono", monospace;
-  font-size: 12px;
+  font-family: var(--mono);
+  font-size: var(--t-sm);
   color: var(--muted);
 }
 
 .detail-list {
   list-style: none;
-  font-size: 13px;
+  margin: 0;
+  padding: 0;
 }
 
 .detail-list li {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  padding: 3px 8px;
+  gap: var(--s-2);
+  padding: var(--s-1) var(--s-2);
   border-bottom: 1px solid var(--border);
 }
 
 .detail-list .detail-name {
-  font-family: ui-monospace, "SF Mono", monospace;
-  font-size: 12px;
+  font-family: var(--mono);
+  font-size: var(--t-sm);
 }
 
 .table-view-empty {
-  padding: 16px;
+  padding: var(--s-4);
   color: var(--muted);
-  font-size: 13px;
 }
 
 /* ---- grid sort and resize -------------------------------------- */
@@ -1049,26 +1255,12 @@ button.link {
   background: var(--panel);
 }
 
-.grid-toolbar-label {
+.grid-toolbar .btn-small {
   color: var(--muted);
-  font-size: var(--t-xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
 }
 
-.grid-toolbar button {
-  height: 22px;
-  padding: 0 var(--s-2);
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--muted);
-  font-size: var(--t-sm);
-}
-
-.grid-toolbar button:hover:not(:disabled) {
+.grid-toolbar .btn-small:hover:not(:disabled) {
   color: var(--text);
-  border-color: var(--accent);
 }
 
 /* Pushes the destructive action away from the export group, so Delete
@@ -1077,16 +1269,27 @@ button.link {
   margin-left: auto;
 }
 
-.grid-toolbar button.danger:hover:not(:disabled) {
+/* The small variant of danger stays quiet until hovered — it lives in a
+   toolbar next to ordinary actions, and a filled red button sitting
+   permanently beside Export would be shouting. Specificity beats the
+   `button.danger` fill rule above, which is meant for dialog primaries. */
+.btn-small.danger {
+  background: none;
+}
+
+.btn-small.danger:hover:not(:disabled) {
   color: var(--error);
   border-color: var(--error);
 }
 
 /* ---- write guard ------------------------------------------------ */
 
-/* The unlock dialog's card, in the same family as .confirm-dialog and
-   .connection-editor — the two other modal-backdrop occupants. */
-.modal {
+/* The one dialog card. `.confirm-dialog` and `.connection-editor` are
+   the same thing with different contents, so they wear this class too
+   rather than each carrying their own width, padding and shadow. */
+.modal,
+.confirm-dialog,
+.connection-editor {
   width: 380px;
   max-width: calc(100vw - 32px);
   padding: var(--s-5);
@@ -1096,7 +1299,8 @@ button.link {
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.4);
 }
 
-.modal h2 {
+.modal h2,
+.connection-editor h2 {
   margin: 0 0 var(--s-4);
   font-size: var(--t-lg);
   font-weight: 600;
@@ -1144,14 +1348,8 @@ button.link {
   font-size: var(--t-sm);
 }
 
-.unlock-banner button {
-  height: 22px;
-  padding: 0 var(--s-2);
-  background: none;
-  border: 1px solid var(--error);
-  border-radius: 4px;
-  color: var(--text);
-  font-size: var(--t-sm);
+.unlock-banner .btn-small {
+  border-color: var(--error);
 }
 
 .guard-denial {
@@ -1165,8 +1363,16 @@ button.link {
   font-size: var(--t-sm);
 }
 
-.modal button.danger {
+/* A primary button whose action destroys something. Red rather than
+   accent, everywhere — the unlock dialog already did this and the
+   delete confirmations did not, which had the irreversible action
+   wearing the same blue as Save. */
+button.danger {
   background: var(--error);
+}
+
+button.danger:hover:not(:disabled) {
+  filter: brightness(1.08);
 }
 
 /* ---- inline row editing ----------------------------------------- */
@@ -1215,7 +1421,7 @@ button.link {
 .result-grid .cell-editor {
   width: 100%;
   border: 1px solid var(--accent);
-  border-radius: 3px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--text);
   font: inherit;
@@ -1250,7 +1456,7 @@ button.link {
   overflow: auto;
   padding: var(--s-2) var(--s-3);
   border-bottom: 1px solid var(--border);
-  font-family: ui-monospace, "SF Mono", monospace;
+  font-family: var(--mono);
   font-size: var(--t-sm);
   white-space: pre-wrap;
 }
@@ -1279,15 +1485,6 @@ button.link {
   font-size: var(--t-sm);
 }
 
-.lock-banner button {
-  height: 22px;
-  padding: 0 var(--s-2);
-  background: none;
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  color: var(--text);
-  font-size: var(--t-sm);
-}
 
 /* ---- motion ------------------------------------------------------ */
 
@@ -1309,9 +1506,15 @@ button,
 }
 
 /* Banners and bars arrive rather than appear: they are the app telling
-   you something changed, and a slide of a few pixels is what says so. */
+   you something changed, and a slide of a few pixels is what says so.
+   `.guard-banner` was listed here and rendered nowhere — the classes
+   that actually carry the guard's messages are these three, and they
+   were the ones missing the animation they were written for. */
 .edit-bar,
-.guard-banner {
+.lock-banner,
+.unlock-banner,
+.guard-denial,
+.update-banner {
   animation: rise 150ms ease-out;
 }
 
@@ -1339,58 +1542,11 @@ button,
   }
 }
 
-/* ---- move a query to another collection -------------------------- */
-
-/* Anchored to the row rather than the sidebar: the row is what the menu
-   is about, and a sidebar-anchored popover drifts away from its target
-   as the tree scrolls. */
-.move-menu {
-  position: absolute;
-  right: var(--s-2);
-  top: calc(100% - 2px);
-  z-index: 10;
-  min-width: 160px;
-  max-height: 220px;
-  overflow-y: auto;
-  padding: var(--s-1);
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--panel);
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.45);
-}
-
-.tree-row.query {
-  position: relative;
-}
-
-.move-option {
-  display: block;
-  width: 100%;
-  height: var(--h-row);
-  padding: 0 var(--s-2);
-  border-radius: 4px;
-  background: transparent;
-  color: var(--text);
-  /* Same size as a tree row: these are collection names, the same kind of
-     content the sidebar already shows, and 11px here read as a different
-     class of thing. */
-  font-size: var(--t-base);
-  font-weight: 400;
-  text-align: left;
-  white-space: nowrap;
-}
-
-.move-option:hover {
-  background: var(--accent);
-  color: #fff;
-}
-
-.move-empty {
-  display: block;
-  padding: var(--s-1) var(--s-2);
-  color: var(--faint);
-  font-size: var(--t-sm);
-}
+/* The row-anchored "move a query" popover that used to live here is
+   gone: moving is one section of the row's context menu now, which is
+   also where deleting, renaming and opening ended up. `.context-menu`
+   below is its descendant — the geometry is the same, it just is not
+   anchored to a row that can scroll out from under it. */
 
 /* ---- table facts -------------------------------------------------- */
 
@@ -1411,15 +1567,9 @@ button,
   gap: var(--s-2);
 }
 
-.fact-label {
-  font-size: var(--t-xs);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--faint);
-}
 
 .fact-value {
-  font-family: ui-monospace, "SF Mono", monospace;
+  font-family: var(--mono);
   font-size: var(--t-base);
 }
 
@@ -1459,8 +1609,151 @@ button,
   color: var(--accent);
 }
 
-.update-banner button {
-  height: 22px;
+
+/* ---- context menu ------------------------------------------------- */
+
+/* One menu for every right-click in the app: tree rows, grid cells,
+   tabs, connections. Same surface as `.move-menu`, which was the
+   prototype for it — a popover of rows at tree-row height, on the panel
+   colour with a shadow to lift it off whatever it covers. */
+.context-menu {
+  position: fixed;
+  z-index: var(--z-menu);
+  min-width: 180px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: var(--s-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  width: 100%;
+  height: var(--h-row);
   padding: 0 var(--s-2);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  font-size: var(--t-base);
+  font-weight: 400;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.context-menu-item:hover:not(:disabled),
+.context-menu-item:focus-visible {
+  background: var(--accent);
+  color: #fff;
+  outline: none;
+}
+
+/* The shortcut is the point of showing it here: this menu is where a
+   chord like ⇧⌘⌫ stops being folklore. Recessive until the row is
+   highlighted, then it has to stay legible against the accent. */
+.context-menu-item .shortcut {
+  margin-left: auto;
+  color: var(--faint);
   font-size: var(--t-sm);
+}
+
+.context-menu-item:hover:not(:disabled) .shortcut,
+.context-menu-item:focus-visible .shortcut {
+  color: rgb(255 255 255 / 75%);
+}
+
+.context-menu-item.danger {
+  color: var(--error);
+}
+
+.context-menu-item.danger:hover:not(:disabled),
+.context-menu-item.danger:focus-visible {
+  background: var(--error);
+  color: #fff;
+}
+
+.context-menu-separator {
+  height: 1px;
+  margin: var(--s-1) 0;
+  background: var(--border);
+}
+
+/* ---- error detail ------------------------------------------------- */
+
+/* The status bar holds one line. A real Postgres error is a message, a
+   DETAIL, a HINT and a position, and the half that says how to fix it
+   is usually the half that did not fit. */
+.error-panel {
+  flex: none;
+  max-height: 30vh;
+  overflow: auto;
+  padding: var(--s-2) var(--s-3);
+  border-top: 1px solid var(--border);
+  background: color-mix(in srgb, var(--error) 8%, var(--panel));
+  animation: rise 150ms ease-out;
+}
+
+.error-panel-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--s-2);
+}
+
+.error-panel-message {
+  flex: 1;
+  color: var(--error);
+  line-height: 1.4;
+  white-space: pre-wrap;
+}
+
+.error-panel dl {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--s-1) var(--s-3);
+  margin: var(--s-2) 0 0;
+}
+
+.error-panel dt {
+  color: var(--faint);
+  font-size: var(--t-xs);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.error-panel dd {
+  margin: 0;
+  color: var(--muted);
+  font-size: var(--t-sm);
+  white-space: pre-wrap;
+}
+
+/* ---- status bar states -------------------------------------------- */
+
+.status-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+}
+
+/* Elapsed time while a statement is in flight. The one moment the app
+   owes the user a number it does not have yet. */
+.status-running {
+  color: var(--accent);
+}
+
+/* A result that no longer matches the buffer that produced it. */
+.status-stale {
+  color: var(--faint);
+}
+
+.status-truncated {
+  color: var(--pending);
+}
+
+.status-spacer {
+  margin-left: auto;
 }

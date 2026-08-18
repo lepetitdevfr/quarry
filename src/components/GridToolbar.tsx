@@ -41,20 +41,21 @@ export function GridToolbar({
 }: Props) {
   return (
     <div className="grid-toolbar">
-      <span className="grid-toolbar-label">Export</span>
-      <button disabled={busy} onClick={() => onExport("csv")}>
+      <span className="overline">Export</span>
+      <button className="btn-small" disabled={busy} onClick={() => onExport("csv")}>
         CSV
       </button>
-      <button disabled={busy} onClick={() => onExport("json")}>
+      <button className="btn-small" disabled={busy} onClick={() => onExport("json")}>
         JSON
       </button>
       {canExportSql && (
-        <button disabled={busy} onClick={() => onExport("sql")}>
+        <button className="btn-small" disabled={busy} onClick={() => onExport("sql")}>
           SQL
         </button>
       )}
       <span className="grid-toolbar-gap" />
       <button
+        className="btn-small"
         disabled={busy || !canInsert}
         title={
           canInsert
@@ -66,7 +67,7 @@ export function GridToolbar({
         Insert row
       </button>
       <button
-        className="danger"
+        className="btn-small danger"
         disabled={busy || !canDelete}
         title={
           canDelete

@@ -194,6 +194,22 @@ function firstContentIndex(text: string, start: number, end: number): number {
  * terminating semicolon and surrounding whitespace stripped.
  */
 export function statementAt(text: string, cursor: number): string {
+  return statementRangeAt(text, cursor).sql;
+}
+
+/**
+ * The same statement, with the offset it starts at in `text`.
+ *
+ * Postgres reports an error position as a 1-based offset into the
+ * statement it was sent, and what it was sent is one statement out of a
+ * buffer that may hold several. Without the offset that position cannot
+ * be pointed at in the editor, which is the difference between "at
+ * character 47" and the cursor landing on the word that broke.
+ */
+export function statementRangeAt(
+  text: string,
+  cursor: number,
+): { sql: string; start: number } {
   const clamped = Math.max(0, Math.min(cursor, text.length));
 
   // Segments that hold no real content (pure whitespace/comments, e.g.
@@ -204,11 +220,11 @@ export function statementAt(text: string, cursor: number): string {
     .map((seg) => ({ ...seg, contentStart: firstContentIndex(text, seg.start, seg.end) }))
     .filter((seg) => seg.contentStart < seg.end);
 
-  if (statements.length === 0) return "";
+  if (statements.length === 0) return { sql: "", start: 0 };
 
   for (const seg of statements) {
     if (clamped >= seg.contentStart && clamped <= seg.end) {
-      return text.slice(seg.start, seg.end).trim();
+      return sliced(text, seg.start, seg.end);
     }
   }
 
@@ -220,5 +236,18 @@ export function statementAt(text: string, cursor: number): string {
   for (const seg of statements) {
     if (seg.contentStart <= clamped) preceding = seg;
   }
-  return text.slice(preceding.start, preceding.end).trim();
+  return sliced(text, preceding.start, preceding.end);
+}
+
+/**
+ * A segment as it is sent, plus where it really begins.
+ *
+ * `statementAt` trims the slice, so the offset has to move by however
+ * much came off the front — otherwise every statement preceded by a
+ * newline reports a position one character early.
+ */
+function sliced(text: string, start: number, end: number): { sql: string; start: number } {
+  const raw = text.slice(start, end);
+  const leading = raw.length - raw.trimStart().length;
+  return { sql: raw.trim(), start: start + leading };
 }

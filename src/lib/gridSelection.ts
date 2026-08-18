@@ -58,3 +58,25 @@ export function selectAll(
   if (rowCount === 0 || columnCount === 0) return null;
   return { top: 0, left: 0, bottom: rowCount - 1, right: columnCount - 1 };
 }
+
+/**
+ * Where an arrow key moves the selection.
+ *
+ * Clamped rather than wrapped: a grid is a rectangle, and running off
+ * the right edge into the start of the next row is not what any
+ * spreadsheet or database client does. Returns the same cell when there
+ * is nowhere to go, so the caller can treat "moved" and "already at the
+ * edge" identically.
+ */
+export function movedCell(
+  from: CellRef,
+  rowDelta: number,
+  colDelta: number,
+  rowCount: number,
+  columnCount: number,
+): CellRef {
+  return {
+    row: Math.min(Math.max(0, from.row + rowDelta), Math.max(0, rowCount - 1)),
+    col: Math.min(Math.max(0, from.col + colDelta), Math.max(0, columnCount - 1)),
+  };
+}

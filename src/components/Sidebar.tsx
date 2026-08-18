@@ -1,5 +1,8 @@
+import { useCallback, useRef, useState } from "react";
+import { PaneResizer } from "./PaneResizer";
 import { QueryTree, type Creating } from "./QueryTree";
 import { SchemaTree } from "./SchemaTree";
+import { DEFAULT_SCHEMA_HEIGHT, clampSectionHeight } from "../lib/layout";
 import type { LibraryTree, Schema } from "../types";
 
 interface Props {
@@ -22,16 +25,40 @@ interface Props {
   schemaError: string | null;
   connected: boolean;
   onRefreshSchema: () => void;
-  onTableDoubleClick: (schema: string, table: string) => void;
-  onTableClick: (schema: string, table: string) => void;
+  onOpenTableData: (schema: string, table: string) => void;
+  onOpenTableStructure: (schema: string, table: string) => void;
+  /** The table the active tab is showing, so the tree can mark it. */
+  activeTable: { schema: string; table: string } | null;
 }
 
 export function Sidebar(props: Props) {
+  // The schema section is the measured one; the query tree takes what is
+  // left. Measuring both would have them fight over the remainder.
+  const [schemaHeight, setSchemaHeight] = useState(DEFAULT_SCHEMA_HEIGHT);
+  const shellRef = useRef<HTMLElement>(null);
+
+  const resize = useCallback((clientY: number) => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    const { top, height } = shell.getBoundingClientRect();
+    setSchemaHeight(clampSectionHeight(clientY - top, height));
+  }, []);
+
+  const nudge = useCallback((delta: number) => {
+    const shell = shellRef.current;
+    if (!shell) return;
+    const { height } = shell.getBoundingClientRect();
+    setSchemaHeight((current) => clampSectionHeight(current + delta, height));
+  }, []);
+
   return (
-    <aside className="sidebar">
-      <section className="sidebar-section schema">
+    <aside className="sidebar" ref={shellRef}>
+      <section
+        className="sidebar-section schema sized"
+        style={{ height: schemaHeight }}
+      >
         <header className="sidebar-header">
-          <span>SCHEMA</span>
+          <span className="overline">Schema</span>
         </header>
         <SchemaTree
           schema={props.schema}
@@ -39,27 +66,33 @@ export function Sidebar(props: Props) {
           error={props.schemaError}
           connected={props.connected}
           onRefresh={props.onRefreshSchema}
-          onTableDoubleClick={props.onTableDoubleClick}
-          onTableClick={props.onTableClick}
+          onOpenData={props.onOpenTableData}
+          onOpenStructure={props.onOpenTableStructure}
+          activeTable={props.activeTable}
         />
       </section>
 
-      <div className="sidebar-splitter" />
+      <PaneResizer
+        className="sidebar-splitter"
+        label="Resize schema section"
+        onDrag={resize}
+        onNudge={nudge}
+      />
 
       <section className="sidebar-section queries">
         <header className="sidebar-header">
-          <span>QUERIES</span>
+          <span className="overline">Queries</span>
           <div className="sidebar-header-actions">
             <button
-              className="row-action"
+              className="row-action text"
               title="New query"
               onClick={props.onNewQuery}
             >
               + Query
             </button>
             <button
-              className="row-action"
-              title="New collection"
+              className="row-action text"
+              title="New folder"
               onClick={props.onNewCollection}
             >
               + Folder

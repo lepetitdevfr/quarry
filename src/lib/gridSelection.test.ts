@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isSelected, selectAll, selectionRange } from "./gridSelection";
+import { isSelected, movedCell, selectAll, selectionRange } from "./gridSelection";
 
 describe("selectionRange", () => {
   it("normalises a drag down and right", () => {
@@ -80,5 +80,39 @@ describe("selectAll", () => {
     // Cmd+A on nothing must not produce a rectangle over no rows.
     expect(selectAll(0, 3)).toBeNull();
     expect(selectAll(10, 0)).toBeNull();
+  });
+});
+
+describe("movedCell", () => {
+  const from = { row: 3, col: 2 };
+
+  it("moves by one in each direction", () => {
+    expect(movedCell(from, 1, 0, 10, 5)).toEqual({ row: 4, col: 2 });
+    expect(movedCell(from, -1, 0, 10, 5)).toEqual({ row: 2, col: 2 });
+    expect(movedCell(from, 0, 1, 10, 5)).toEqual({ row: 3, col: 3 });
+    expect(movedCell(from, 0, -1, 10, 5)).toEqual({ row: 3, col: 1 });
+  });
+
+  it("stops at the edges rather than wrapping", () => {
+    expect(movedCell({ row: 0, col: 0 }, -1, -1, 10, 5)).toEqual({
+      row: 0,
+      col: 0,
+    });
+    expect(movedCell({ row: 9, col: 4 }, 1, 1, 10, 5)).toEqual({
+      row: 9,
+      col: 4,
+    });
+  });
+
+  it("takes a page-sized jump without leaving the grid", () => {
+    expect(movedCell(from, 20, 0, 10, 5)).toEqual({ row: 9, col: 2 });
+    expect(movedCell(from, -20, 0, 10, 5)).toEqual({ row: 0, col: 2 });
+  });
+
+  it("never returns a negative index for an empty result", () => {
+    expect(movedCell({ row: 0, col: 0 }, 1, 1, 0, 0)).toEqual({
+      row: 0,
+      col: 0,
+    });
   });
 });

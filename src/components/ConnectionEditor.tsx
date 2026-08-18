@@ -67,7 +67,18 @@ export function ConnectionEditor({ existing, onSave, onCancel }: Props) {
   }
 
   return (
-    <form className="connection-editor" onSubmit={submit}>
+    <form
+      className="connection-editor"
+      onSubmit={submit}
+      onKeyDown={(e) => {
+        // Escape cancels, as it does in every other dialog here. This
+        // form was the one surface where it did nothing.
+        if (e.key === "Escape") {
+          e.preventDefault();
+          onCancel();
+        }
+      }}
+    >
       <h2>{existing ? "Edit connection" : "New connection"}</h2>
 
       <div className="field">
@@ -84,7 +95,7 @@ export function ConnectionEditor({ existing, onSave, onCancel }: Props) {
       </div>
 
       <div className="field-group">
-        <div className="group-title">CONNECTION</div>
+        <div className="group-title overline">Connection</div>
 
         <div className="field">
           <label htmlFor="name">Name</label>
@@ -128,7 +139,7 @@ export function ConnectionEditor({ existing, onSave, onCancel }: Props) {
       </div>
 
       <div className="field-group">
-        <div className="group-title">ENVIRONMENT</div>
+        <div className="group-title overline">Environment</div>
 
         <div className="field field-row">
           <div className="grow">

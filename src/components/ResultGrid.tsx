@@ -2,8 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { toTsv } from "../lib/exportRows";
 import { formatCell } from "../lib/format";
-import { isSelected, selectAll, selectionRange } from "../lib/gridSelection";
+import {
+  isSelected,
+  movedCell,
+  selectAll,
+  selectionRange,
+} from "../lib/gridSelection";
 import type { CellRef, SelectionRange } from "../lib/gridSelection";
+import { ContextMenu, useContextMenu, type MenuItem } from "./ContextMenu";
 import { isTruncated, nextSort, sortedIndices } from "../lib/gridSort";
 import type { SortState } from "../lib/gridSort";
 import {
@@ -122,6 +128,7 @@ export function ResultGrid({
   const [anchor, setAnchor] = useState<CellRef | null>(null);
   const [focus, setFocus] = useState<CellRef | null>(null);
   const [selectedAll, setSelectedAll] = useState<SelectionRange | null>(null);
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   // Which cell is open for editing, and the text currently in it.
   const [editing, setEditing] = useState<{ row: number; col: number } | null>(
@@ -343,6 +350,104 @@ export function ResultGrid({
     // keeps the Shift+Cmd+N branch off a stale closure.
   }, [range, order, result, inserts, onInsertRow]);
 
+  /**
+   * Move the selection with the arrow keys.
+   *
+   * Positions here are display positions, the same ones the selection
+   * rectangle uses, so this keeps working when the grid is sorted.
+   * Shift extends from the existing anchor instead of moving it, which
+   * is the one behaviour that makes a keyboard selection worth having.
+   */
+  function moveSelection(
+    rowDelta: number,
+    colDelta: number,
+    extend: boolean,
+    origin: CellRef,
+  ) {
+    setSelectedAll(null);
+    const base = extend ? (focus ?? origin) : origin;
+    const next = movedCell(
+      base,
+      rowDelta,
+      colDelta,
+      result.rows.length,
+      result.columns.length,
+    );
+    if (!extend) setAnchor(next);
+    setFocus(next);
+    virtualizer.scrollToIndex(next.row);
+    // The cell has to take focus for the next arrow key to land here
+    // rather than on the body, and the row may not be mounted yet.
+    requestAnimationFrame(() => {
+      scrollRef.current
+        ?.querySelector<HTMLTableCellElement>(
+          `[data-cell="${next.row}-${next.col}"]`,
+        )
+        ?.focus();
+    });
+  }
+
+  /** The right-click menu for one cell. */
+  function cellMenu(rowIndex: number, col: number): MenuItem[] {
+    const editable = canEdit(col);
+    const staged = deletes !== null && isDeleted(deletes, rowIndex);
+    return [
+      {
+        label: "Copy",
+        shortcut: "⌘C",
+        // The value on screen, staged edit included. Copying the
+        // database value from a cell showing something else would be
+        // the one place in this grid where what you see is not what you
+        // get.
+        onSelect: () => {
+          const staged = pending
+            ? pendingValue(pending, rowIndex, col)
+            : undefined;
+          void navigator.clipboard.writeText(
+            formatCell(staged !== undefined ? staged : result.rows[rowIndex][col])
+              .text,
+          );
+        },
+      },
+      {
+        label: "Copy row",
+        onSelect: () =>
+          void navigator.clipboard.writeText(
+            toTsv(result.columns, [result.rows[rowIndex]], false),
+          ),
+      },
+      { separator: true },
+      {
+        label: "Edit cell…",
+        shortcut: "↵",
+        disabled: !editable,
+        title: editable ? undefined : (columnEdits[col]?.reason ?? undefined),
+        onSelect: () => openEditor(rowIndex, col),
+      },
+      {
+        label: "Set NULL",
+        shortcut: "⌘⌫",
+        disabled: !editable,
+        title: editable ? undefined : (columnEdits[col]?.reason ?? undefined),
+        onSelect: () => onStage(rowIndex, col, null),
+      },
+      { separator: true },
+      {
+        label: "Insert row",
+        shortcut: "⇧⌘N",
+        disabled: inserts === null,
+        onSelect: onInsertRow,
+      },
+      {
+        label: staged ? "Undo delete row" : "Delete row",
+        shortcut: "⇧⌘⌫",
+        danger: !staged,
+        disabled: deletes === null,
+        onSelect: () => onToggleDelete(rowIndex),
+      },
+    ];
+  }
+
   // Drag state lives in a ref, not state: it changes on every
   // pointermove and re-rendering a virtualized grid at that rate is
   // what makes a resize feel laggy.
@@ -506,6 +611,7 @@ export function ResultGrid({
                         .filter(Boolean)
                         .join(" ")}
                       style={{ width: `${widths[i]}px` }}
+                      data-cell={`${item.index}-${i}`}
                       title={
                         notEditable ? (columnEdit?.reason ?? undefined) : text
                       }
@@ -521,7 +627,46 @@ export function ResultGrid({
                           setFocus(cellRef);
                         }
                       }}
+                      onContextMenu={(e) => {
+                        // Right-clicking outside the current selection
+                        // moves it first, so the menu always acts on the
+                        // cell under the pointer.
+                        if (!isSelected(range, item.index, i)) {
+                          setSelectedAll(null);
+                          setAnchor({ row: item.index, col: i });
+                          setFocus({ row: item.index, col: i });
+                        }
+                        openMenu(e, cellMenu(rowIndex, i));
+                      }}
                       onKeyDown={(e) => {
+                        // Arrow keys move the selection; Shift extends
+                        // it. Without this the grid could only be
+                        // selected with a pointer, which for a
+                        // keyboard-first app is the wrong way round.
+                        const origin = { row: item.index, col: i };
+                        if (!isEditingCell && !e.metaKey && !e.ctrlKey) {
+                          const step: Record<string, [number, number]> = {
+                            ArrowDown: [1, 0],
+                            ArrowUp: [-1, 0],
+                            ArrowRight: [0, 1],
+                            ArrowLeft: [0, -1],
+                            PageDown: [20, 0],
+                            PageUp: [-20, 0],
+                          };
+                          const delta = step[e.key];
+                          if (delta) {
+                            e.preventDefault();
+                            moveSelection(delta[0], delta[1], e.shiftKey, origin);
+                            return;
+                          }
+                          if (e.key === "Escape") {
+                            e.preventDefault();
+                            setAnchor(null);
+                            setFocus(null);
+                            setSelectedAll(null);
+                            return;
+                          }
+                        }
                         if (e.key === "Enter" && !isEditingCell) {
                           e.preventDefault();
                           openEditor(rowIndex, i);
@@ -556,7 +701,21 @@ export function ResultGrid({
                           onStage(rowIndex, i, null);
                         }
                       }}
-                      tabIndex={canEdit(i) ? 0 : undefined}
+                      // Roving tab stop: one cell in the grid is
+                      // tabbable, and the arrow keys move which. Making
+                      // every editable cell a tab stop meant Tab walked
+                      // a 500-row result one cell at a time, and made a
+                      // read-only result unreachable from the keyboard
+                      // altogether.
+                      tabIndex={
+                        (focus ?? anchor)
+                          ? focus?.row === item.index && focus?.col === i
+                            ? 0
+                            : -1
+                          : item.index === 0 && i === 0
+                            ? 0
+                            : -1
+                      }
                     >
                       {isEditingCell
                         ? renderEditor(columnEdit, draft, setDraft, commit, () =>
@@ -654,6 +813,17 @@ export function ResultGrid({
           </tbody>
         )}
       </table>
+
+      {/* A result with columns and no rows used to be a sticky header
+          over an empty scroll area, which reads as "still loading"
+          rather than "that query matched nothing". The header stays —
+          the column list is still the answer to half the question. */}
+      {result.rows.length === 0 &&
+        (inserts === null || inserts.length === 0) && (
+          <p className="grid-empty">No rows.</p>
+        )}
+
+      <ContextMenu menu={menu} onClose={closeMenu} />
     </div>
   );
 }
