@@ -279,10 +279,39 @@ button:disabled {
   table-layout: fixed;
 }
 
-.result-grid thead th {
+/* The header sticks as a unit.
+
+   It used to be each `th` that was sticky, which could not work here:
+   the rule above overrides `thead` to `display: table`, so a cell's
+   containing block is that one-row-tall table box and a sticky cell has
+   nowhere to slide to. Moving it onto the `thead` — which is a
+   block-level box in this layout, inside a `table` as tall as the whole
+   result — gives it the travel it needs. */
+.result-grid thead {
   position: sticky;
   top: 0;
+  z-index: 2;
+  background: var(--panel);
+}
+
+/* Staged rows pin directly under the header, so a row you are still
+   filling in never scrolls away from you. Its `top` is set inline from
+   the measured header height — the header's size depends on the font
+   and the type scale, so CSS cannot know it.
+
+   Opaque, unlike the rows it covers: `.inserting` cells are a
+   translucent amber tint, and without a base colour beneath them the
+   fetched rows show through as they scroll under. Below the header in
+   the stack, above the rows. */
+.result-grid tbody.staged {
+  position: sticky;
   z-index: 1;
+  background: var(--bg);
+}
+
+.result-grid thead th {
+  /* The resize handle is absolutely positioned against this. */
+  position: relative;
   text-align: left;
   padding: var(--s-1) var(--s-3);
   background: var(--panel);
@@ -1192,8 +1221,6 @@ button.link {
 /* ---- grid sort and resize -------------------------------------- */
 
 .result-grid thead th {
-  /* The resize handle is positioned against this. */
-  position: sticky;
   cursor: pointer;
   user-select: none;
 }

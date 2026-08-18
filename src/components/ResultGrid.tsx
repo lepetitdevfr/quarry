@@ -100,6 +100,23 @@ export function ResultGrid({
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Measured, because the staged rows pin directly beneath the header
+  // and their `top` is exactly its height — which depends on the font
+  // and the type scale, so it cannot be a constant. Observed rather
+  // than measured once: the header grows when a column name wraps or
+  // the type scale changes.
+  const headRef = useRef<HTMLTableSectionElement>(null);
+  const [headHeight, setHeadHeight] = useState(0);
+  useEffect(() => {
+    const head = headRef.current;
+    if (!head) return;
+    const observer = new ResizeObserver(() =>
+      setHeadHeight(head.getBoundingClientRect().height),
+    );
+    observer.observe(head);
+    return () => observer.disconnect();
+  }, []);
+
   // Staged rows are rendered above the fetched ones, so the virtual
   // list no longer starts at the top of the scroll container. Every
   // staged row is one ROW_HEIGHT of scroll offset the virtualizer would
@@ -498,7 +515,7 @@ export function ResultGrid({
   return (
     <div className="result-grid" ref={scrollRef}>
       <table>
-        <thead>
+        <thead ref={headRef}>
           <tr>
             {/* Ordinal gutter. Empty header: numbering the numbering
                 column would be noise. */}
@@ -582,7 +599,7 @@ export function ResultGrid({
             it is next to the header, where the thing you just created
             is the first thing you look at. */}
         {inserts !== null && inserts.length > 0 && (
-          <tbody>
+          <tbody className="staged" style={{ top: `${headHeight}px` }}>
             {inserts.map((staged) => (
               // The same height as a fetched row, both because a staged
               // row is a row and because `scrollMargin` above counts
