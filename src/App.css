@@ -475,6 +475,19 @@ button:disabled {
   justify-content: space-between;
 }
 
+/* Rows are targets, not prose. Without this, right-clicking a table
+   name selects the word under the pointer before the menu opens, and a
+   click-drag down the tree paints a text selection across it — the
+   result grid turned the native selection off for the same reason.
+   Scoped to the rows rather than the sidebar: the schema filter is an
+   input and has to stay selectable. */
+.tree-row,
+.sidebar-header,
+.tab {
+  user-select: none;
+  -webkit-user-select: none;
+}
+
 .tree-row {
   display: flex;
   align-items: center;
@@ -1271,12 +1284,7 @@ button.link {
 
 /* The small variant of danger stays quiet until hovered — it lives in a
    toolbar next to ordinary actions, and a filled red button sitting
-   permanently beside Export would be shouting. Specificity beats the
-   `button.danger` fill rule above, which is meant for dialog primaries. */
-.btn-small.danger {
-  background: none;
-}
-
+   permanently beside Export would be shouting. */
 .btn-small.danger:hover:not(:disabled) {
   color: var(--error);
   border-color: var(--error);
@@ -1363,15 +1371,24 @@ button.link {
   font-size: var(--t-sm);
 }
 
-/* A primary button whose action destroys something. Red rather than
-   accent, everywhere — the unlock dialog already did this and the
-   delete confirmations did not, which had the irreversible action
-   wearing the same blue as Save. */
-button.danger {
+/* A *primary* button whose action destroys something: red fill rather
+   than accent, so the irreversible choice does not wear the same blue
+   as Save. Scoped to the dialog cards, because that is the only place a
+   filled primary lives.
+
+   Deliberately not a bare `button.danger`. That is what it was, and it
+   leaked: `.context-menu-item.danger` sets a red *colour* and expected
+   a transparent background, so a bare rule at higher specificity than
+   `.context-menu-item` painted the Delete row red-on-red and made the
+   label invisible. Quiet danger variants say danger with their text,
+   and they must be allowed to. */
+.modal button.danger,
+.confirm-dialog button.danger {
   background: var(--error);
 }
 
-button.danger:hover:not(:disabled) {
+.modal button.danger:hover:not(:disabled),
+.confirm-dialog button.danger:hover:not(:disabled) {
   filter: brightness(1.08);
 }
 
