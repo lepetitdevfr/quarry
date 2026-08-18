@@ -100,6 +100,13 @@ export function ResultGrid({
 }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
 
+  // Staged rows are rendered above the fetched ones, so the virtual
+  // list no longer starts at the top of the scroll container. Every
+  // staged row is one ROW_HEIGHT of scroll offset the virtualizer would
+  // otherwise attribute to the list, leaving the window it mounts that
+  // far out of step with what is on screen.
+  const stagedCount = inserts?.length ?? 0;
+
   // Only the visible rows are mounted. Without this a 100k-row result
   // creates 100k DOM nodes and the window stops responding.
   const virtualizer = useVirtualizer({
@@ -107,6 +114,7 @@ export function ResultGrid({
     getScrollElement: () => scrollRef.current,
     estimateSize: () => ROW_HEIGHT,
     overscan: 12,
+    scrollMargin: stagedCount * ROW_HEIGHT,
   });
 
   const [widths, setWidths] = useState<number[]>(() =>
@@ -562,6 +570,103 @@ export function ResultGrid({
             ))}
           </tr>
         </thead>
+        {/* Staged rows sit in their own tbody, outside both the virtual
+            window and `order[]`: they are not in the database, so there
+            is nothing to sort them by and nothing to scroll past —
+            there are only ever a handful.
+
+            Above the fetched rows rather than below them. A new row
+            appended after the last of five hundred is a new row you
+            cannot see: you press ⇧⌘N, nothing appears to happen, and
+            the only evidence is the count in the edit bar. At the top
+            it is next to the header, where the thing you just created
+            is the first thing you look at. */}
+        {inserts !== null && inserts.length > 0 && (
+          <tbody>
+            {inserts.map((staged) => (
+              // The same height as a fetched row, both because a staged
+              // row is a row and because `scrollMargin` above counts
+              // them in ROW_HEIGHTs.
+              <tr
+                className="inserting"
+                key={`insert-${staged.id}`}
+                style={{ height: `${ROW_HEIGHT}px` }}
+              >
+                <td className="row-num">+</td>
+                {result.columns.map((_, i) => {
+                  const columnEdit = columnEdits[i];
+                  const value = insertValue(inserts, staged.id, i);
+                  const canFill = columnEdit?.insertable ?? false;
+                  const isEditingCell =
+                    editingInsert?.id === staged.id && editingInsert?.col === i;
+
+                  return (
+                    <td
+                      key={i}
+                      className={[
+                        value === undefined
+                          ? "cell-placeholder"
+                          : `cell-${formatCell(value).kind}`,
+                        canFill ? "" : "not-editable",
+                      ]
+                        .filter(Boolean)
+                        .join(" ")}
+                      style={{ width: `${widths[i]}px` }}
+                      title={
+                        canFill ? undefined : (columnEdit?.insert_reason ?? undefined)
+                      }
+                      tabIndex={canFill ? 0 : undefined}
+                      onDoubleClick={() =>
+                        canFill && openInsertEditor(staged.id, i, value ?? "")
+                      }
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" && !isEditingCell && canFill) {
+                          e.preventDefault();
+                          openInsertEditor(staged.id, i, value ?? "");
+                        }
+                        // Discards the staged row outright: it never
+                        // existed, so there is nothing to ask the server
+                        // about.
+                        if (
+                          (e.metaKey || e.ctrlKey) &&
+                          e.shiftKey &&
+                          e.key === "Backspace"
+                        ) {
+                          e.preventDefault();
+                          onRemoveInsert(staged.id);
+                          return;
+                        }
+                        // An explicit NULL, which overrides a default
+                        // rather than accepting it.
+                        if (
+                          (e.metaKey || e.ctrlKey) &&
+                          !e.shiftKey &&
+                          e.key === "Backspace" &&
+                          canFill
+                        ) {
+                          e.preventDefault();
+                          onInsertCell(staged.id, i, null);
+                        }
+                      }}
+                    >
+                      {isEditingCell
+                        ? renderEditor(
+                            columnEdit,
+                            insertDraft,
+                            setInsertDraft,
+                            commitInsert,
+                            () => setEditingInsert(null),
+                          )
+                        : value === undefined
+                          ? placeholderFor(columnEdit)
+                          : formatCell(value).text}
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        )}
         <tbody style={{ height: `${virtualizer.getTotalSize()}px` }}>
           {virtualizer.getVirtualItems().map((item) => {
             const row = result.rows[order[item.index]];
@@ -729,89 +834,6 @@ export function ResultGrid({
             );
           })}
         </tbody>
-        {/* Staged rows sit in their own tbody, after the virtualized one
-            and outside both the virtual window and `order[]`: they are
-            not in the database, so there is nothing to sort them by and
-            nothing to scroll past — there are only ever a handful. */}
-        {inserts !== null && inserts.length > 0 && (
-          <tbody>
-            {inserts.map((staged) => (
-              <tr className="inserting" key={`insert-${staged.id}`}>
-                <td className="row-num">+</td>
-                {result.columns.map((_, i) => {
-                  const columnEdit = columnEdits[i];
-                  const value = insertValue(inserts, staged.id, i);
-                  const canFill = columnEdit?.insertable ?? false;
-                  const isEditingCell =
-                    editingInsert?.id === staged.id && editingInsert?.col === i;
-
-                  return (
-                    <td
-                      key={i}
-                      className={[
-                        value === undefined
-                          ? "cell-placeholder"
-                          : `cell-${formatCell(value).kind}`,
-                        canFill ? "" : "not-editable",
-                      ]
-                        .filter(Boolean)
-                        .join(" ")}
-                      style={{ width: `${widths[i]}px` }}
-                      title={
-                        canFill ? undefined : (columnEdit?.insert_reason ?? undefined)
-                      }
-                      tabIndex={canFill ? 0 : undefined}
-                      onDoubleClick={() =>
-                        canFill && openInsertEditor(staged.id, i, value ?? "")
-                      }
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" && !isEditingCell && canFill) {
-                          e.preventDefault();
-                          openInsertEditor(staged.id, i, value ?? "");
-                        }
-                        // Discards the staged row outright: it never
-                        // existed, so there is nothing to ask the server
-                        // about.
-                        if (
-                          (e.metaKey || e.ctrlKey) &&
-                          e.shiftKey &&
-                          e.key === "Backspace"
-                        ) {
-                          e.preventDefault();
-                          onRemoveInsert(staged.id);
-                          return;
-                        }
-                        // An explicit NULL, which overrides a default
-                        // rather than accepting it.
-                        if (
-                          (e.metaKey || e.ctrlKey) &&
-                          !e.shiftKey &&
-                          e.key === "Backspace" &&
-                          canFill
-                        ) {
-                          e.preventDefault();
-                          onInsertCell(staged.id, i, null);
-                        }
-                      }}
-                    >
-                      {isEditingCell
-                        ? renderEditor(
-                            columnEdit,
-                            insertDraft,
-                            setInsertDraft,
-                            commitInsert,
-                            () => setEditingInsert(null),
-                          )
-                        : value === undefined
-                          ? placeholderFor(columnEdit)
-                          : formatCell(value).text}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        )}
       </table>
 
       {/* A result with columns and no rows used to be a sticky header
