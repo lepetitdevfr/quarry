@@ -345,13 +345,23 @@ export default function App() {
   // claimed by any menu item, so they do reach the webview and can be
   // an ordinary listener. ⌘9 is the last tab, not the ninth — the
   // convention every browser uses.
+  //
+  // Matched on `e.code`, the physical key, not `e.key`, the character
+  // it produces. This is a positional shortcut and the digit row is not
+  // where the digits live on every layout: on a French AZERTY keyboard
+  // the Digit1 key types `&`, and reaching `1` needs Shift — so a
+  // `/^[1-9]$/` test against `e.key` matched nothing and a `!e.shiftKey`
+  // guard rejected the one chord that would have. Shift is therefore
+  // ignored rather than refused, for the layouts that need it to type a
+  // digit at all.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (!(e.metaKey || e.ctrlKey) || e.shiftKey || e.altKey) return;
-      if (!/^[1-9]$/.test(e.key)) return;
+      if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+      const match = /^Digit([1-9])$/.exec(e.code);
+      if (!match) return;
       if (tabs.length === 0) return;
       e.preventDefault();
-      const digit = Number(e.key);
+      const digit = Number(match[1]);
       const index = digit === 9 ? tabs.length - 1 : digit - 1;
       const target = tabs[index];
       if (target) void actions.activateTab(target.id);

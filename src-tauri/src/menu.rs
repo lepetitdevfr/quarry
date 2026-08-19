@@ -83,23 +83,33 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         Some("Shift+CmdOrCtrl+W"),
     )?;
 
-    // Tab navigation. `⌘T`, `⇧⌘[` and `⇧⌘]` are what every editor and
-    // browser on this platform uses, and an app that keeps its work in
-    // tabs and calls itself keyboard-first cannot be missing them.
+    // Tab navigation. An app that keeps its work in tabs and calls
+    // itself keyboard-first cannot be missing these.
+    //
+    // Arrows rather than `⇧⌘[` / `⇧⌘]`, the other macOS convention for
+    // this. A bracket accelerator resolves to a physical key position
+    // (`BracketLeft`), so the chord still fires on a layout without
+    // brackets on that key — but the menu goes on advertising `⇧⌘[`
+    // while the key you must actually press is labelled `^` on a French
+    // AZERTY keyboard. A shortcut whose label names a different key
+    // than the one that works is worse than no shortcut.
+    //
+    // `⌥⌘←` / `⌥⌘→` are what Safari and Chrome use here, and an arrow
+    // is labelled the same on every keyboard sold.
     let new_tab = MenuItem::with_id(app, NEW_TAB_ID, "New Tab", true, Some("CmdOrCtrl+T"))?;
     let next_tab = MenuItem::with_id(
         app,
         NEXT_TAB_ID,
         "Next Tab",
         true,
-        Some("Shift+CmdOrCtrl+]"),
+        Some("Alt+CmdOrCtrl+Right"),
     )?;
     let prev_tab = MenuItem::with_id(
         app,
         PREV_TAB_ID,
         "Previous Tab",
         true,
-        Some("Shift+CmdOrCtrl+["),
+        Some("Alt+CmdOrCtrl+Left"),
     )?;
 
     let window_menu = Submenu::with_items(
