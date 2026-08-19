@@ -48,14 +48,15 @@ export function ConnectionPicker({
               ref={i === 0 ? firstRef : undefined}
               className={`picker-row${c.id === activeId ? " active" : ""}`}
               disabled={connecting}
+              // The name is what identifies a connection — it is typed by
+              // the person who made it. The target stays as the tooltip
+              // for the moment the name is not enough to tell two apart.
+              title={`${c.user}@${c.host}:${c.port}/${c.dbname}`}
               onClick={() => onPick(c.id)}
             >
               <span className="dot" style={{ background: c.colour }} />
               <span className="picker-name">{c.name}</span>
               <span className="picker-tag overline">{c.tag}</span>
-              <span className="picker-target">
-                {c.user}@{c.host}:{c.port}/{c.dbname}
-              </span>
             </button>
             <button
               className="row-action"

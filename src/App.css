@@ -738,18 +738,6 @@ button:disabled {
   background: var(--border);
 }
 
-/* Ellipsized, with the full value in the title. A managed-Postgres host
-   plus a database name is comfortably longer than this bar, and without
-   a cap it pushed the header's own controls off the right edge. */
-.connection-target {
-  color: var(--muted);
-  font-family: var(--mono);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  min-width: 0;
-}
-
 .connection-trigger .connection-name {
   max-width: 200px;
   overflow: hidden;
@@ -838,13 +826,7 @@ button:disabled {
 
 .picker-tag {
   flex: none;
-}
-
-.picker-target {
   margin-left: auto;
-  color: var(--muted);
-  font-family: var(--mono);
-  font-size: var(--t-sm);
 }
 
 .picker-empty {

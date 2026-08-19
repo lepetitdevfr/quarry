@@ -1168,6 +1168,7 @@ export default function App() {
           <div className="connection-menu" ref={connectionMenuRef}>
             <button
               className="connection-trigger"
+              title={`${connection.user}@${connection.host}:${connection.port}/${connection.dbname}`}
               onClick={() => setPickerOpen((open) => !open)}
             >
               <span
@@ -1183,15 +1184,6 @@ export default function App() {
               </span>
               <span className="caret">▾</span>
             </button>
-            {/* Ellipsized in CSS, so the full target has to be reachable
-                some other way — a managed-Postgres host is longer than
-                this bar on any window narrower than the desk. */}
-            <span
-              className="connection-target"
-              title={`${connection.user}@${connection.host}:${connection.port}/${connection.dbname}`}
-            >
-              {connection.user}@{connection.host}:{connection.port}/{connection.dbname}
-            </span>
 
             {pickerOpen && (
               <ConnectionPicker
