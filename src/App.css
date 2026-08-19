@@ -603,6 +603,15 @@ button:disabled {
   opacity: 1;
 }
 
+/* The tab bar stretches its children, but stretching only applies to an
+   auto cross-size — and this button has an explicit 18px box like every
+   other glyph control. Without centring it, the explicit height parks
+   it against the top edge of a taller bar. */
+.tab-new {
+  align-self: center;
+  margin-left: var(--s-1);
+}
+
 /* The sidebar header's "+ Query" / "+ Folder" are the same quiet class
    but carry words, so they keep their intrinsic width. */
 .row-action.text {
