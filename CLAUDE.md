@@ -90,7 +90,9 @@ Rust integration tests need Docker; they start Postgres 17 via testcontainers.
 
 | Need | File |
 |---|---|
+| What to build next, and why | `docs/audits/2026-08-20-unified-roadmap.md` — four waves, ranked by impact |
 | Open work, with reasoning | `docs/BACKLOG.md` |
+| Product audits behind the roadmap | `docs/audits/` — competitive, UX stress test, strategy |
 | Why a feature works the way it does | `docs/superpowers/specs/` — one per feature |
 | How a stage was executed | `docs/superpowers/plans/` — execution history, rarely worth reading |
 | Running the app, keyboard, limitations | `README.md` |

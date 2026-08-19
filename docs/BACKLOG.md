@@ -3,6 +3,14 @@
 Deferred work that is not yet assigned to a stage plan. Anything here is a
 real commitment, not a maybe — it was consciously postponed, not dropped.
 
+**Sequencing lives elsewhere:** the order in which new work should happen is
+[`audits/2026-08-20-unified-roadmap.md`](audits/2026-08-20-unified-roadmap.md) —
+four waves ranked by impact and differentiation, reconciled from the August
+2026 audits. This file stays what it is: the reasoning behind individually
+deferred items. Note that some entries here were cut or superseded by that
+roadmap (cell peek, insert-name-at-cursor, the modal insert form stay
+rejected; table-stats extras shipped with table detail).
+
 ## Schema tree extras
 
 **Deferred:** 2026-08-14, while designing the schema tree. Each was consciously
