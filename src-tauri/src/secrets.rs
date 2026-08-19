@@ -1,3 +1,6 @@
+use std::collections::BTreeMap;
+use std::sync::Mutex;
+
 use crate::error::AppError;
 
 /// Keychain service name — groups all of Quarry's entries together, so
@@ -100,33 +103,150 @@ mod backend {
     }
 }
 
-/// Store a password. `account` is the connection id, so each connection
-/// has exactly one entry.
+/// The one Keychain item every connection's password lives in.
 ///
-/// Writing overwrites in place: one store operation, one prompt. It used
-/// to delete first, which prompted twice.
+/// macOS authorises Keychain access per *item*, so one entry per
+/// connection meant one prompt per connection, repeated after every
+/// rebuild because entries are tied to the signing identity. A single
+/// item keyed by connection id is one ACL and therefore one prompt.
 ///
-/// The delete survives as a fallback, because the delete-first order
-/// existed for a reason: macOS grants Keychain access per code
-/// signature, and `tauri dev` re-signs the binary on every rebuild, so
-/// an entry written by the previous build can be unreadable AND
-/// unwritable by this one. Without a way to remove it, a user whose
-/// credential became inaccessible could never replace it — the password
-/// prompt would reappear forever, failing identically every time.
-/// Deleting and retrying once makes the second attempt a fresh entry
-/// this binary owns, and costs the extra prompt only when the write
-/// actually failed.
-pub fn save_password(account: &str, password: &str) -> Result<(), AppError> {
-    match backend::set(account, password) {
+/// The cost is deliberate: Keychain Access shows one opaque entry
+/// instead of a legible one per connection, and any read decrypts every
+/// credential. See docs/BACKLOG.md.
+const BLOB_ACCOUNT: &str = "connections";
+
+/// Serialises the read-modify-write around the shared item. Two threads
+/// saving different connections at once would otherwise each read the
+/// same map and write back their own, losing one of the passwords.
+static BLOB_LOCK: Mutex<()> = Mutex::new(());
+
+/// A store of named items — the two or three operations the blob logic
+/// needs from a credential store, and nothing else.
+///
+/// It exists so the merge, migration and delete rules can be tested
+/// without a real Keychain. That is not tidiness: macOS binds an
+/// "Always Allow" grant to the requesting binary's code signature, and
+/// `cargo test` re-links a differently-signed test binary on every
+/// build, so tests against the real store prompt on every single run and
+/// no amount of allowing settles it.
+trait Items {
+    fn get(&self, account: &str) -> Result<Option<String>, AppError>;
+    fn set(&self, account: &str, secret: &str) -> Result<(), AppError>;
+    fn delete(&self, account: &str) -> Result<(), AppError>;
+}
+
+/// The real credential store, which is what everything outside this
+/// module's tests runs against.
+struct Platform;
+
+impl Items for Platform {
+    fn get(&self, account: &str) -> Result<Option<String>, AppError> {
+        backend::get(account)
+    }
+
+    fn set(&self, account: &str, secret: &str) -> Result<(), AppError> {
+        backend::set(account, secret)
+    }
+
+    fn delete(&self, account: &str) -> Result<(), AppError> {
+        backend::delete(account)
+    }
+}
+
+/// Read the map. A missing item is an empty map, not an error — nothing
+/// has been saved yet.
+///
+/// Unparseable contents are an error rather than a silent reset:
+/// overwriting a blob we cannot read would destroy every stored
+/// credential to recover from a bug.
+fn read_blob(items: &impl Items) -> Result<BTreeMap<String, String>, AppError> {
+    match items.get(BLOB_ACCOUNT)? {
+        None => Ok(BTreeMap::new()),
+        Some(json) => serde_json::from_str(&json)
+            .map_err(|e| AppError::Keychain(format!("stored credentials are unreadable: {e}"))),
+    }
+}
+
+/// Write the map back.
+///
+/// Writing overwrites in place: one store operation, one prompt. The
+/// delete-and-retry exists because macOS grants Keychain access per code
+/// signature, and `tauri dev` re-signs the binary on every rebuild, so an
+/// item written by the previous build can be unreadable AND unwritable by
+/// this one. Without a way to remove it, a user whose credentials became
+/// inaccessible could never replace them. Deleting and retrying once
+/// makes the second attempt a fresh item this binary owns, and costs the
+/// extra prompt only when the write actually failed.
+fn write_blob(items: &impl Items, map: &BTreeMap<String, String>) -> Result<(), AppError> {
+    let json = serde_json::to_string(map).map_err(|e| AppError::Keychain(e.to_string()))?;
+
+    match items.set(BLOB_ACCOUNT, &json) {
         Ok(()) => Ok(()),
         Err(_) => {
             // The delete's own result is ignored on purpose: if it
             // failed there was nothing to remove, and the retry below is
-            // what reports whether we ended up with a usable entry.
-            let _ = backend::delete(account);
-            backend::set(account, password)
+            // what reports whether we ended up with a usable item.
+            let _ = items.delete(BLOB_ACCOUNT);
+            items.set(BLOB_ACCOUNT, &json)
         }
     }
+}
+
+fn save_in(items: &impl Items, account: &str, password: &str) -> Result<(), AppError> {
+    let _guard = BLOB_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    let mut map = read_blob(items)?;
+    map.insert(account.to_string(), password.to_string());
+    write_blob(items, &map)?;
+
+    // A pre-blob entry for this id would otherwise sit there forever,
+    // unread and undeletable from the UI. Failure is ignored: the
+    // password the caller asked us to store is already stored, and a
+    // stale item can no longer shadow it because the blob is read first.
+    let _ = items.delete(account);
+
+    Ok(())
+}
+
+fn load_from(items: &impl Items, account: &str) -> Result<Option<String>, AppError> {
+    let _guard = BLOB_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    let mut map = read_blob(items)?;
+    if let Some(password) = map.get(account) {
+        return Ok(Some(password.clone()));
+    }
+
+    let Some(password) = items.get(account)? else {
+        return Ok(None);
+    };
+
+    // Migrate, then return the password whether or not the migration
+    // stuck: the caller asked for a credential we have in hand, and a
+    // failed move only means the next read migrates again.
+    map.insert(account.to_string(), password.clone());
+    if write_blob(items, &map).is_ok() {
+        let _ = items.delete(account);
+    }
+
+    Ok(Some(password))
+}
+
+fn delete_from(items: &impl Items, account: &str) -> Result<(), AppError> {
+    let _guard = BLOB_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+    let mut map = read_blob(items)?;
+    if map.remove(account).is_some() {
+        write_blob(items, &map)?;
+    }
+
+    // A pre-blob entry for this id must go too, or "delete" would leave
+    // a live credential behind for the next build to migrate back in.
+    items.delete(account)
+}
+
+/// Store a password under a connection id.
+pub fn save_password(account: &str, password: &str) -> Result<(), AppError> {
+    save_in(&Platform, account, password)
 }
 
 /// Read a password. A missing entry is `Ok(None)`, not an error — the
@@ -138,8 +258,11 @@ pub fn save_password(account: &str, password: &str) -> Result<(), AppError> {
 /// access to entries it saved moments earlier, and collapsing that to
 /// `Ok(None)` sent `connect_saved` down the no-password path, producing
 /// a driver error that named neither the Keychain nor the fix.
+///
+/// A password saved by a pre-blob build is migrated on first read, which
+/// costs one prompt for that old item once and none afterwards.
 pub fn load_password(account: &str) -> Result<Option<String>, AppError> {
-    backend::get(account)
+    load_from(&Platform, account)
 }
 
 /// Remove a password. Deleting something already absent is success — the
@@ -148,65 +271,234 @@ pub fn load_password(account: &str) -> Result<Option<String>, AppError> {
 /// did not happen would leave a credential in the store while the app
 /// claims it is gone.
 pub fn delete_password(account: &str) -> Result<(), AppError> {
-    backend::delete(account)
+    delete_from(&Platform, account)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex as StdMutex;
 
-    /// Deletes its Keychain entry when dropped, so a test that panics
-    /// mid-assertion still cleans up rather than leaving a real entry
-    /// behind. `expect`/`assert!` unwind past any ordinary cleanup code
-    /// written after them — a `Drop` impl is the one thing that still
-    /// runs during that unwind.
-    struct CleansUpOnDrop<'a>(&'a str);
+    /// An in-memory stand-in for the platform store.
+    ///
+    /// Every test below one exercises the blob rules against this rather
+    /// than the real Keychain, on purpose: macOS ties an "Always Allow"
+    /// grant to the requesting binary's signature, `cargo test` re-links
+    /// a new one on each build, so real-store tests prompt the developer
+    /// on every run forever. The one test that must touch the real store
+    /// is `#[ignore]`d.
+    #[derive(Default)]
+    struct FakeItems {
+        items: StdMutex<BTreeMap<String, String>>,
+        /// When set, `set` fails once for this account, exercising the
+        /// delete-and-retry path in `write_blob`.
+        fail_next_set: StdMutex<Option<String>>,
+    }
 
-    impl Drop for CleansUpOnDrop<'_> {
-        fn drop(&mut self) {
-            let _ = delete_password(self.0);
+    impl FakeItems {
+        fn contains(&self, account: &str) -> bool {
+            self.items.lock().unwrap().contains_key(account)
+        }
+
+        fn seed(&self, account: &str, secret: &str) {
+            self.items
+                .lock()
+                .unwrap()
+                .insert(account.to_string(), secret.to_string());
+        }
+    }
+
+    impl Items for FakeItems {
+        fn get(&self, account: &str) -> Result<Option<String>, AppError> {
+            Ok(self.items.lock().unwrap().get(account).cloned())
+        }
+
+        fn set(&self, account: &str, secret: &str) -> Result<(), AppError> {
+            let mut fail = self.fail_next_set.lock().unwrap();
+            if fail.as_deref() == Some(account) {
+                *fail = None;
+                return Err(AppError::Keychain("denied".to_string()));
+            }
+            self.items
+                .lock()
+                .unwrap()
+                .insert(account.to_string(), secret.to_string());
+            Ok(())
+        }
+
+        fn delete(&self, account: &str) -> Result<(), AppError> {
+            self.items.lock().unwrap().remove(account);
+            Ok(())
         }
     }
 
     #[test]
     fn round_trips_a_password() {
+        let items = FakeItems::default();
+
+        save_in(&items, "conn-1", "hunter2").expect("save should work");
+        assert_eq!(
+            load_from(&items, "conn-1").unwrap().as_deref(),
+            Some("hunter2")
+        );
+
+        delete_from(&items, "conn-1").expect("delete should work");
+        assert_eq!(load_from(&items, "conn-1").unwrap(), None);
+    }
+
+    #[test]
+    fn a_missing_entry_reads_as_none() {
+        let items = FakeItems::default();
+        assert_eq!(load_from(&items, "never-saved").unwrap(), None);
+    }
+
+    #[test]
+    fn deleting_an_absent_entry_is_ok() {
+        let items = FakeItems::default();
+        assert!(delete_from(&items, "never-saved").is_ok());
+    }
+
+    /// Saving must overwrite rather than error or keep the old value.
+    /// This is the path the inline password retry depends on: a user
+    /// whose credential became inaccessible has to be able to replace it.
+    #[test]
+    fn saving_twice_overwrites() {
+        let items = FakeItems::default();
+
+        save_in(&items, "conn-1", "first").expect("first save");
+        save_in(&items, "conn-1", "second").expect("second save must replace");
+
+        assert_eq!(
+            load_from(&items, "conn-1").unwrap().as_deref(),
+            Some("second")
+        );
+    }
+
+    /// Every connection shares one item, so a save for one must not drop
+    /// another — the whole point of the blob is that the map survives a
+    /// read-modify-write.
+    #[test]
+    fn two_accounts_coexist_in_one_item() {
+        let items = FakeItems::default();
+
+        save_in(&items, "conn-a", "alpha").expect("save a");
+        save_in(&items, "conn-b", "bravo").expect("save b");
+
+        assert_eq!(
+            items.items.lock().unwrap().keys().collect::<Vec<_>>(),
+            vec![BLOB_ACCOUNT],
+            "both passwords belong to the single blob item"
+        );
+        assert_eq!(
+            load_from(&items, "conn-a").unwrap().as_deref(),
+            Some("alpha")
+        );
+        assert_eq!(
+            load_from(&items, "conn-b").unwrap().as_deref(),
+            Some("bravo")
+        );
+
+        delete_from(&items, "conn-a").expect("delete a");
+        assert_eq!(load_from(&items, "conn-a").unwrap(), None);
+        assert_eq!(
+            load_from(&items, "conn-b").unwrap().as_deref(),
+            Some("bravo"),
+            "deleting one connection must not touch another"
+        );
+    }
+
+    /// A password written by a pre-blob build lives in its own item.
+    /// Reading it must return it, move it into the blob, and leave the
+    /// old item gone, so the extra prompt happens once and never again.
+    #[test]
+    fn a_pre_blob_entry_is_migrated_on_read() {
+        let items = FakeItems::default();
+        items.seed("conn-old", "from-the-old-build");
+
+        assert_eq!(
+            load_from(&items, "conn-old").unwrap().as_deref(),
+            Some("from-the-old-build")
+        );
+        assert!(
+            !items.contains("conn-old"),
+            "the old item should be gone once migrated"
+        );
+        assert_eq!(
+            load_from(&items, "conn-old").unwrap().as_deref(),
+            Some("from-the-old-build"),
+            "the migrated password must still read back from the blob"
+        );
+    }
+
+    /// Saving over a pre-blob entry must clear it, or the old value
+    /// would sit in the store unreachable from the UI forever.
+    #[test]
+    fn saving_clears_a_pre_blob_entry() {
+        let items = FakeItems::default();
+        items.seed("conn-old", "stale");
+
+        save_in(&items, "conn-old", "fresh").expect("save");
+
+        assert!(!items.contains("conn-old"));
+        assert_eq!(
+            load_from(&items, "conn-old").unwrap().as_deref(),
+            Some("fresh")
+        );
+    }
+
+    /// Deleting has to clear a pre-blob entry too, or the next read
+    /// would migrate back a credential the user asked us to forget.
+    #[test]
+    fn deleting_clears_a_pre_blob_entry() {
+        let items = FakeItems::default();
+        items.seed("conn-old", "stale");
+
+        delete_from(&items, "conn-old").expect("delete should work");
+
+        assert_eq!(load_from(&items, "conn-old").unwrap(), None);
+    }
+
+    /// A store that refuses the first write must not lose the password:
+    /// `write_blob` deletes the offending item and writes again, which is
+    /// what lets a rebuilt binary replace an item it can no longer touch.
+    #[test]
+    fn a_refused_write_is_retried_after_deleting_the_item() {
+        let items = FakeItems::default();
+        *items.fail_next_set.lock().unwrap() = Some(BLOB_ACCOUNT.to_string());
+
+        save_in(&items, "conn-1", "hunter2").expect("the retry should succeed");
+
+        assert_eq!(
+            load_from(&items, "conn-1").unwrap().as_deref(),
+            Some("hunter2")
+        );
+    }
+
+    /// Unreadable contents must not be silently reset — overwriting a
+    /// blob we cannot parse would destroy every stored credential.
+    #[test]
+    fn an_unparseable_blob_is_an_error_not_an_empty_map() {
+        let items = FakeItems::default();
+        items.seed(BLOB_ACCOUNT, "not json");
+
+        assert!(load_from(&items, "conn-1").is_err());
+        assert!(save_in(&items, "conn-1", "hunter2").is_err());
+    }
+
+    /// The one test that touches the real credential store, which is why
+    /// it is ignored by default: on macOS it prompts, and the grant does
+    /// not survive the next `cargo test` because the test binary is
+    /// re-signed. Run deliberately with
+    /// `cargo test -- --ignored real_store`.
+    #[test]
+    #[ignore = "touches the real credential store and prompts on macOS"]
+    fn the_real_store_round_trips_a_password() {
         let account = format!("test-{}", std::process::id());
-        // Cleans up even if an assertion below panics; the explicit
-        // delete_password call further down still exercises deletion
-        // as part of the round trip itself.
-        let _guard = CleansUpOnDrop(&account);
 
         save_password(&account, "hunter2").expect("save should work");
         assert_eq!(load_password(&account).unwrap().as_deref(), Some("hunter2"));
 
         delete_password(&account).expect("delete should work");
         assert_eq!(load_password(&account).unwrap(), None);
-    }
-
-    #[test]
-    fn a_missing_entry_reads_as_none() {
-        let account = format!("absent-{}", std::process::id());
-        assert_eq!(load_password(&account).unwrap(), None);
-    }
-
-    #[test]
-    fn deleting_an_absent_entry_is_ok() {
-        let account = format!("never-existed-{}", std::process::id());
-        assert!(delete_password(&account).is_ok());
-    }
-
-    /// `save_password` must overwrite an existing entry rather than
-    /// erroring or leaving the old value, with no delete in between.
-    /// This is the path the inline password retry depends on: a user
-    /// whose entry became inaccessible has to be able to replace it.
-    #[test]
-    fn saving_twice_overwrites() {
-        let account = format!("replace-{}", std::process::id());
-        let _guard = CleansUpOnDrop(&account);
-
-        save_password(&account, "first").expect("first save");
-        save_password(&account, "second").expect("second save must replace");
-
-        assert_eq!(load_password(&account).unwrap().as_deref(), Some("second"));
     }
 }

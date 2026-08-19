@@ -90,26 +90,41 @@ Remaining, in order of cost:
    `.deb` for Linux.
 
 
-## One Keychain prompt instead of one per connection
+## One Keychain prompt instead of one per connection — RESOLVED
 
 **Raised:** 2026-08-16, after the prompt count came down from four to one per
-connection.
+connection. **Closed:** 2026-08-19.
 
-macOS authorises Keychain access per *item*, so N saved connections mean N
+macOS authorises Keychain access per *item*, so N saved connections meant N
 prompts — one each, and in `tauri dev` again after every rebuild, because
 entries are tied to the signing identity.
 
-Storing every connection's password in a single item (a JSON map keyed by
-connection id under one account) would make it one ACL and therefore one
-prompt, ever.
+Every password now lives in one item, account `connections`, holding a JSON
+map keyed by connection id: one ACL, one prompt. A `BLOB_LOCK` mutex
+serialises the read-modify-write, because two threads saving different
+connections would otherwise each read the same map and write back their own.
 
-**Costs, which is why it was not done on the spot:** one opaque entry in
-Keychain Access instead of a legible one per connection; any read decrypts
-every credential; deleting one connection becomes read-modify-write of the
-whole blob; and existing entries need a migration.
+A password written by a pre-blob build is migrated the first time it is read
+— returned to the caller, copied into the blob, old item deleted — so the
+extra prompt happens once per legacy entry and never again. `save` and
+`delete` clear a legacy item too, or a stale credential would sit there
+unreachable, or come back on the next read.
 
-Worth doing if the connection count grows. With two, a signed release build
-and one "Always Allow" per item settles it.
+The costs named when this was raised were accepted as stated: one opaque
+entry in Keychain Access instead of a legible one per connection, and any
+read decrypts every credential.
+
+**The tests no longer touch the real store.** `Items` is a three-method trait
+over the credential store, and the blob rules are tested against an in-memory
+fake. This is not tidiness: macOS binds an "Always Allow" grant to the
+requesting binary's code signature, and `cargo test` re-links a
+differently-signed test binary on every build — so real-store tests prompted
+on every single run, and allowing them never settled it. One real round-trip
+test survives, `#[ignore]`d:
+
+```bash
+cd src-tauri && cargo test -- --ignored the_real_store
+```
 
 ## Table detail extras
 
