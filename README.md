@@ -3,8 +3,8 @@
 [![CI](https://github.com/lepetitdevfr/quarry/actions/workflows/ci.yml/badge.svg)](https://github.com/lepetitdevfr/quarry/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 
-A fast, keyboard-first PostgreSQL client for macOS, with an Insomnia-style
-query library and a production write-guard that is on by default.
+A fast, keyboard-first PostgreSQL client, with an Insomnia-style query
+library and a production write-guard that is on by default.
 
 Quarry exists because the two things that go wrong with a database GUI are
 losing your queries and running the wrong one against production. So queries
@@ -23,8 +23,10 @@ tree with autocomplete, preview and table-detail tabs, grid sort and resize,
 copy and export, the production write-guard, and inline row editing with
 deletion and insertion.
 
-There are no packaged downloads yet — you build it yourself, and it is macOS
-(Apple Silicon) only. See [Limitations](#limitations).
+macOS (Apple Silicon) is the tested build. Linux and Windows build in CI and
+are published, but have never been run on a real machine — see
+[Download](#download) for what that means and [Limitations](#limitations) for
+the rest.
 
 ## What it does
 
@@ -73,11 +75,11 @@ classifier is not enough to write to production.
 has used it in earnest. It reads and writes real databases — keep the
 write-guard on for anything that matters.
 
-**macOS (Apple Silicon)** is the tested build: a `.dmg`, or a `.zip` of the
-`.app`. **Linux (`.deb`, `.AppImage`) and Windows (`.msi`, `.exe`) are beta** —
-they build in CI and have never been run on a real machine. Their credential
-stores, kernel keyutils and Credential Manager, are compiled but unexercised,
-and the fonts and `⌘` labels are still macOS-shaped.
+**macOS (Apple Silicon)** is the tested build: a `.dmg`. **Linux (`.deb`,
+`.AppImage`) and Windows (`.exe`) are beta** — they build in CI and have never
+been run on a real machine. Their credential stores, kernel keyutils and
+Credential Manager, are compiled but unexercised, and the fonts and `⌘` labels
+are still macOS-shaped.
 
 The build is **unsigned**, so macOS quarantines it and refuses the first open.
 Clear the flag after dragging Quarry to Applications:
