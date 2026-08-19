@@ -1,3 +1,10 @@
+## [0.4.1](https://github.com/lepetitdevfr/quarry/compare/v0.4.0...v0.4.1) (2026-08-19)
+
+### Fixes
+
+* **tabs:** make the tab shortcuts work on a non-US keyboard layout ([8e060bb](https://github.com/lepetitdevfr/quarry/commit/8e060bbfaeed19f94858eb7df1f95b13fc788349))
+* **ui:** centre the new-tab button in the tab bar ([9c2a5a8](https://github.com/lepetitdevfr/quarry/commit/9c2a5a83c373114f39e48f4ee5efcfe0ffca5903))
+
 ## [0.4.0](https://github.com/lepetitdevfr/quarry/compare/v0.3.0...v0.4.0) (2026-08-18)
 
 ### Features
