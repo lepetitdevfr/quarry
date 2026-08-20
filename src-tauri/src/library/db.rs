@@ -131,6 +131,18 @@ fn migrate(conn: &Connection) -> Result<(), AppError> {
     conn.execute("delete from tabs where is_preview = 1", [])
         .map_err(|e| AppError::Library(e.to_string()))?;
 
+    // The purge can take the active tab with it — you were last looking
+    // at a table preview — and a session that restores with tabs but
+    // none of them active opens onto an empty editor belonging to
+    // nothing. Adopt the leftmost tab instead.
+    conn.execute(
+        "update tabs set is_active = 1
+         where id = (select id from tabs order by position limit 1)
+           and not exists (select 1 from tabs where is_active = 1)",
+        [],
+    )
+    .map_err(|e| AppError::Library(e.to_string()))?;
+
     conn.execute(
         "insert into meta (key, value) values ('schema_version', ?1)
          on conflict(key) do update set value = excluded.value",
@@ -398,6 +410,66 @@ mod tests {
         assert_eq!(target_schema, None, "an existing tab targets no table");
         assert_eq!(target_table, None);
         assert_eq!(mode, None);
+    }
+
+    #[test]
+    fn opening_adopts_the_first_tab_when_the_purge_took_the_active_one() {
+        // You quit while looking at a table preview. The preview is
+        // transient and goes; without this, the session restores with
+        // tabs and no active one, which opens onto an empty editor that
+        // belongs to nothing.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("w.db");
+
+        {
+            let conn = open(&path).unwrap();
+            conn.execute_batch(
+                "insert into tabs (id, query_id, scratch_sql, position, is_active, is_preview)
+                 values ('keeper', null, 'select 1', 100, 0, 0),
+                        ('gone',   null, 'select 2', 200, 1, 1);",
+            )
+            .unwrap();
+        }
+
+        let conn = open(&path).unwrap();
+
+        let active: Vec<String> = conn
+            .prepare("select id from tabs where is_active = 1")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(active, vec!["keeper".to_string()]);
+    }
+
+    #[test]
+    fn opening_does_not_move_an_active_tab_that_survived() {
+        // Restoring where you left off is the point. Only an absent
+        // active tab is adopted, never a present one.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("w.db");
+
+        {
+            let conn = open(&path).unwrap();
+            conn.execute_batch(
+                "insert into tabs (id, query_id, scratch_sql, position, is_active, is_preview)
+                 values ('first',  null, 'select 1', 100, 0, 0),
+                        ('second', null, 'select 2', 200, 1, 0);",
+            )
+            .unwrap();
+        }
+
+        let conn = open(&path).unwrap();
+
+        let active: Vec<String> = conn
+            .prepare("select id from tabs where is_active = 1")
+            .unwrap()
+            .query_map([], |r| r.get(0))
+            .unwrap()
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert_eq!(active, vec!["second".to_string()]);
     }
 
     #[test]

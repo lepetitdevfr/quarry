@@ -19,6 +19,7 @@ import { ResultGrid } from "./components/ResultGrid";
 import { Sidebar } from "./components/Sidebar";
 import { SidebarResizer } from "./components/SidebarResizer";
 import { SqlEditor } from "./components/SqlEditor";
+import type { EditorHandle } from "./components/SqlEditor";
 import { StatusBar } from "./components/StatusBar";
 import { TabBar } from "./components/TabBar";
 import { TableView } from "./components/TableView";
@@ -209,11 +210,12 @@ export default function App() {
     setEditorHeight((current) => clampEditorHeight(current + delta, height));
   }, []);
 
-  // Handed over by whichever SqlEditor is mounted, so the error panel
-  // can put the cursor on the character Postgres complained about.
-  const goToPosition = useRef<((position: number) => void) | null>(null);
-  const onEditorReady = useCallback((go: (position: number) => void) => {
-    goToPosition.current = go;
+  // Handed over by whichever SqlEditor is mounted: the error panel uses
+  // it to put the caret on the character Postgres complained about, and
+  // the effect below uses it to open the app ready to type.
+  const editor = useRef<EditorHandle | null>(null);
+  const onEditorReady = useCallback((handle: EditorHandle) => {
+    editor.current = handle;
   }, []);
 
   const { library, tabs, activeTab, loaded, queryById, autosave, actions } =
@@ -306,6 +308,17 @@ export default function App() {
   // list of connections cannot hold it. Three sizes rather than two, because
   // sizing the launch screen for its tallest state would leave the common
   // one mostly empty.
+  // Focus the editor once per session, when the workspace first
+  // appears, so the app opens ready to type. Focusing on every mount
+  // would snatch the caret back each time you moved between a table tab
+  // and a query tab, which is the opposite of helpful.
+  const focusedOnce = useRef(false);
+  useEffect(() => {
+    if (!connected || focusedOnce.current) return;
+    focusedOnce.current = true;
+    editor.current?.focus();
+  }, [connected]);
+
   const editorOpen = !connected && editing !== null;
   useEffect(() => {
     const window = getCurrentWindow();
@@ -1537,7 +1550,7 @@ export default function App() {
         {error && !(error.kind === "write_blocked" && locked) && (
           <ErrorPanel
             error={error}
-            onGoToPosition={(position) => goToPosition.current?.(position)}
+            onGoToPosition={(position) => editor.current?.goToPosition(position)}
             onDismiss={() => setError(null)}
           />
         )}

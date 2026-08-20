@@ -18,12 +18,18 @@ interface Props {
   /** Pane height in pixels, owned by the caller's drag handle. */
   height: number;
   /**
-   * Handed a function that moves the cursor to a character offset
-   * within the statement last run from this editor. The error panel
-   * calls it; only the editor knows where that statement started in the
-   * buffer, so the mapping cannot live in App.
+   * Handed the editor's handle when it is created: `goToPosition` moves
+   * the caret to a character offset within the statement last run from
+   * this editor, and `focus` puts the keyboard in the buffer. Only the
+   * editor knows either, so neither mapping can live in App.
    */
-  onReady?: (goToPosition: (position: number) => void) => void;
+  onReady?: (handle: EditorHandle) => void;
+}
+
+/** What an editor lets its owner do to it from outside. */
+export interface EditorHandle {
+  goToPosition: (position: number) => void;
+  focus: () => void;
 }
 
 export function SqlEditor({
@@ -151,18 +157,21 @@ export function SqlEditor({
         onChange={onChange}
         onCreateEditor={(view) => {
           viewRef.current = view;
-          onReady?.((position) => {
-            // Postgres counts from 1, and from the start of the
-            // statement it was sent.
-            const offset = Math.min(
-              view.state.doc.length,
-              Math.max(0, lastRunStart.current + position - 1),
-            );
-            view.dispatch({
-              selection: { anchor: offset },
-              scrollIntoView: true,
-            });
-            view.focus();
+          onReady?.({
+            goToPosition: (position) => {
+              // Postgres counts from 1, and from the start of the
+              // statement it was sent.
+              const offset = Math.min(
+                view.state.doc.length,
+                Math.max(0, lastRunStart.current + position - 1),
+              );
+              view.dispatch({
+                selection: { anchor: offset },
+                scrollIntoView: true,
+              });
+              view.focus();
+            },
+            focus: () => view.focus(),
           });
         }}
       />
