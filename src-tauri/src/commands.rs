@@ -446,6 +446,22 @@ pub fn open_tab(
     state.library.tabs()
 }
 
+/// Open a new tab already holding `sql`.
+///
+/// One call rather than open-then-type: the frontend seeds its editor
+/// from whatever the backend reports for the active tab, so a tab that
+/// arrives empty and is filled a moment later gets reset to empty by
+/// that seeding. Recovering work from History is exactly that case.
+#[tauri::command]
+pub fn open_tab_with_sql(
+    state: tauri::State<'_, AppState>,
+    sql: String,
+) -> Result<Vec<Tab>, AppError> {
+    let tab = state.library.open_tab(None)?;
+    state.library.save_scratch(&tab.id, &sql)?;
+    state.library.tabs()
+}
+
 #[tauri::command]
 pub fn activate_tab(state: tauri::State<'_, AppState>, id: String) -> Result<Vec<Tab>, AppError> {
     state.library.activate_tab(&id)?;

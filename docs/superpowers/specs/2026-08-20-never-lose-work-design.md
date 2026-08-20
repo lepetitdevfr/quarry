@@ -45,11 +45,26 @@ queries rather than one repeated. The cost — per-run timings — is accepted.
 is slow, and a retention rule is a silent deletion of work, which is the thing
 this feature exists to prevent.
 
+**Identical text closes onto one row.** *(Revised 2026-08-20, after smoke
+testing.)* The original decision kept every closed draft as its own row, on the
+grounds that merging two would lose one. That reasoning does not survive
+contact: two byte-identical drafts are indistinguishable, so keeping both
+preserves nothing — and it broke the feature's own loop, because recovering a
+draft from History and closing it again left another copy every time. Closing
+text that matches an existing closed row for the same connection now moves that
+row's `last_at` instead of inserting. Runs are unaffected; they already
+collapsed.
+
 **One list, not two.** The user's question is "where is that thing I had", not
 "was it typed or executed". Closed tabs and executed statements share one
 surface.
 
-**Activating a row opens a new tab holding the SQL and runs nothing.** It
+**Activating a row opens a new tab already holding the SQL, and runs nothing.**
+Already holding it, not filled afterwards: the editor seeds itself from whatever
+the backend reports for the active tab, so a tab created empty and typed into a
+moment later gets reset to empty by that seeding — the text only appeared after
+switching tabs and back. `open_tab_with_sql` creates it with the text in one
+call. It
 matches the schema tree's rule that opening is not running, and it leaves the
 current buffer alone — the alternative loses work inside the feature built to
 stop losing work.
@@ -89,15 +104,17 @@ create index if not exists idx_recent_last_at on recent(last_at);
 the queries written against it. The row keeps its SQL and loses its origin
 chip.
 
-The partial unique index is what makes the collapse a single `insert … on
+The partial unique index is what makes the run collapse a single `insert … on
 conflict do update` rather than a read-then-write race. It covers `kind='run'`
-only — two closed drafts with identical text are two pieces of work, and
-merging them would lose one.
+only.
 
-SQLite treats NULLs as distinct in a unique index, so a row with no connection
-would never collapse. Runs always have one — `execute` refuses without a live
-connection — so the case does not arise; closed rows are outside the index
-either way.
+Closed rows collapse too (see the revised decision above) but not through this
+index, because SQLite treats NULLs as distinct in a unique index and two closed
+rows with no connection are two rows with the same absence. Their match is
+written by hand as update-then-insert, using `is` — SQLite's null-safe
+comparison — so an absent connection matches an absent connection. Runs always
+have a connection, since `execute` refuses without one, so the index is exact
+for them.
 
 Ids come from the existing `new_id()`, timestamps from `now()` (RFC 3339), both
 in `library/store/mod.rs`.
@@ -169,10 +186,12 @@ tests:
 - `src/lib/recent.ts` — grouping, ordering, filtering. Tested directly.
 - Rust integration tests against the workspace SQLite: a run is recorded; a
   generated statement is not; a failed run is recorded with its error; an
-  identical re-run collapses and increments rather than inserting; two closed
-  drafts with identical text stay two rows; closing a saved query's tab records
-  nothing; deleting a connection leaves its rows with a null `connection_id`;
-  a v4 database upgrades to v5 with its existing rows intact.
+  identical re-run collapses and increments rather than inserting; closing the
+  same text twice keeps one row, including when there is no connection at all;
+  recovering a draft and closing it again does not breed rows; closing an empty
+  or whitespace-only tab records nothing; closing a saved query's tab records
+  nothing; deleting a connection leaves its rows with a null `connection_id`; a
+  v4 database upgrades to v5 with its existing rows intact.
 
 Every new test gets a mutation check: delete the code under it, show the
 failure, restore, show the pass.

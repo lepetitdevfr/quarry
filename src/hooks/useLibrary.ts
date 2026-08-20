@@ -105,6 +105,10 @@ export function useLibrary() {
       setTabs(next);
       return next.find((t) => t.is_active)?.id ?? null;
     },
+    // Opens a tab that already holds `sql`, so the editor seeding
+    // effect reads the right text the first time. Filling a tab after
+    // opening it loses the race against that effect.
+    openTabWithSql: async (sql: string) => setTabs(await ipc.openTabWithSql(sql)),
     activateTab: async (id: string) => setTabs(await ipc.activateTab(id)),
     closeTab: async (id: string) => setTabs(await ipc.closeTab(id)),
     openPreview: async (title: string, sql: string) =>

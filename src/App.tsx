@@ -33,7 +33,6 @@ import {
   execute,
   forgetRecent as forgetRecentIpc,
   listRecent,
-  saveScratch,
   guardStatus,
   previewEdits,
   relock,
@@ -825,12 +824,11 @@ export default function App() {
   // current buffer is untouched: recovering work must not cost work.
   const openRecent = useCallback(
     async (sql: string) => {
-      const target = await actions.newTab();
-      setText(sql);
-      // The same call autosave makes for a tab with no query_id, so
-      // recovered text is persisted at once rather than waiting for a
-      // keystroke that may never come.
-      if (target) void saveScratch(target, sql);
+      // The tab is created holding the text. Creating it empty and
+      // typing into it afterwards raced the effect that seeds the editor
+      // from the active tab: the effect won, and the tab looked empty
+      // until you switched away and back.
+      await actions.openTabWithSql(sql);
     },
     [actions],
   );

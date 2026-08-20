@@ -100,8 +100,11 @@ fn the_same_statement_against_another_connection_is_another_row() {
 }
 
 #[test]
-fn two_closed_drafts_with_the_same_text_stay_two_rows() {
-    // Collapsing them would lose one piece of work.
+fn closing_the_same_text_twice_keeps_one_row() {
+    // Two byte-identical drafts are indistinguishable, so keeping both
+    // preserves nothing. Without this, recovering a draft from History
+    // and closing it again left a copy behind every time — a list that
+    // breeds duplicates of the row you keep opening.
     let (store, conn_a, _conn_b, _dir) = store();
 
     store
@@ -112,8 +115,54 @@ fn two_closed_drafts_with_the_same_text_stay_two_rows() {
         .unwrap();
 
     let all = store.recent().unwrap();
-    assert_eq!(all.len(), 2);
-    assert!(all.iter().all(|r| r.kind == "closed"));
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].kind, "closed");
+}
+
+#[test]
+fn the_same_closed_text_against_another_connection_stays_its_own_row() {
+    let (store, conn_a, conn_b, _dir) = store();
+
+    store
+        .record_closed("select 1", Some(&conn_a), None)
+        .unwrap();
+    store
+        .record_closed("select 1", Some(&conn_b), None)
+        .unwrap();
+
+    assert_eq!(store.recent().unwrap().len(), 2);
+}
+
+#[test]
+fn closing_the_same_text_with_no_connection_twice_keeps_one_row() {
+    // Two absent connections are the same absence. SQLite's unique
+    // indexes disagree — they treat NULLs as distinct — which is why
+    // this match is written by hand.
+    let (store, _conn_a, _conn_b, _dir) = store();
+
+    store.record_closed("select 1", None, None).unwrap();
+    store.record_closed("select 1", None, None).unwrap();
+
+    assert_eq!(store.recent().unwrap().len(), 1);
+}
+
+#[test]
+fn closing_a_recovered_draft_moves_it_rather_than_copying_it() {
+    // The whole point, end to end: open a tab holding text you closed
+    // before, close it again, and the list still has one row for it.
+    let (store, _conn_a, _conn_b, _dir) = store();
+    store.record_closed("select 42", None, None).unwrap();
+
+    let tab = store.open_tab(None).unwrap();
+    store.save_scratch(&tab.id, "select 42").unwrap();
+    store.close_tab(&tab.id, None).unwrap();
+
+    let all = store.recent().unwrap();
+    assert_eq!(
+        all.len(),
+        1,
+        "recovering and re-closing must not breed rows"
+    );
 }
 
 #[test]

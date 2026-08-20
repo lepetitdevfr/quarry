@@ -50,8 +50,11 @@ impl Store {
 
     /// Record the unsaved text of a tab being closed.
     ///
-    /// Never collapses: two drafts that happen to read the same are two
-    /// pieces of work, and merging them would lose one.
+    /// Identical text against the same connection moves the existing row
+    /// forward rather than adding another. Two byte-identical drafts are
+    /// indistinguishable, so keeping both preserves nothing — and
+    /// without this, recovering a draft from History and closing it
+    /// again left a copy behind every time.
     pub fn record_closed(
         &self,
         sql: &str,
@@ -59,15 +62,7 @@ impl Store {
         title: Option<&str>,
     ) -> Result<(), AppError> {
         let conn = self.lock();
-        let stamp = now();
-        conn.execute(
-            "insert into recent
-                (id, kind, sql, connection_id, title, first_at, last_at, run_count)
-             values (?1, 'closed', ?2, ?3, ?4, ?5, ?5, 0)",
-            params![new_id(), sql, connection_id, title, stamp],
-        )
-        .map_err(sql_err)?;
-        Ok(())
+        record_closed_in(&conn, sql, connection_id, title)
     }
 
     /// Every row, newest first.
@@ -103,6 +98,41 @@ impl Store {
             .map_err(sql_err)?;
         Ok(())
     }
+}
+
+/// The insert-or-touch behind `record_closed`, taking a connection so
+/// `close_tab` can call it inside the transaction that deletes the tab:
+/// the kept text and the deletion have to land together or neither.
+///
+/// Written as update-then-insert rather than `on conflict`, because the
+/// match has to treat two absent connections as the same one and SQLite
+/// treats NULLs as distinct in a unique index. `is` is its null-safe
+/// comparison.
+pub(crate) fn record_closed_in(
+    conn: &rusqlite::Connection,
+    sql: &str,
+    connection_id: Option<&str>,
+    title: Option<&str>,
+) -> Result<(), AppError> {
+    let stamp = now();
+    let touched = conn
+        .execute(
+            "update recent set last_at = ?3, title = coalesce(?4, title)
+             where kind = 'closed' and sql = ?1 and connection_id is ?2",
+            params![sql, connection_id, stamp, title],
+        )
+        .map_err(sql_err)?;
+
+    if touched == 0 {
+        conn.execute(
+            "insert into recent
+                (id, kind, sql, connection_id, title, first_at, last_at, run_count)
+             values (?1, 'closed', ?2, ?3, ?4, ?5, ?5, 0)",
+            params![new_id(), sql, connection_id, title, stamp],
+        )
+        .map_err(sql_err)?;
+    }
+    Ok(())
 }
 
 fn read_recent(row: &Row) -> rusqlite::Result<RecentItem> {

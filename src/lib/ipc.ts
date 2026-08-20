@@ -189,6 +189,11 @@ export async function listTabs(): Promise<Tab[]> {
   return invoke<Tab[]>("list_tabs");
 }
 
+/** Open a new tab already holding this SQL. */
+export async function openTabWithSql(sql: string): Promise<Tab[]> {
+  return invoke<Tab[]>("open_tab_with_sql", { sql });
+}
+
 export async function openTab(queryId: string | null): Promise<Tab[]> {
   return invoke<Tab[]>("open_tab", { queryId });
 }

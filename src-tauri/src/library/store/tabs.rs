@@ -1,6 +1,7 @@
 use crate::error::AppError;
 use crate::library::model::{Tab, TabPin, TableMode, POSITION_GAP};
-use crate::library::store::{new_id, now, sql_err, Store};
+use crate::library::store::recent::record_closed_in;
+use crate::library::store::{new_id, sql_err, Store};
 use rusqlite::{named_params, params, Connection, Row};
 
 impl Store {
@@ -294,13 +295,7 @@ impl Store {
         // deletion have to land together or neither, or a crash between
         // them is exactly the loss this exists to prevent.
         if let Some((sql, title)) = keepable {
-            tx.execute(
-                "insert into recent
-                    (id, kind, sql, connection_id, title, first_at, last_at, run_count)
-                 values (?1, 'closed', ?2, ?3, ?4, ?5, ?5, 0)",
-                params![new_id(), sql, connection_id, title, now()],
-            )
-            .map_err(sql_err)?;
+            record_closed_in(&tx, &sql, connection_id, title.as_deref())?;
         }
 
         tx.execute("delete from tabs where id = ?1", params![id])
