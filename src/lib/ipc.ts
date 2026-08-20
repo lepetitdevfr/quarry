@@ -15,10 +15,12 @@ import type {
   RowInsert,
   PendingWrite,
   RecentItem,
+  RowBefore,
   Schema,
   Tab,
   TableMode,
   TabPin,
+  WriteRecord,
 } from "../types";
 
 /**
@@ -114,13 +116,20 @@ export async function applyRowEdits(
   rows: RowEdit[],
   deletes: RowDelete[],
   inserts: RowInsert[],
+  before: RowBefore[],
 ): Promise<AppliedRow[]> {
   return invoke<AppliedRow[]>("apply_row_edits", {
     edit,
     rows,
     deletes,
     inserts,
+    before,
   });
+}
+
+/** Every write this app has made, newest first. */
+export async function listWrites(): Promise<WriteRecord[]> {
+  return invoke<WriteRecord[]>("list_writes");
 }
 
 export async function disconnect(): Promise<void> {

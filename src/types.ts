@@ -201,6 +201,36 @@ export interface PendingWrite {
   sql: string;
 }
 
+/** Mirrors Rust `WriteRecord`: one line of the write audit log. */
+export interface WriteRecord {
+  id: string;
+  at: string;
+  connection_id: string | null;
+  /** Copied in at the time, so the row still names its database. */
+  connection_name: string;
+  tag: string;
+  sql: string;
+  kind: string;
+  row_count: number | null;
+  /** `committed`, `rolled_back`, `refused` or `failed`. */
+  outcome: string;
+  reason: string | null;
+  /** SQL that would put it back. Grid edits only. */
+  undo_sql: string | null;
+}
+
+/**
+ * The values a row held before a batch changed it.
+ *
+ * Sent from the grid rather than read back from the database: they are
+ * on screen already, and the undo has to be derived before the reply
+ * overwrites them.
+ */
+export interface RowBefore {
+  row: number;
+  cells: { column: number; value: string | null }[];
+}
+
 /** Mirrors Rust `RecentItem`: one row of the History list. */
 export interface RecentItem {
   id: string;

@@ -668,11 +668,33 @@ export default function App() {
     if (!result) return;
     setApplying(true);
     try {
+      // What these rows hold right now, so the audit log can derive an
+      // undo. Taken from the grid rather than read back from the
+      // database: it is on screen already, and the reply is about to
+      // replace it.
+      const edits = toRowEdits(pending, result);
+      const removals = toRowDeletes(deletes, result);
+      const touched = new Set<number>([
+        ...edits.map((e) => e.row),
+        ...removals.map((d) => d.row),
+      ]);
+      const before = [...touched].map((row) => ({
+        row,
+        cells: result.columns.map((_, column) => {
+          const value = result.rows[row]?.[column];
+          return {
+            column,
+            value: value === null || value === undefined ? null : String(value),
+          };
+        }),
+      }));
+
       const applied = await applyRowEdits(
         result.edit,
-        toRowEdits(pending, result),
-        toRowDeletes(deletes, result),
+        edits,
+        removals,
         toRowInserts(inserts),
+        before,
       );
       // Patch with what the database returned, not with what was
       // typed: a trigger or a type coercion may have changed it.
