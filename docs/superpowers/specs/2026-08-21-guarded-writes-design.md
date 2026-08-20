@@ -45,9 +45,17 @@ for the wrong one.
 **`-- expect: n` is an assertion, not a hint.** A mismatch rolls back and
 reports both numbers. You stated a fact about your data and the database
 disagreed: that is a failed assertion, not a decision to make under time
-pressure with a dialog in your face. A match commits straight through
-even on production — declaring the count in the statement is a stronger,
-more deliberate promise than clicking a button.
+pressure with a dialog in your face.
+
+A match commits straight through — except on production, which asks
+regardless. An earlier draft let a matching `expect` skip the production
+confirmation, on the grounds that declaring the count is a more
+deliberate promise than clicking a button. It is, but "production always
+asks" is a rule somebody can hold in their head, and a rule with an
+exception is a rule you have to remember the exception to. The
+declaration still earns something on production: the guard has already
+proved the count was right before the dialog appears, so what you are
+confirming is a number you know is true.
 
 **Undo is derived only where it is free.** A grid edit already has the
 old values on screen and the key in hand, so its undo costs nothing to
@@ -90,9 +98,9 @@ The rules, in order:
 
 1. `expect` present and `affected` disagrees → `Refuse`, naming both
    numbers.
-2. `expect` present and matches → `Commit`, whatever the tag.
+2. Tag is `prod` → `Ask`. No exceptions, including a matching `expect`.
 3. DDL → `Ask`, described by `object`.
-4. Tag is `prod` → `Ask`.
+4. `expect` present and matches → `Commit`.
 5. `affected` above `ASK_ABOVE_ROWS` → `Ask`.
 6. Otherwise → `Commit`.
 
@@ -145,7 +153,22 @@ than a cancelled statement you can see.
 
 **The timeouts.** `startup_options` in `conn/pool.rs` already sets
 `statement_timeout`; this adds `idle_in_transaction_session_timeout` at
-15 seconds and `lock_timeout` at 5. They are `-c` startup options, so
+60 seconds and `lock_timeout` at 5.
+
+Sixty because the question being answered is "how long does a person need
+to read one number and decide", not "how long may a connection idle".
+There is no convention to borrow: Postgres ships this disabled, and every
+GUI client of note holds a manual-commit transaction open indefinitely,
+because none of them opens one on your behalf to ask a question. Fifteen
+seconds — the first draft — is a Slack notification away from rolling
+back mid-thought; five minutes is an abandoned dialog behaving like no
+timeout at all.
+
+The dialog shows the time remaining, using `formatCountdown` from
+`lib/guard.ts`, which already counts down the production unlock window.
+A deadline you can watch approach is a different thing from one that
+fires silently, and it is the difference between the app expiring your
+transaction and the app appearing to lose it. They are `-c` startup options, so
 they survive `DISCARD ALL` and cannot be undone by a stray `SET` — the
 same reasoning that makes `default_transaction_read_only` a real
 protection rather than a suggestion.
@@ -166,9 +189,9 @@ correct default and needs no extra machinery.
 
 ### What the user sees
 
-A confirmation carrying the number and the statement: `4,812 rows will
-change` with Commit and Discard, the same voice as the existing
-`ConfirmDialog`. On DDL: `this drops public.orders, ~5M rows`. On a
+A confirmation carrying the number, the statement, and the time left:
+`4,812 rows will change` with Commit and Discard and a quiet `rolls back
+in 0:47`, the same voice as the existing `ConfirmDialog`. On DDL: `this drops public.orders, ~5M rows`. On a
 refusal there is no dialog at all — the error panel already exists and
 already explains refusals with reasons.
 
