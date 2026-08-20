@@ -301,10 +301,10 @@ fn saving_an_untitled_tab_does_not_record_its_text_as_lost() {
 }
 
 #[test]
-fn attaching_a_query_keeps_the_same_tab_active() {
-    // The tab, its position and its focus survive a save: only what it
-    // is bound to changes. A new tab id would make the editor reseed
-    // itself from the database in the middle of saving.
+fn attaching_a_query_keeps_the_same_tab() {
+    // The tab and its position survive a save: only what it is bound to
+    // changes. A new tab id would make the editor reseed itself from
+    // the database in the middle of saving.
     let (store, _conn_a, _conn_b, _dir) = store();
     let tab = store.open_tab(None).unwrap();
     store.save_scratch(&tab.id, "select 42").unwrap();
@@ -315,10 +315,33 @@ fn attaching_a_query_keeps_the_same_tab_active() {
     let tabs = store.tabs().unwrap();
     assert_eq!(tabs.len(), 1);
     assert_eq!(tabs[0].id, tab.id, "the tab must survive the save");
-    assert!(tabs[0].is_active);
     assert_eq!(tabs[0].query_id.as_deref(), Some(created.id.as_str()));
     assert_eq!(
         tabs[0].scratch_sql, None,
         "the text lives in the query now, not in the tab"
     );
+}
+
+#[test]
+fn attaching_a_query_does_not_steal_focus_from_another_tab() {
+    // The naming field commits on blur, so a save routinely lands after
+    // the user has clicked somewhere else. Pulling the window back to
+    // the saved tab would fight them for the focus they just moved.
+    let (store, _conn_a, _conn_b, _dir) = store();
+    let untitled = store.open_tab(None).unwrap();
+    store.save_scratch(&untitled.id, "select 42").unwrap();
+
+    let elsewhere = store.create_query("elsewhere", "select 1", None).unwrap();
+    let other_tab = store.open_tab(Some(&elsewhere.id)).unwrap();
+
+    let created = store.create_query("kept", "select 42", None).unwrap();
+    store.attach_query(&untitled.id, &created.id).unwrap();
+
+    let tabs = store.tabs().unwrap();
+    let active: Vec<&str> = tabs
+        .iter()
+        .filter(|t| t.is_active)
+        .map(|t| t.id.as_str())
+        .collect();
+    assert_eq!(active, vec![other_tab.id.as_str()]);
 }

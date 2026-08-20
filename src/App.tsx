@@ -496,8 +496,18 @@ export default function App() {
   // WKWebView does not implement.
   const [creating, setCreating] = useState<Creating | null>(null);
   const [confirmRequest, setConfirmRequest] = useState<ConfirmRequest | null>(null);
-  // Id of the untitled tab currently being named as part of a save.
-  const [namingTabId, setNamingTabId] = useState<string | null>(null);
+  // The save that is waiting for a name: which tab asked for it, and
+  // the text it held when it did.
+  //
+  // Both are captured at ⌘S rather than read back when the name is
+  // committed. The naming field commits on blur, and clicking another
+  // tab blurs it — activating that tab first, which reseeds the editor.
+  // Reading "the active tab" and "the editor text" at that moment meant
+  // saving the tab you clicked, with its own text, under the name you
+  // typed for a different one.
+  const [naming, setNaming] = useState<{ tabId: string; sql: string } | null>(
+    null,
+  );
 
   const [guard, setGuard] = useState<GuardStatus | null>(null);
   const [unlockOpen, setUnlockOpen] = useState(false);
@@ -981,17 +991,24 @@ export default function App() {
       flashSaved();
       return;
     }
-    setNamingTabId(activeTab.id);
+    setNaming({ tabId: activeTab.id, sql: text });
   }, [activeTab, queryById, actions, text, flashSaved]);
 
   const commitNameAndSave = useCallback(
     async (name: string) => {
-      if (!activeTab) return;
-      await actions.save(activeTab, text, name);
-      setNamingTabId(null);
+      if (!naming) return;
+      const target = tabs.find((t) => t.id === naming.tabId);
+      // The tab can be gone by the time a name arrives — closed from
+      // another key, or closed with the field still open.
+      if (!target) {
+        setNaming(null);
+        return;
+      }
+      await actions.save(target, naming.sql, name);
+      setNaming(null);
       flashSaved();
     },
-    [activeTab, actions, text, flashSaved],
+    [naming, tabs, actions, flashSaved],
   );
 
   // Cmd+S saves the active tab. No default keymap binding in CodeMirror
@@ -1384,9 +1401,9 @@ export default function App() {
           onClose={(id) => void actions.closeTab(id)}
           onCloseOthers={(id) => void closeOtherTabs(id)}
           onNew={() => void actions.newTab()}
-          namingTabId={namingTabId}
+          namingTabId={naming?.tabId ?? null}
           onCommitName={(name) => void commitNameAndSave(name)}
-          onCancelName={() => setNamingTabId(null)}
+          onCancelName={() => setNaming(null)}
         />
 
         {tableTarget ? (
