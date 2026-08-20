@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use std::path::Path;
 
 /// Bump this when the schema changes and add a migration step below.
-pub const SCHEMA_VERSION: i64 = 5;
+pub const SCHEMA_VERSION: i64 = 6;
 
 /// Open the database, creating and migrating it if needed.
 ///
@@ -97,6 +97,28 @@ fn migrate(conn: &Connection) -> Result<(), AppError> {
             error         text
         );
 
+        -- v6: what this app wrote, and how it ended. Deliberately not a
+        -- kind of row in `recent`, which exists to find a query again and
+        -- so collapses repeats and allows deletion. Both are wrong here,
+        -- where every occurrence is a separate fact and forgetting one
+        -- defeats the point of keeping it.
+        create table if not exists writes (
+            id              text primary key,
+            at              text not null,
+            connection_id   text references connections(id) on delete set null,
+            -- Copied rather than joined: the row must still say which
+            -- database it hit after that connection is renamed or
+            -- deleted. An audit line that loses its subject is not one.
+            connection_name text not null,
+            tag             text not null,
+            sql             text not null,
+            kind            text not null,
+            row_count       integer,
+            outcome         text not null,
+            reason          text,
+            undo_sql        text
+        );
+
         create index if not exists idx_collections_parent on collections(parent_id);
         create index if not exists idx_queries_collection on queries(collection_id);
         create index if not exists idx_tabs_position      on tabs(position);
@@ -108,6 +130,7 @@ fn migrate(conn: &Connection) -> Result<(), AppError> {
         create unique index if not exists idx_recent_run
             on recent(sql, connection_id) where kind = 'run';
         create index if not exists idx_recent_last_at on recent(last_at);
+        create index if not exists idx_writes_at on writes(at);
         ",
     )
     .map_err(|e| AppError::Library(e.to_string()))?;
@@ -505,6 +528,55 @@ mod tests {
     }
 
     #[test]
+    fn upgrading_a_v5_database_adds_writes_and_keeps_existing_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("v5.db");
+
+        // A v5 database with history in it: the audit log must arrive
+        // without costing anybody their recorded work.
+        {
+            let conn = open(&path).unwrap();
+            conn.execute(
+                "insert into recent (id, kind, sql, first_at, last_at, run_count)
+                 values ('r1', 'run', 'select 1', '2026-08-20T00:00:00Z',
+                         '2026-08-20T00:00:00Z', 1)",
+                [],
+            )
+            .unwrap();
+            // Whatever this build created, take the audit table away
+            // again: what is being tested is the upgrade of a database
+            // that never had one.
+            conn.execute("drop table if exists writes", []).unwrap();
+        }
+
+        let conn = open(&path).unwrap();
+
+        let kept: i64 = conn
+            .query_row("select count(*) from recent", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(kept, 1, "history must survive the migration");
+
+        conn.execute(
+            "insert into writes
+                (id, at, connection_name, tag, sql, kind, outcome)
+             values ('w1', '2026-08-21T00:00:00Z', 'smoke', 'local',
+                     'delete from t', 'delete', 'committed')",
+            [],
+        )
+        .unwrap();
+
+        let version: String = conn
+            .query_row(
+                "select value from meta where key = 'schema_version'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION.to_string());
+        assert_eq!(SCHEMA_VERSION, 6);
+    }
+
+    #[test]
     fn upgrading_a_v4_database_adds_recent_and_keeps_existing_rows() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join("v4.db");
@@ -556,7 +628,10 @@ mod tests {
             .unwrap()
             .parse()
             .unwrap();
-        assert_eq!(version, 5);
+        // The current version, whatever it is: this test is about the
+        // recent table arriving and the tab surviving, not about which
+        // version happens to be latest.
+        assert_eq!(version, SCHEMA_VERSION);
     }
 
     #[test]
