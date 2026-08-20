@@ -3,6 +3,7 @@ pub mod conn;
 pub mod edit;
 pub mod error;
 pub mod exec;
+pub mod format;
 pub mod guard;
 pub mod library;
 pub mod menu;
@@ -30,6 +31,7 @@ pub fn run() {
         .manage(commands::AppState::new().expect("could not open the query library database"))
         .invoke_handler(tauri::generate_handler![
             commands::execute,
+            commands::format_sql,
             commands::preview_edits,
             commands::apply_row_edits,
             commands::disconnect,

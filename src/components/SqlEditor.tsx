@@ -3,8 +3,9 @@ import { sql, PostgreSQL } from "@codemirror/lang-sql";
 import { acceptCompletion, startCompletion } from "@codemirror/autocomplete";
 import { keymap, type EditorView } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { quarryEditorExtensions } from "./editorTheme";
+import { asAppError } from "../lib/errors";
 import { statementRangeAt } from "../lib/statements";
 
 interface Props {
@@ -24,6 +25,12 @@ interface Props {
    * editor knows either, so neither mapping can live in App.
    */
   onReady?: (handle: EditorHandle) => void;
+  /**
+   * Lay out a statement. Rejects with a reason — dollar-quoted SQL is
+   * refused rather than rewritten — which the owner reports; the editor
+   * only knows which text to hand over and where to put the answer.
+   */
+  onFormat: (sql: string) => Promise<string>;
 }
 
 /** What an editor lets its owner do to it from outside. */
@@ -40,6 +47,7 @@ export function SqlEditor({
   completionSchema,
   height,
   onReady,
+  onFormat,
 }: Props) {
   // The toolbar button has no key event to read a cursor from, so it
   // borrows the editor's own view. Held in a ref rather than state:
@@ -75,6 +83,64 @@ export function SqlEditor({
     // keypress that did not mean anything.
     if (sql) onRunRef.current(sql);
   }, []);
+  // Held in a ref for the same reason `onRun` is: the keymap is built
+  // once and must not capture a stale callback.
+  const onFormatRef = useRef(onFormat);
+  onFormatRef.current = onFormat;
+
+  // Why the last format left the buffer alone. Shown beside the button
+  // that did nothing, because a control that silently declines reads as
+  // a broken one.
+  const [note, setNote] = useState<string | null>(null);
+
+  /**
+   * Replace a span of the buffer with its formatted self.
+   *
+   * Dispatched as one ordinary transaction, so ⌘Z puts back exactly what
+   * you had: a format you did not want must cost one keystroke to undo.
+   * The cursor lands at the end of the new text rather than at a
+   * character offset that no longer means anything.
+   */
+  const formatRange = useCallback(
+    (view: EditorView, from: number, to: number, sql: string) => {
+      if (!sql.trim()) return;
+      void onFormatRef.current(sql).then(
+        (formatted) => {
+          setNote(null);
+          if (formatted === sql) return;
+          view.dispatch({
+            changes: { from, to, insert: formatted },
+            selection: { anchor: from + formatted.length },
+          });
+          view.focus();
+        },
+        // The buffer is left exactly as it was, which is the whole point
+        // of refusing. Saying why is the rest of it.
+        (e) => setNote(asAppError(e).message),
+      );
+    },
+    [],
+  );
+
+  const formatStatement = useCallback(
+    (view: EditorView) => {
+      const { sql, start } = statementRangeAt(
+        view.state.doc.toString(),
+        view.state.selection.main.head,
+      );
+      formatRange(view, start, start + sql.length, sql);
+    },
+    [formatRange],
+  );
+
+  const formatBuffer = useCallback(
+    (view: EditorView) => {
+      const text = view.state.doc.toString();
+      formatRange(view, 0, text.length, text);
+    },
+    [formatRange],
+  );
+
   // Prec.highest ensures Cmd+Enter reaches us before CodeMirror's own
   // bindings. useMemo keeps the extension array stable across renders,
   // which stops CodeMirror from tearing down its state on every keystroke.
@@ -121,6 +187,24 @@ export function SqlEditor({
             },
           },
           {
+            // The same "which statement do you mean" rule as ⌘↵, so the
+            // two can never disagree about what you are pointing at.
+            key: "Mod-Alt-f",
+            run: (view) => {
+              formatStatement(view);
+              return true;
+            },
+          },
+          {
+            // Shift means the whole buffer here exactly as it does for
+            // running one.
+            key: "Shift-Mod-Alt-f",
+            run: (view) => {
+              formatBuffer(view);
+              return true;
+            },
+          },
+          {
             key: "Shift-Mod-Enter",
             // The whole buffer, deliberately: still one statement's
             // worth or it fails. Kept because a selection-free "run
@@ -133,7 +217,7 @@ export function SqlEditor({
         ]),
       ),
     ],
-    [runStatement, completionSchema],
+    [runStatement, formatStatement, formatBuffer, completionSchema],
   );
 
   return (
@@ -176,6 +260,7 @@ export function SqlEditor({
         }}
       />
       <div className="editor-toolbar">
+        {note && <span className="editor-note">{note}</span>}
         <button
           // Same statement the chord would run: a button and its own
           // shortcut label doing different things is worse than either.
@@ -186,6 +271,21 @@ export function SqlEditor({
         >
           {busy ? "Running…" : "Run  ⌘↵"}
         </button>
+        {/* Carries its own shortcut, like Run: the chord is the fast
+            path and the button is how anybody learns it exists. */}
+        <button
+          className="btn-small"
+          title="Lay out the statement under the cursor (⇧ for the whole buffer)"
+          onClick={(e) => {
+            const view = viewRef.current;
+            if (!view) return;
+            if (e.shiftKey) formatBuffer(view);
+            else formatStatement(view);
+          }}
+        >
+          Format  ⌥⌘F
+        </button>
+
       </div>
     </div>
   );

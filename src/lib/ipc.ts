@@ -26,6 +26,17 @@ import type {
  */
 
 /**
+ * Lay out a statement so it can be read.
+ *
+ * Rejects with a reason rather than returning mangled text — notably on
+ * dollar-quoted SQL, where laying out the body would change what the
+ * string contains.
+ */
+export async function formatSql(sql: string): Promise<string> {
+  return invoke<string>("format_sql", { sql });
+}
+
+/**
  * Run one statement.
  *
  * `generated` says the SQL is the app's own preview rather than

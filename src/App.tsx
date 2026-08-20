@@ -32,6 +32,7 @@ import {
   applyRowEdits,
   asAppError,
   execute,
+  formatSql,
   forgetRecent as forgetRecentIpc,
   listRecent,
   guardStatus,
@@ -1424,6 +1425,7 @@ export default function App() {
                   completionSchema={completionSchema}
                   height={editorHeight}
                   onReady={onEditorReady}
+                  onFormat={formatSql}
                 />
                 <PaneResizer
                   label="Resize editor"
@@ -1493,6 +1495,7 @@ export default function App() {
               completionSchema={completionSchema}
               height={editorHeight}
               onReady={onEditorReady}
+              onFormat={formatSql}
             />
             <PaneResizer
               label="Resize editor"

@@ -171,6 +171,13 @@ pub async fn execute(
     outcome
 }
 
+/// Lay out a statement. Pure text in, pure text out — it never touches
+/// a connection, which is why it works before you have one.
+#[tauri::command]
+pub fn format_sql(sql: String) -> Result<String, AppError> {
+    crate::format::pretty(&sql)
+}
+
 /// Show the statements an apply would run, without running them.
 ///
 /// Calls the same generator `apply_row_edits` calls. A preview that
