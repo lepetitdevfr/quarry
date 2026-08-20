@@ -673,6 +673,7 @@ button:disabled {
 }
 
 .sidebar-header-actions {
+  flex: none;
   display: flex;
   gap: var(--s-1);
 }
@@ -913,6 +914,11 @@ button:disabled {
 .section-tabs {
   display: flex;
   gap: var(--s-3);
+  /* Takes the slack and gives it back first: the create button must
+     never be the thing that gets pushed out of a narrow sidebar. */
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .section-tabs button {

@@ -1,4 +1,5 @@
 import { useCallback, useRef, useState } from "react";
+import { ContextMenu, useContextMenu } from "./ContextMenu";
 import { PaneResizer } from "./PaneResizer";
 import { QueryTree, type Creating } from "./QueryTree";
 import { RecentList } from "./RecentList";
@@ -62,6 +63,12 @@ export function Sidebar(props: Props) {
   const [bottom, setBottom] = useState<"queries" | "history" | "writes">(
     "queries",
   );
+
+  // Creating lives behind one button rather than two labelled ones.
+  // Three tab names and two labels do not fit the sidebar at any width
+  // it is worth dragging to, and the labels were the part that could be
+  // spent: they are still there, in the menu, one click away.
+  const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   const resize = useCallback((clientY: number) => {
     const shell = shellRef.current;
@@ -127,23 +134,23 @@ export function Sidebar(props: Props) {
               Writes
             </button>
           </div>
-          {/* Only the Queries list has anything to create. History is a
-              record of what happened, not a place you add to. */}
+          {/* Only the Queries list has anything to create. History and
+              Writes are records of what happened, not places you add
+              to. */}
           {bottom === "queries" && (
             <div className="sidebar-header-actions">
               <button
-                className="row-action text"
-                title="New query"
-                onClick={props.onNewQuery}
+                className="row-action"
+                title="New query or folder"
+                aria-label="New query or folder"
+                onClick={(e) =>
+                  openMenu(e, [
+                    { label: "New query", onSelect: props.onNewQuery },
+                    { label: "New folder", onSelect: props.onNewCollection },
+                  ])
+                }
               >
-                + Query
-              </button>
-              <button
-                className="row-action text"
-                title="New folder"
-                onClick={props.onNewCollection}
-              >
-                + Folder
+                +
               </button>
             </div>
           )}
@@ -179,6 +186,8 @@ export function Sidebar(props: Props) {
           />
         )}
       </section>
+
+      <ContextMenu menu={menu} onClose={closeMenu} />
     </aside>
   );
 }
