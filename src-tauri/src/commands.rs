@@ -125,6 +125,7 @@ pub struct ConnectionInfo {
 pub async fn execute(
     state: tauri::State<'_, AppState>,
     sql: String,
+    generated: bool,
 ) -> Result<QueryResult, AppError> {
     let (pool, policy, unlocked_until) = state.pool_and_guard()?;
 
@@ -134,7 +135,40 @@ pub async fn execute(
         Decision::Deny => return Err(AppError::WriteBlocked(sql.trim().to_string())),
     };
 
-    run_query(&pool, &sql, read_write).await
+    let outcome = run_query(&pool, &sql, read_write).await;
+
+    // `generated` marks the app's own preview SQL. Recording it would
+    // write a row every time somebody clicks a table in the tree, and
+    // the list would be nothing but `select * from x limit 500`.
+    if !generated {
+        let connection_id = state.active().as_ref().map(|a| a.id.clone());
+        let recorded = match &outcome {
+            Ok(result) => state.library.record_run(
+                &sql,
+                connection_id.as_deref(),
+                Some(result.duration_ms as i64),
+                Some(result.row_count as i64),
+                None,
+            ),
+            // A failed statement is recorded too: the query you spent
+            // ten minutes failing to get right is work.
+            Err(e) => state.library.record_run(
+                &sql,
+                connection_id.as_deref(),
+                None,
+                None,
+                Some(&e.to_string()),
+            ),
+        };
+        // A history write that failed must not turn a successful SELECT
+        // into an error on screen. The workspace database is ours, not
+        // the user's, and their query really did run.
+        if let Err(e) = recorded {
+            eprintln!("could not record this statement in history: {e}");
+        }
+    }
+
+    outcome
 }
 
 /// Show the statements an apply would run, without running them.

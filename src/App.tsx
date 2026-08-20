@@ -724,7 +724,7 @@ export default function App() {
       setBusyTabId(target);
       setTabResults((all) => withResult(all, target, { error: null }));
       try {
-        const next = await execute(sql);
+        const next = await execute(sql, generated);
         setTabResults((all) =>
           withResult(all, target, {
             result: next,

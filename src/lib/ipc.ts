@@ -24,8 +24,18 @@ import type {
  * functions, so the IPC surface stays visible in one place.
  */
 
-export async function execute(sql: string): Promise<QueryResult> {
-  return invoke<QueryResult>("execute", { sql });
+/**
+ * Run one statement.
+ *
+ * `generated` says the SQL is the app's own preview rather than
+ * something a person typed, which keeps it out of history and out of
+ * the truncation flag. See `runSql` in `App.tsx`, which carries it.
+ */
+export async function execute(
+  sql: string,
+  generated: boolean,
+): Promise<QueryResult> {
+  return invoke<QueryResult>("execute", { sql, generated });
 }
 
 /// Shows the statements an apply would run, without running them.
