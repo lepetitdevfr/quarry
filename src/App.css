@@ -862,6 +862,39 @@ button:disabled {
   white-space: pre;
 }
 
+/* The statement has already run; this decides whether it stays. Wider
+   than an ordinary confirmation because it shows the SQL. */
+.pending-write {
+  max-width: 560px;
+}
+
+.pending-summary {
+  margin: 0 0 var(--s-2);
+  font-size: var(--t-lg);
+}
+
+.pending-sql {
+  margin: 0 0 var(--s-2);
+  padding: var(--s-2);
+  max-height: 30vh;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  font-family: var(--mono);
+  font-size: var(--t-sm);
+  white-space: pre-wrap;
+}
+
+/* The deadline, quietly. Postgres ends the transaction when it expires;
+   a countdown you can watch is the difference between the app expiring
+   your write and the app appearing to lose it. */
+.pending-countdown {
+  margin: 0 0 var(--s-3);
+  color: var(--muted);
+  font-size: var(--t-sm);
+}
+
 /* Why a format did nothing, beside the button that did nothing. Quiet:
    it is a refusal with a reason, not a failure. */
 .editor-note {

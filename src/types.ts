@@ -187,6 +187,20 @@ export interface Tab {
   mode: TableMode | null;
 }
 
+/**
+ * A write that has already run inside a transaction and is waiting to be
+ * committed or discarded.
+ *
+ * Mirrors the `waiting` arm of Rust's `ExecuteResponse`. The statement
+ * has run: what is being decided is whether it stays.
+ */
+export interface PendingWrite {
+  token: string;
+  summary: string;
+  affected: number | null;
+  sql: string;
+}
+
 /** Mirrors Rust `RecentItem`: one row of the History list. */
 export interface RecentItem {
   id: string;

@@ -13,6 +13,7 @@ import type {
   RowDelete,
   RowEdit,
   RowInsert,
+  PendingWrite,
   RecentItem,
   Schema,
   Tab,
@@ -43,11 +44,51 @@ export async function formatSql(sql: string): Promise<string> {
  * something a person typed, which keeps it out of history and out of
  * the truncation flag. See `runSql` in `App.tsx`, which carries it.
  */
+/** Either a finished result, or a write waiting for a decision. */
+export type Executed =
+  | { done: QueryResult; pending: null }
+  | { done: null; pending: PendingWrite };
+
 export async function execute(
   sql: string,
   generated: boolean,
+): Promise<Executed> {
+  // Rust tags the response rather than returning two shapes the caller
+  // has to guess between; this unwraps the tag once, here, so nothing
+  // downstream has to know it existed.
+  const response = await invoke<Record<string, unknown>>("execute", {
+    sql,
+    generated,
+  });
+
+  if (response.state === "waiting") {
+    return {
+      done: null,
+      pending: {
+        token: response.token as string,
+        summary: response.summary as string,
+        affected: (response.affected as number | null) ?? null,
+        sql: response.sql as string,
+      },
+    };
+  }
+
+  const { state: _state, ...result } = response;
+  return { done: result as unknown as QueryResult, pending: null };
+}
+
+/**
+ * Commit or discard the write waiting on `token`.
+ *
+ * Rejects when there is nothing to resolve — the transaction expired, or
+ * something else took its place — which is a thing that happened, not a
+ * bug.
+ */
+export async function resolveWrite(
+  token: string,
+  commit: boolean,
 ): Promise<QueryResult> {
-  return invoke<QueryResult>("execute", { sql, generated });
+  return invoke<QueryResult>("resolve_write", { token, commit });
 }
 
 /// Shows the statements an apply would run, without running them.

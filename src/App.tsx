@@ -14,6 +14,7 @@ import { PaneResizer } from "./components/PaneResizer";
 import { GridToolbar } from "./components/GridToolbar";
 import type { ExportFormat } from "./components/GridToolbar";
 import { PasswordRetry } from "./components/PasswordRetry";
+import { PendingWriteDialog } from "./components/PendingWriteDialog";
 import type { Creating } from "./components/QueryTree";
 import { ResultGrid } from "./components/ResultGrid";
 import { Sidebar } from "./components/Sidebar";
@@ -33,6 +34,7 @@ import {
   asAppError,
   execute,
   formatSql,
+  resolveWrite,
   forgetRecent as forgetRecentIpc,
   listRecent,
   guardStatus,
@@ -83,10 +85,20 @@ import type {
   ConnectionInput,
   GuardStatus,
   LibraryTree,
+  PendingWrite,
   RecentItem,
 } from "./types";
 import type { TableMode } from "./types";
 import "./App.css";
+
+/**
+ * How long the server will hold a guarded write open, in seconds.
+ *
+ * Mirrors `IDLE_IN_TRANSACTION_TIMEOUT_MS` in `conn/pool.rs`. Postgres
+ * is what enforces it; this is only what the countdown shows, and the
+ * two must agree or the dialog lies about its own deadline.
+ */
+const PENDING_WRITE_SECONDS = 60;
 
 /** How long the "Saved" indicator stays visible after a save. */
 const SAVED_FLASH_MS = 2000;
@@ -144,6 +156,11 @@ export default function App() {
   // tab's rows, and closing a tab left its grid on screen under somebody
   // else's editor. See `lib/tabResults.ts`.
   const [tabResults, setTabResults] = useState<TabResults>({});
+  // A write that has run inside a transaction and is waiting to be
+  // committed or discarded. One at a time, because the backend parks
+  // exactly one.
+  const [pendingWrite, setPendingWrite] = useState<PendingWrite | null>(null);
+
   // Everything run or closed, newest first. Held here rather than in
   // the sidebar because two things outside it — running a statement and
   // closing a tab — are what change it.
@@ -765,7 +782,16 @@ export default function App() {
       setBusyTabId(target);
       setTabResults((all) => withResult(all, target, { error: null }));
       try {
-        const next = await execute(sql, generated);
+        const response = await execute(sql, generated);
+
+        // The write ran but is not committed. Nothing lands in the tab
+        // yet: there is no result to show until somebody decides.
+        if (response.pending) {
+          setPendingWrite(response.pending);
+          return;
+        }
+
+        const next = response.done;
         setTabResults((all) =>
           withResult(all, target, {
             result: next,
@@ -842,6 +868,40 @@ export default function App() {
       await actions.openTableTab(schemaName, tableName, "structure", "pinned");
     },
     [actions],
+  );
+
+  /**
+   * Finish the write that is waiting.
+   *
+   * The pending state goes first and unconditionally: whatever the
+   * server says next, the transaction it referred to is over, and a
+   * dialog still on screen about a resolved write would be its own small
+   * lie. The result lands on the tab that ran it.
+   */
+  const finishPendingWrite = useCallback(
+    async (commit: boolean) => {
+      if (!pendingWrite) return;
+      const { token, sql } = pendingWrite;
+      const target = activeTabId;
+      setPendingWrite(null);
+
+      try {
+        const result = await resolveWrite(token, commit);
+        setTabResults((all) =>
+          withResult(all, target, {
+            result,
+            ranSql: sql,
+            ranGenerated: false,
+            error: null,
+          }),
+        );
+      } catch (e) {
+        setTabResults((all) => withResult(all, target, { error: asAppError(e) }));
+      }
+
+      refreshRecent();
+    },
+    [pendingWrite, activeTabId, refreshRecent],
   );
 
   // Opens, never runs — the same rule the schema tree follows. The
@@ -1219,7 +1279,19 @@ export default function App() {
             )}
           </>
         )}
-        {confirmRequest && (
+        {/* The statement has already run; this decides whether it stays.
+          Rendered above the ordinary confirmation because a transaction
+          is open while it is on screen. */}
+      {pendingWrite && (
+        <PendingWriteDialog
+          pending={pendingWrite}
+          seconds={PENDING_WRITE_SECONDS}
+          onCommit={() => void finishPendingWrite(true)}
+          onDiscard={() => void finishPendingWrite(false)}
+        />
+      )}
+
+      {confirmRequest && (
           <ConfirmDialog
             message={confirmRequest.message}
             confirmLabel={confirmRequest.confirmLabel}
