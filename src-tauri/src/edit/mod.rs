@@ -1,6 +1,7 @@
 pub mod apply;
 pub mod decide;
 pub mod sql;
+pub mod undo;
 
 pub use apply::{apply_edits, plan_apply, AppliedCell, AppliedRow};
 pub use decide::{
@@ -11,6 +12,7 @@ pub use sql::{
     build_deletes, build_inserts, build_updates, cast_target, quote_ident, value_choices, CellEdit,
     RowDelete, RowEdit, RowInsert, Statement, StatementKind,
 };
+pub use undo::{build_undo, RowBefore};
 
 use crate::error::AppError;
 
