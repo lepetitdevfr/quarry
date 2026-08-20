@@ -187,6 +187,25 @@ export interface Tab {
   mode: TableMode | null;
 }
 
+/** Mirrors Rust `RecentItem`: one row of the History list. */
+export interface RecentItem {
+  id: string;
+  /** `run` or `closed`. */
+  kind: string;
+  sql: string;
+  /** Null once the connection it belonged to has been deleted. */
+  connection_id: string | null;
+  /** The closed tab's name, when it had one. */
+  title: string | null;
+  first_at: string;
+  last_at: string;
+  run_count: number;
+  duration_ms: number | null;
+  row_count: number | null;
+  /** The last run's error message; null when it succeeded. */
+  error: string | null;
+}
+
 /** Mirrors Rust `LibraryTree`. */
 export interface LibraryTree {
   collections: Collection[];

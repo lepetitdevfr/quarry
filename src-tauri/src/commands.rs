@@ -6,7 +6,7 @@ use crate::edit::{
 use crate::error::AppError;
 use crate::exec::{run_query, QueryResult};
 use crate::guard::{decide, Decision, Policy};
-use crate::library::model::{LibraryTree, Query, Tab, TabPin, TableMode};
+use crate::library::model::{LibraryTree, Query, RecentItem, Tab, TabPin, TableMode};
 use crate::library::store::Store;
 use deadpool_postgres::Pool;
 use serde::Serialize;
@@ -411,6 +411,25 @@ pub fn delete_query(
 ) -> Result<LibraryTree, AppError> {
     state.library.delete_query(&id)?;
     state.library.tree()
+}
+
+// ---- history -----------------------------------------------------------
+
+#[tauri::command]
+pub fn list_recent(state: tauri::State<'_, AppState>) -> Result<Vec<RecentItem>, AppError> {
+    state.library.recent()
+}
+
+/// Forget one row. Returns the refreshed list, like every other
+/// mutating command here, so the frontend replaces state rather than
+/// patching it and the two cannot drift.
+#[tauri::command]
+pub fn forget_recent(
+    state: tauri::State<'_, AppState>,
+    id: String,
+) -> Result<Vec<RecentItem>, AppError> {
+    state.library.delete_recent(&id)?;
+    state.library.recent()
 }
 
 #[tauri::command]

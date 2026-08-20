@@ -13,6 +13,7 @@ import type {
   RowDelete,
   RowEdit,
   RowInsert,
+  RecentItem,
   Schema,
   Tab,
   TableMode,
@@ -120,6 +121,15 @@ export async function testConnection(
 
 export async function activeConnection(): Promise<ConnectionInfo | null> {
   return invoke<ConnectionInfo | null>("active_connection");
+}
+
+export async function listRecent(): Promise<RecentItem[]> {
+  return invoke<RecentItem[]>("list_recent");
+}
+
+/** Forget one row, and get back what is left. */
+export async function forgetRecent(id: string): Promise<RecentItem[]> {
+  return invoke<RecentItem[]>("forget_recent", { id });
 }
 
 export async function libraryTree(): Promise<LibraryTree> {
