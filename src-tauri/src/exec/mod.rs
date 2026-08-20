@@ -1,3 +1,4 @@
+pub mod guarded;
 pub mod run;
 pub mod value;
 
