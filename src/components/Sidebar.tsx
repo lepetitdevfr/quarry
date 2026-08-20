@@ -1,9 +1,10 @@
 import { useCallback, useRef, useState } from "react";
 import { PaneResizer } from "./PaneResizer";
 import { QueryTree, type Creating } from "./QueryTree";
+import { RecentList } from "./RecentList";
 import { SchemaTree } from "./SchemaTree";
 import { DEFAULT_SCHEMA_HEIGHT, clampSectionHeight } from "../lib/layout";
-import type { LibraryTree, Schema } from "../types";
+import type { Connection, LibraryTree, RecentItem, Schema } from "../types";
 
 interface Props {
   library: LibraryTree;
@@ -29,6 +30,12 @@ interface Props {
   onOpenTableStructure: (schema: string, table: string) => void;
   /** The table the active tab is showing, so the tree can mark it. */
   activeTable: { schema: string; table: string } | null;
+  /** Everything run or closed, newest first. */
+  recent: RecentItem[];
+  connections: Connection[];
+  activeConnectionId: string | null;
+  onOpenRecent: (sql: string) => void;
+  onForgetRecent: (id: string) => void;
 }
 
 export function Sidebar(props: Props) {
@@ -36,6 +43,13 @@ export function Sidebar(props: Props) {
   // left. Measuring both would have them fight over the remainder.
   const [schemaHeight, setSchemaHeight] = useState(DEFAULT_SCHEMA_HEIGHT);
   const shellRef = useRef<HTMLElement>(null);
+
+  // Queries and History share the bottom section rather than stacking.
+  // A third stacked section would need a second resizer and three-way
+  // height maths in a sidebar that is already tight — and the two are
+  // alternatives, not competitors: you are either browsing work you
+  // saved or recovering work you did not.
+  const [bottom, setBottom] = useState<"queries" | "history">("queries");
 
   const resize = useCallback((clientY: number) => {
     const shell = shellRef.current;
@@ -81,38 +95,65 @@ export function Sidebar(props: Props) {
 
       <section className="sidebar-section queries">
         <header className="sidebar-header">
-          <span className="overline">Queries</span>
-          <div className="sidebar-header-actions">
+          <div className="section-tabs">
             <button
-              className="row-action text"
-              title="New query"
-              onClick={props.onNewQuery}
+              className={bottom === "queries" ? "overline active" : "overline"}
+              onClick={() => setBottom("queries")}
             >
-              + Query
+              Queries
             </button>
             <button
-              className="row-action text"
-              title="New folder"
-              onClick={props.onNewCollection}
+              className={bottom === "history" ? "overline active" : "overline"}
+              onClick={() => setBottom("history")}
             >
-              + Folder
+              History
             </button>
           </div>
+          {/* Only the Queries list has anything to create. History is a
+              record of what happened, not a place you add to. */}
+          {bottom === "queries" && (
+            <div className="sidebar-header-actions">
+              <button
+                className="row-action text"
+                title="New query"
+                onClick={props.onNewQuery}
+              >
+                + Query
+              </button>
+              <button
+                className="row-action text"
+                title="New folder"
+                onClick={props.onNewCollection}
+              >
+                + Folder
+              </button>
+            </div>
+          )}
         </header>
-        <QueryTree
-          library={props.library}
-          activeQueryId={props.activeQueryId}
-          onOpen={props.onOpen}
-          onRenameQuery={props.onRenameQuery}
-          onDeleteQuery={props.onDeleteQuery}
-          onMoveQuery={props.onMoveQuery}
-          onRenameCollection={props.onRenameCollection}
-          onDeleteCollection={props.onDeleteCollection}
-          onNewQueryInCollection={props.onNewQueryInCollection}
-          creating={props.creating}
-          onCommitCreate={props.onCommitCreate}
-          onCancelCreate={props.onCancelCreate}
-        />
+        {bottom === "queries" ? (
+          <QueryTree
+            library={props.library}
+            activeQueryId={props.activeQueryId}
+            onOpen={props.onOpen}
+            onRenameQuery={props.onRenameQuery}
+            onDeleteQuery={props.onDeleteQuery}
+            onMoveQuery={props.onMoveQuery}
+            onRenameCollection={props.onRenameCollection}
+            onDeleteCollection={props.onDeleteCollection}
+            onNewQueryInCollection={props.onNewQueryInCollection}
+            creating={props.creating}
+            onCommitCreate={props.onCommitCreate}
+            onCancelCreate={props.onCancelCreate}
+          />
+        ) : (
+          <RecentList
+            items={props.recent}
+            connections={props.connections}
+            activeConnectionId={props.activeConnectionId}
+            onOpen={props.onOpenRecent}
+            onForget={props.onForgetRecent}
+          />
+        )}
       </section>
     </aside>
   );

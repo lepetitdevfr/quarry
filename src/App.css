@@ -862,6 +862,66 @@ button:disabled {
   white-space: pre;
 }
 
+/* Two names, one section. The inactive one stays legible: it is a place
+   to go, not a disabled control. */
+.section-tabs {
+  display: flex;
+  gap: var(--s-3);
+}
+
+.section-tabs button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--faint);
+  cursor: pointer;
+}
+
+.section-tabs button.active {
+  color: var(--text);
+}
+
+.recent-rows {
+  flex: 1;
+  overflow-y: auto;
+}
+
+/* Two lines: the statement, then the quiet facts about it. */
+.recent-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  cursor: default;
+}
+
+.recent-row:hover,
+.recent-row:focus-visible {
+  background: var(--hover);
+}
+
+.recent-sql {
+  font-family: var(--mono);
+  font-size: var(--t-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.recent-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  color: var(--faint);
+  font-size: var(--t-xs);
+}
+
+/* Work from the connection you are on. A left edge rather than a
+   heading: it groups without spending a row on saying so. */
+.recent-row.here {
+  border-left: 2px solid var(--border);
+}
+
 /* The tree's only badge. Quiet: it says what a row is, and it appears
    on the minority of rows where "table" would be wrong. */
 .relation-badge {

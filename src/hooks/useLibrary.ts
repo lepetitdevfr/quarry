@@ -97,7 +97,14 @@ export function useLibrary() {
 
   const actions = {
     openQuery: async (queryId: string) => setTabs(await ipc.openTab(queryId)),
-    newTab: async () => setTabs(await ipc.openTab(null)),
+    // Returns the id of the tab it opened, so a caller that has text to
+    // put in it can aim at the right one. Reading the active tab after
+    // the await would race React's render.
+    newTab: async (): Promise<string | null> => {
+      const next = await ipc.openTab(null);
+      setTabs(next);
+      return next.find((t) => t.is_active)?.id ?? null;
+    },
     activateTab: async (id: string) => setTabs(await ipc.activateTab(id)),
     closeTab: async (id: string) => setTabs(await ipc.closeTab(id)),
     openPreview: async (title: string, sql: string) =>

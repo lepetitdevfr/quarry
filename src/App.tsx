@@ -31,6 +31,9 @@ import {
   applyRowEdits,
   asAppError,
   execute,
+  forgetRecent as forgetRecentIpc,
+  listRecent,
+  saveScratch,
   guardStatus,
   previewEdits,
   relock,
@@ -79,6 +82,7 @@ import type {
   ConnectionInput,
   GuardStatus,
   LibraryTree,
+  RecentItem,
 } from "./types";
 import type { TableMode } from "./types";
 import "./App.css";
@@ -139,6 +143,15 @@ export default function App() {
   // tab's rows, and closing a tab left its grid on screen under somebody
   // else's editor. See `lib/tabResults.ts`.
   const [tabResults, setTabResults] = useState<TabResults>({});
+  // Everything run or closed, newest first. Held here rather than in
+  // the sidebar because two things outside it — running a statement and
+  // closing a tab — are what change it.
+  const [recent, setRecent] = useState<RecentItem[]>([]);
+
+  const refreshRecent = useCallback(() => {
+    void listRecent().then(setRecent);
+  }, []);
+
   // The tab with a statement in flight, so only that tab says "Running…"
   // — a spinner on a tab that is not running is the same lie in miniature.
   const [busyTabId, setBusyTabId] = useState<string | null>(null);
@@ -274,6 +287,11 @@ export default function App() {
   useEffect(() => {
     setTabResults((all) => pruneResults(all, tabs.map((t) => t.id)));
   }, [tabs]);
+
+  // History changes when a tab closes, and a close can arrive from four
+  // different places. Watching the tab list catches all of them without
+  // any of them having to remember.
+  useEffect(() => refreshRecent(), [refreshRecent, tabs]);
 
   // The launch screen is a list and a button; a working session is a
   // sidebar, an editor and a grid. Sizing the window to whichever is on
@@ -748,9 +766,11 @@ export default function App() {
       } finally {
         // Only if nothing else started running in the meantime.
         setBusyTabId((busy) => (busy === target ? null : busy));
+        // The statement just became history, whether it worked or not.
+        refreshRecent();
       }
     },
-    [connection, activeTabId],
+    [connection, activeTabId, refreshRecent],
   );
 
   // `sql` is the statement the editor extracted under the cursor;
@@ -800,6 +820,24 @@ export default function App() {
     },
     [actions],
   );
+
+  // Opens, never runs — the same rule the schema tree follows. The
+  // current buffer is untouched: recovering work must not cost work.
+  const openRecent = useCallback(
+    async (sql: string) => {
+      const target = await actions.newTab();
+      setText(sql);
+      // The same call autosave makes for a tab with no query_id, so
+      // recovered text is persisted at once rather than waiting for a
+      // keystroke that may never come.
+      if (target) void saveScratch(target, sql);
+    },
+    [actions],
+  );
+
+  const forgetRecent = useCallback(async (id: string) => {
+    setRecent(await forgetRecentIpc(id));
+  }, []);
 
   const closeOtherTabs = useCallback(
     async (keepId: string) => {
@@ -1197,6 +1235,11 @@ export default function App() {
           onOpenTableData={(s, t) => void openTableData(s, t)}
           onOpenTableStructure={(s, t) => void openTableStructure(s, t)}
           activeTable={tableTarget}
+          recent={recent}
+          connections={connections}
+          activeConnectionId={connection?.id ?? null}
+          onOpenRecent={(sql) => void openRecent(sql)}
+          onForgetRecent={(id) => void forgetRecent(id)}
         />
       </div>
       <SidebarResizer onResize={setSidebarWidth} />
