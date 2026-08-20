@@ -636,6 +636,47 @@ pub async fn connect_saved(
     Ok(info)
 }
 
+/// Dial a connection the user is still typing, without saving it,
+/// connecting to it, or touching the active slot.
+///
+/// `id` is passed when editing a saved connection with the password
+/// field left blank, which means "keep the stored one" — the test has to
+/// resolve it the same way `connect_saved` would, or testing an
+/// unchanged connection would fail for a password the user never
+/// removed.
+///
+/// Returns the server version, so a success says which server answered
+/// rather than only that one did.
+#[tauri::command]
+pub async fn test_connection(
+    input: ConnectionInput,
+    id: Option<String>,
+) -> Result<String, AppError> {
+    let password = match (input.password.clone(), id) {
+        (Some(typed), _) => Some(typed),
+        (None, Some(id)) => crate::secrets::load_password(&id).ok().flatten(),
+        (None, None) => None,
+    };
+
+    let cfg = ConnectionConfig {
+        host: input.host.clone(),
+        port: input.port,
+        user: input.user.clone(),
+        dbname: input.dbname.clone(),
+        password,
+        sslmode: input.sslmode,
+    };
+
+    // The tag's policy, not a free one: a test of a production
+    // connection must not open a session the guard would refuse.
+    let pool = build_pool(&cfg, Policy::for_tag(input.tag))?;
+    let target = format!("{}:{}", input.host, input.port);
+    // Nothing is stored and nothing is installed: the pool goes out of
+    // scope with this call, which is the whole point of testing before
+    // saving.
+    ping(&pool, &target).await
+}
+
 /// Re-read the database structure and replace the cache.
 ///
 /// Also the initial load: the frontend calls this after connecting.

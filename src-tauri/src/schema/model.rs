@@ -20,6 +20,11 @@ pub struct SchemaNode {
 pub struct Table {
     pub schema: String,
     pub name: String,
+    /// `pg_class.relkind`: `r` ordinary, `p` partitioned, `v` view, `m`
+    /// materialised view. The tree used to list only `r` and `p`, which
+    /// meant a view you had just created was nowhere on screen — the
+    /// user's conclusion being that the `create view` had failed.
+    pub kind: String,
     pub columns: Vec<Column>,
     pub indexes: Vec<Index>,
     pub constraints: Vec<Constraint>,
@@ -31,6 +36,10 @@ pub struct Table {
     pub triggers: Vec<Trigger>,
     /// Views and materialised views that read this table.
     pub dependents: Vec<Dependent>,
+    /// The defining query, on views and materialised views only. A
+    /// structure tab that showed a view's columns but not the statement
+    /// behind them would answer the wrong half of "what is this?".
+    pub definition: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

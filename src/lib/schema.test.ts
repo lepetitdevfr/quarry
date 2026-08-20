@@ -46,6 +46,8 @@ const SCHEMA: Schema = {
           comment: null,
           triggers: [],
           dependents: [],
+          kind: "r",
+          definition: null,
         },
         {
           schema: "public",
@@ -66,6 +68,30 @@ const SCHEMA: Schema = {
           comment: null,
           triggers: [],
           dependents: [],
+          kind: "r",
+          definition: null,
+        },
+        {
+          schema: "public",
+          name: "paid_invoices",
+          columns: [
+            {
+              name: "total",
+              type_name: "numeric",
+              nullable: true,
+              default: null,
+              is_primary_key: false,
+              references: null,
+            },
+          ],
+          indexes: [],
+          constraints: [],
+          stats: null,
+          comment: null,
+          triggers: [],
+          dependents: [],
+          kind: "v",
+          definition: "select total from invoices where paid",
         },
       ],
     },
@@ -91,6 +117,8 @@ const SCHEMA: Schema = {
           comment: null,
           triggers: [],
           dependents: [],
+          kind: "r",
+          definition: null,
         },
       ],
     },
@@ -140,6 +168,7 @@ describe("flattenSchema", () => {
       "analytics",
       "public",
       "invoices",
+      "paid_invoices",
       "users",
     ]);
   });
@@ -157,11 +186,25 @@ describe("flattenSchema", () => {
       "analytics",
       "public",
       "invoices",
+      "paid_invoices",
       "users",
     ]);
     expect(rows.every((r) => r.kind === "schema" || r.kind === "table")).toBe(
       true,
     );
+  });
+
+  it("labels a view and a materialised view, and leaves tables unlabelled", () => {
+    // The badge exists to stop a user reading a view as a table — and
+    // to stop them concluding a `create view` failed because nothing
+    // appeared. A badge on every row would be a badge nobody reads, so
+    // an ordinary table carries none.
+    const rows = flattenSchema(SCHEMA, new Set(["schema:public"]), "");
+
+    expect(rows.find((r) => r.label === "paid_invoices")?.relationLabel).toBe(
+      "view",
+    );
+    expect(rows.find((r) => r.label === "users")?.relationLabel).toBeUndefined();
   });
 
   it("marks tables as leaves", () => {
@@ -285,6 +328,8 @@ describe("buildCompletionSchema unqualified names", () => {
     comment: null,
     triggers: [],
     dependents: [],
+    kind: "r",
+    definition: null,
   });
 
   const schemaWith = (...nodes: { name: string; tables: ReturnType<typeof table>[] }[]) => ({
@@ -330,5 +375,21 @@ describe("buildCompletionSchema unqualified names", () => {
     expect(built["invoice"]).toBeUndefined();
     expect(built["a.invoice"]).toEqual(["x"]);
     expect(built["b.invoice"]).toEqual(["y"]);
+  });
+});
+
+import { relationLabel } from "./schema";
+
+describe("relationLabel", () => {
+  it("names the two kinds the tree has to distinguish", () => {
+    expect(relationLabel("v")).toBe("view");
+    expect(relationLabel("m")).toBe("matview");
+  });
+
+  it("leaves ordinary and partitioned tables unlabelled", () => {
+    // A partitioned table is a table: the partitioning is a storage
+    // decision, not something you query differently.
+    expect(relationLabel("r")).toBeUndefined();
+    expect(relationLabel("p")).toBeUndefined();
   });
 });

@@ -92,6 +92,20 @@ export function TableView({
             </section>
           )}
 
+          {/* A view's columns say what comes out; only the statement
+              says where it comes from. Showing one without the other
+              answers the wrong half of "what is this?". */}
+          {detail.definition && (
+            <section>
+              <h3 className="overline">
+                {detail.relationLabel === "matview"
+                  ? "Materialised view definition"
+                  : "View definition"}
+              </h3>
+              <pre className="view-definition">{detail.definition}</pre>
+            </section>
+          )}
+
           <section>
             <h3 className="overline">Columns</h3>
             {detail.columns.length === 0 ? (

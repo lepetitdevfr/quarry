@@ -75,6 +75,8 @@ const schema: Schema = {
           comment: null,
           triggers: [],
           dependents: [],
+          kind: "r",
+          definition: null,
         },
         {
           schema: "public",
@@ -86,6 +88,21 @@ const schema: Schema = {
           comment: null,
           triggers: [],
           dependents: [],
+          kind: "r",
+          definition: null,
+        },
+        {
+          schema: "public",
+          name: "paid_orders",
+          columns: [],
+          indexes: [],
+          constraints: [],
+          stats: null,
+          comment: null,
+          triggers: [],
+          dependents: [],
+          kind: "v",
+          definition: "select * from orders where paid",
         },
       ],
     },
@@ -181,5 +198,23 @@ describe("table facts", () => {
     expect(dependentLabel({ schema: "public", name: "m", kind: "m" })).toBe(
       "public.m (materialised)",
     );
+  });
+});
+
+describe("tableDetail on a view", () => {
+  it("carries the defining query and says which kind it is", () => {
+    // A structure tab for a view that showed only its columns would
+    // answer the wrong half of "what is this?".
+    const detail = tableDetail(schema, "public", "paid_orders")!;
+
+    expect(detail.definition).toBe("select * from orders where paid");
+    expect(detail.relationLabel).toBe("view");
+  });
+
+  it("leaves an ordinary table with no definition and no label", () => {
+    const detail = tableDetail(schema, "public", "orders")!;
+
+    expect(detail.definition).toBe(null);
+    expect(detail.relationLabel).toBeUndefined();
   });
 });

@@ -845,6 +845,32 @@ button:disabled {
   font-size: var(--t-sm);
 }
 
+/* The statement behind a view, in the structure tab. Monospaced and
+   scrollable: pg_get_viewdef pretty-prints, and rewrapping it would
+   change what the user is reading. */
+.view-definition {
+  margin: 0;
+  padding: var(--s-2);
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--t-sm);
+  line-height: 1.45;
+  white-space: pre;
+}
+
+/* The tree's only badge. Quiet: it says what a row is, and it appears
+   on the minority of rows where "table" would be wrong. */
+.relation-badge {
+  flex: none;
+  margin-left: auto;
+  padding-left: var(--s-2);
+  color: var(--faint);
+}
+
 .picker-empty {
   margin: 8px;
   color: var(--muted);
@@ -984,6 +1010,21 @@ button:disabled {
 .hint-inline {
   color: var(--faint);
   font-weight: 400;
+}
+
+/* The test's answer, in the form, above the buttons. Failure is red but
+   not loud: it reports a database that did not answer, which is a fact
+   about the world, not a mistake the user made. */
+.test-result {
+  margin: var(--s-4) 0 0;
+  color: var(--muted);
+  font-size: var(--t-sm);
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.test-result.failed {
+  color: var(--error);
 }
 
 .editor-actions {

@@ -352,6 +352,70 @@ async fn reports_the_views_that_read_a_table() {
     );
 }
 
+#[tokio::test]
+async fn views_and_materialised_views_appear_beside_tables() {
+    // The defect this closes: `create view` succeeded, the tree showed
+    // nothing, and the only reading available to the user was that the
+    // statement had failed.
+    let (schema, _db) = fixture_schema().await;
+
+    let public = schema
+        .schemas
+        .iter()
+        .find(|s| s.name == "public")
+        .expect("public should exist");
+
+    let kinds: Vec<(&str, &str)> = public
+        .tables
+        .iter()
+        .map(|t| (t.name.as_str(), t.kind.as_str()))
+        .collect();
+
+    assert!(kinds.contains(&("users", "r")), "got {kinds:?}");
+    assert!(kinds.contains(&("active_users", "v")), "got {kinds:?}");
+    assert!(kinds.contains(&("user_count", "m")), "got {kinds:?}");
+}
+
+#[tokio::test]
+async fn a_view_carries_its_columns_and_the_query_behind_it() {
+    let (schema, _db) = fixture_schema().await;
+    let view = table(&schema, "public", "active_users");
+
+    let names: Vec<&str> = view.columns.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names, vec!["id", "email"]);
+
+    let definition = view
+        .definition
+        .as_deref()
+        .expect("a view must carry its defining query");
+    assert!(definition.contains("users"), "definition was: {definition}");
+}
+
+#[tokio::test]
+async fn a_plain_view_reports_no_size_or_row_estimate_but_a_matview_does() {
+    let (schema, _db) = fixture_schema().await;
+
+    // A view stores nothing. Its catalog row still carries a -1 estimate
+    // and a zero size, and showing either as a fact about the data would
+    // be a number that means nothing.
+    assert!(
+        table(&schema, "public", "active_users").stats.is_none(),
+        "a plain view has no rows of its own"
+    );
+    assert!(
+        table(&schema, "public", "user_count").stats.is_some(),
+        "a materialised view does store rows"
+    );
+    // And an ordinary table is untouched by any of this.
+    assert!(table(&schema, "public", "users").stats.is_some());
+}
+
+#[tokio::test]
+async fn an_ordinary_table_carries_no_definition() {
+    let (schema, _db) = fixture_schema().await;
+    assert!(table(&schema, "public", "users").definition.is_none());
+}
+
 /// Sorting helper kept local: the assertion above compares two sorted
 /// lists and inlining the sort twice reads worse than naming it.
 trait TapSorted {

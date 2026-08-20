@@ -63,6 +63,7 @@ pub fn run() {
             commands::update_connection,
             commands::delete_connection,
             commands::connect_saved,
+            commands::test_connection,
             commands::refresh_schema
         ])
         .run(tauri::generate_context!())

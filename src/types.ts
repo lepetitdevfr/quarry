@@ -291,6 +291,8 @@ export interface SchemaConstraint {
 export interface SchemaTable {
   schema: string;
   name: string;
+  /** `r` table, `p` partitioned, `v` view, `m` materialised view. */
+  kind: string;
   columns: SchemaColumn[];
   indexes: SchemaIndex[];
   constraints: SchemaConstraint[];
@@ -298,6 +300,8 @@ export interface SchemaTable {
   comment: string | null;
   triggers: SchemaTrigger[];
   dependents: SchemaDependent[];
+  /** The defining query, on views and materialised views only. */
+  definition: string | null;
 }
 
 /** Mirrors Rust `TableStats`. */

@@ -94,6 +94,20 @@ export async function connectSaved(
   return invoke<ConnectionInfo>("connect_saved", { id, password });
 }
 
+/**
+ * Dial a connection the user is still typing. Saves nothing, connects
+ * nothing, and resolves to the server version.
+ *
+ * `id` is only passed when editing a saved connection whose password
+ * field was left blank, which means "keep the stored one".
+ */
+export async function testConnection(
+  input: ConnectionInput,
+  id?: string,
+): Promise<string> {
+  return invoke<string>("test_connection", { input, id });
+}
+
 export async function activeConnection(): Promise<ConnectionInfo | null> {
   return invoke<ConnectionInfo | null>("active_connection");
 }

@@ -280,6 +280,14 @@ export function SchemaTree({
                   {row.expandable ? (open ? "▾" : "▸") : ""}
                 </span>
                 <span className="schema-label">{row.label}</span>
+                {/* Only views and materialised views carry one. A row
+                    with no badge is an ordinary table, which is what the
+                    eye already assumes. */}
+                {row.relationLabel && (
+                  <span className="relation-badge overline">
+                    {row.relationLabel}
+                  </span>
+                )}
               </div>
             );
           })}

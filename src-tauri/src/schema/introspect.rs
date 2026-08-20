@@ -25,7 +25,12 @@ const SYSTEM_SCHEMA_FILTER: &str = "
     and n.nspname not like 'pg_temp%'
 ";
 
-/// Read the whole structure. Ordinary and partitioned tables only.
+/// Every relation worth browsing: ordinary and partitioned tables,
+/// views, and materialised views.
+///
+/// Which of the queries below each kind takes part in is not uniform,
+/// and deliberately so — a view has columns and can carry INSTEAD OF
+/// triggers but has no indexes, constraints, or rows of its own.
 pub async fn introspect(pool: &Pool) -> Result<Schema, AppError> {
     let client = pool
         .get()
@@ -44,6 +49,7 @@ pub async fn introspect(pool: &Pool) -> Result<Schema, AppError> {
     let column_sql = format!(
         "select n.nspname                        as schema,
                 c.relname                        as table,
+                c.relkind::text                  as kind,
                 a.attname                        as column,
                 format_type(a.atttypid, a.atttypmod) as type_name,
                 not a.attnotnull                 as nullable,
@@ -78,7 +84,7 @@ pub async fn introspect(pool: &Pool) -> Result<Schema, AppError> {
                and pc.conkey[1] = a.attnum
              limit 1
          ) fk on true
-         where c.relkind in ('r', 'p')
+         where c.relkind in ('r', 'p', 'v', 'm')
            and a.attnum > 0
            and not a.attisdropped
            and {SYSTEM_SCHEMA_FILTER}
@@ -107,6 +113,7 @@ pub async fn introspect(pool: &Pool) -> Result<Schema, AppError> {
             .or_insert_with(|| Table {
                 schema,
                 name: table_name,
+                kind: row.get("kind"),
                 columns: Vec::new(),
                 indexes: Vec::new(),
                 constraints: Vec::new(),
@@ -114,6 +121,7 @@ pub async fn introspect(pool: &Pool) -> Result<Schema, AppError> {
                 comment: None,
                 triggers: Vec::new(),
                 dependents: Vec::new(),
+                definition: None,
             })
             .columns
             .push(Column {
@@ -138,7 +146,8 @@ pub async fn introspect(pool: &Pool) -> Result<Schema, AppError> {
          join pg_class c  on c.oid = i.indrelid
          join pg_class ic on ic.oid = i.indexrelid
          join pg_namespace n on n.oid = c.relnamespace
-         where c.relkind in ('r', 'p')
+         -- A materialised view has real indexes; a plain view has none.
+         where c.relkind in ('r', 'p', 'm')
            and {SYSTEM_SCHEMA_FILTER}
          order by n.nspname, c.relname, ic.relname"
     );
@@ -192,22 +201,30 @@ pub async fn introspect(pool: &Pool) -> Result<Schema, AppError> {
     let stats_sql = format!(
         "select n.nspname                     as schema,
                 c.relname                     as table,
+                c.relkind::text               as kind,
                 c.reltuples::bigint           as estimated_rows,
                 pg_total_relation_size(c.oid) as total_bytes,
                 obj_description(c.oid)        as comment
          from pg_class c
          join pg_namespace n on n.oid = c.relnamespace
-         where c.relkind in ('r', 'p')
+         where c.relkind in ('r', 'p', 'v', 'm')
            and {SYSTEM_SCHEMA_FILTER}"
     );
 
     for row in client.query(&stats_sql, &[]).await? {
         let key: (String, String) = (row.get("schema"), row.get("table"));
         if let Some(table) = tables.get_mut(&key) {
-            table.stats = Some(TableStats {
-                estimated_rows: row.get("estimated_rows"),
-                total_bytes: row.get("total_bytes"),
-            });
+            // A plain view stores nothing: its `reltuples` is -1 and its
+            // size is zero, and showing either as a fact about the data
+            // would be a number that means nothing. A materialised view
+            // does store rows, so it keeps both.
+            let kind: String = row.get("kind");
+            if kind != "v" {
+                table.stats = Some(TableStats {
+                    estimated_rows: row.get("estimated_rows"),
+                    total_bytes: row.get("total_bytes"),
+                });
+            }
             table.comment = row.get("comment");
         }
     }
@@ -226,7 +243,9 @@ pub async fn introspect(pool: &Pool) -> Result<Schema, AppError> {
          join pg_class c     on c.oid = t.tgrelid
          join pg_namespace n on n.oid = c.relnamespace
          where not t.tgisinternal
-           and c.relkind in ('r', 'p')
+           -- `INSTEAD OF` triggers are what make a view writable, so
+           -- they belong on the view's own structure tab.
+           and c.relkind in ('r', 'p', 'v')
            and {SYSTEM_SCHEMA_FILTER}
          order by t.tgname"
     );
@@ -264,7 +283,7 @@ pub async fn introspect(pool: &Pool) -> Result<Schema, AppError> {
            and d.refclassid = 'pg_class'::regclass
            and dc.relkind in ('v', 'm')
            and dc.oid <> c.oid
-           and c.relkind in ('r', 'p')
+           and c.relkind in ('r', 'p', 'v', 'm')
            and {SYSTEM_SCHEMA_FILTER}
          order by view_schema, view_name"
     );
@@ -277,6 +296,28 @@ pub async fn introspect(pool: &Pool) -> Result<Schema, AppError> {
                 name: row.get("view_name"),
                 kind: row.get("view_kind"),
             });
+        }
+    }
+
+    // ---- view definitions ---------------------------------------------
+    //
+    // `pg_get_viewdef(oid, true)` pretty-prints the statement the view
+    // was created from. Both kinds have one; a materialised view's is
+    // what `REFRESH` re-runs.
+    let definition_sql = format!(
+        "select n.nspname as schema,
+                c.relname as table,
+                pg_get_viewdef(c.oid, true) as definition
+         from pg_class c
+         join pg_namespace n on n.oid = c.relnamespace
+         where c.relkind in ('v', 'm')
+           and {SYSTEM_SCHEMA_FILTER}"
+    );
+
+    for row in client.query(&definition_sql, &[]).await? {
+        let key: (String, String) = (row.get("schema"), row.get("table"));
+        if let Some(table) = tables.get_mut(&key) {
+            table.definition = row.get("definition");
         }
     }
 

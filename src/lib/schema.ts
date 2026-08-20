@@ -18,6 +18,26 @@ export interface SchemaRow {
   /** Table rows only — identity for opening the detail tab. */
   tableSchema?: string;
   tableName?: string;
+  /**
+   * What kind of relation a table row is: `table`, `view` or
+   * `materialized view`. Absent on an ordinary table, which is the
+   * default the eye already assumes — a badge on every row is a badge
+   * nobody reads.
+   */
+  relationLabel?: string;
+}
+
+/**
+ * How a relation kind is spelled in the tree.
+ *
+ * `pg_class.relkind` letters, and only the ones the tree lists. A
+ * partitioned table is a table: the partitioning is a storage decision,
+ * not something you query differently.
+ */
+export function relationLabel(kind: string): string | undefined {
+  if (kind === "v") return "view";
+  if (kind === "m") return "matview";
+  return undefined;
 }
 
 /** Case-insensitive substring match; an empty filter matches everything. */
@@ -85,6 +105,7 @@ export function flattenSchema(
         depth: 1,
         tableSchema: table.schema,
         tableName: table.name,
+        relationLabel: relationLabel(table.kind),
       });
     }
   }

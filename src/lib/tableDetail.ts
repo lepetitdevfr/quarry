@@ -1,3 +1,4 @@
+import { relationLabel } from "./schema";
 import type { Schema, SchemaDependent, SchemaTrigger } from "../types";
 
 /**
@@ -13,6 +14,13 @@ export interface TableDetail {
   constraints: ConstraintGroup[];
   /** `COMMENT ON TABLE`, when there is one. */
   comment: string | null;
+  /**
+   * What kind of relation this is, spelled for the heading: undefined
+   * on an ordinary table, "view" or "matview" otherwise.
+   */
+  relationLabel?: string;
+  /** The defining query, on views and materialised views only. */
+  definition: string | null;
   /** Display-ready size and row estimate, or null when unavailable. */
   facts: { rows: string; size: string } | null;
   triggers: SchemaTrigger[];
@@ -92,6 +100,8 @@ export function tableDetail(
     })),
     constraints: groupConstraints(table.constraints),
     comment: table.comment,
+    relationLabel: relationLabel(table.kind),
+    definition: table.definition,
     facts: table.stats
       ? {
           rows: formatRowEstimate(table.stats.estimated_rows),

@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { colourForTag, parseConnectionUrl } from "../lib/connections";
+import { asAppError } from "../lib/errors";
+import { testConnection } from "../lib/ipc";
 import type { Connection, ConnectionInput, SslMode, Tag } from "../types";
 
 interface Props {
@@ -32,6 +34,13 @@ export function ConnectionEditor({ existing, onSave, onCancel }: Props) {
   const [tag, setTag] = useState<Tag>(existing?.tag ?? "local");
   const [password, setPassword] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
+  // What the last test said, if one has been run. Saving used to be
+  // blind: wrong credentials were discovered by saving, clicking the
+  // row, and reading a failure about a connection you had already
+  // committed to disk.
+  const [test, setTest] = useState<
+    { state: "testing" } | { state: "ok"; version: string } | { state: "failed"; message: string } | null
+  >(null);
 
   function applyUrl(raw: string) {
     if (raw.trim() === "") return;
@@ -50,9 +59,10 @@ export function ConnectionEditor({ existing, onSave, onCancel }: Props) {
     if (name.trim() === "") setName(parsed.dbname);
   }
 
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    onSave({
+  /** The form as the backend wants it. Shared so a test dials exactly
+      what a save would store. */
+  function asInput(): ConnectionInput {
+    return {
       name: name.trim(),
       host: host.trim(),
       port: Number(port) || 5432,
@@ -63,7 +73,24 @@ export function ConnectionEditor({ existing, onSave, onCancel }: Props) {
       colour: colourForTag(tag),
       // Empty means "leave the stored password alone" when editing.
       password: password === "" ? null : password,
-    });
+    };
+  }
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    onSave(asInput());
+  }
+
+  async function runTest() {
+    setTest({ state: "testing" });
+    try {
+      // The id goes along only when the password field is blank on an
+      // existing connection, which is where "keep the stored one" lives.
+      const version = await testConnection(asInput(), existing?.id);
+      setTest({ state: "ok", version });
+    } catch (e) {
+      setTest({ state: "failed", message: asAppError(e).message });
+    }
   }
 
   return (
@@ -169,9 +196,34 @@ export function ConnectionEditor({ existing, onSave, onCancel }: Props) {
         </div>
       </div>
 
+      {/* The result sits above the buttons, next to the fields it is
+          about — and it is a statement of fact, not a gate: a failing
+          test never blocks Save, because a database that is down right
+          now is not a reason to lose what you typed. */}
+      {test && (
+        <p
+          className={
+            test.state === "failed" ? "test-result failed" : "test-result"
+          }
+          role="status"
+        >
+          {test.state === "testing" && "Connecting…"}
+          {test.state === "ok" && `Connected — ${test.version}`}
+          {test.state === "failed" && test.message}
+        </p>
+      )}
+
       <div className="editor-actions">
         <button type="button" className="secondary" onClick={onCancel}>
           Cancel
+        </button>
+        <button
+          type="button"
+          className="secondary"
+          onClick={() => void runTest()}
+          disabled={test?.state === "testing"}
+        >
+          Test connection
         </button>
         <button type="submit" disabled={name.trim() === ""}>
           Save
