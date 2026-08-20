@@ -19,6 +19,25 @@ use tokio_postgres_rustls::MakeRustlsConnect;
 /// with the reset itself.
 const STATEMENT_TIMEOUT_MS: u64 = 30_000;
 
+/// How long a transaction may sit open with nobody answering it.
+///
+/// A guarded write parks one while the user reads a rowcount and
+/// decides. Sixty seconds is how long a person needs to read one number
+/// and answer — not how long a connection may idle. There is no
+/// convention to copy: Postgres ships this disabled, and every GUI
+/// client holds a manual-commit transaction open indefinitely, because
+/// none of them opens one on your behalf to ask a question. Fifteen
+/// seconds is a notification away from rolling back mid-thought; five
+/// minutes is an abandoned dialog behaving like no timeout at all.
+const IDLE_IN_TRANSACTION_TIMEOUT_MS: u64 = 60_000;
+
+/// How long any statement waits for a lock before giving up.
+///
+/// Without it a guarded write can sit behind somebody else's
+/// transaction for as long as they hold it, and the app looks frozen
+/// while it does.
+const LOCK_TIMEOUT_MS: u64 = 5_000;
+
 /// The `-c` flags applied at connection time.
 ///
 /// These survive for the life of the physical connection *and* the
@@ -27,7 +46,11 @@ const STATEMENT_TIMEOUT_MS: u64 = 30_000;
 /// `default_transaction_read_only` a real protection rather than a
 /// session setting a stray `SET` could undo.
 fn startup_options(policy: Policy) -> String {
-    let mut options = format!("-c statement_timeout={STATEMENT_TIMEOUT_MS}");
+    let mut options = format!(
+        "-c statement_timeout={STATEMENT_TIMEOUT_MS} \
+         -c idle_in_transaction_session_timeout={IDLE_IN_TRANSACTION_TIMEOUT_MS} \
+         -c lock_timeout={LOCK_TIMEOUT_MS}"
+    );
 
     if policy == Policy::ReadOnly {
         // Layer two of the guard. Every transaction on this connection
@@ -262,6 +285,32 @@ pub async fn ping(pool: &Pool, target: &str) -> Result<String, AppError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_held_transaction_cannot_outlive_the_dialog_that_holds_it() {
+        // A guarded write parks an open transaction while a human
+        // decides. These two are what stop that being an unbounded lock
+        // on production: Postgres ends it itself, and never queues
+        // behind somebody else's lock while waiting.
+        //
+        // Startup options rather than `SET`, so they survive DISCARD ALL
+        // and cannot be undone from the editor.
+        for policy in [Policy::Free, Policy::ReadOnly] {
+            let options = startup_options(policy);
+            assert!(
+                options.contains("idle_in_transaction_session_timeout=60000"),
+                "got: {options}"
+            );
+            assert!(options.contains("lock_timeout=5000"), "got: {options}");
+            // Flags must stay separated: a continuation that swallowed
+            // the space would produce `30000-c idle...`, which Postgres
+            // rejects at connect time — a long way from here.
+            assert!(
+                options.contains("statement_timeout=30000 -c idle"),
+                "got: {options}"
+            );
+        }
+    }
 
     /// `rustls::ClientConfig::builder()` panics at runtime if no crypto
     /// provider is installed as the process default. Nothing else in the
