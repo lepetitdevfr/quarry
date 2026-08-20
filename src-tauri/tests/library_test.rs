@@ -255,7 +255,7 @@ fn closing_a_tab_leaves_the_query_intact() {
     let q = s.create_query("q", "select 1", None).unwrap();
     let t = s.open_tab(Some(&q.id)).unwrap();
 
-    s.close_tab(&t.id).unwrap();
+    s.close_tab(&t.id, None).unwrap();
 
     assert_eq!(s.tabs().unwrap().len(), 0);
     assert!(
@@ -278,7 +278,7 @@ fn closing_the_active_middle_tab_activates_its_left_neighbour() {
     // Make b the active tab (the middle one).
     s.activate_tab(&tb.id).unwrap();
 
-    s.close_tab(&tb.id).unwrap();
+    s.close_tab(&tb.id, None).unwrap();
 
     let remaining = s.tabs().unwrap();
     assert_eq!(remaining.len(), 2);
@@ -298,7 +298,7 @@ fn closing_the_active_leftmost_tab_activates_the_new_leftmost() {
     let tb = s.open_tab(Some(&b.id)).unwrap();
     s.activate_tab(&ta.id).unwrap();
 
-    s.close_tab(&ta.id).unwrap();
+    s.close_tab(&ta.id, None).unwrap();
 
     let remaining = s.tabs().unwrap();
     assert_eq!(remaining.len(), 1);
@@ -320,7 +320,7 @@ fn closing_a_non_active_tab_does_not_change_which_tab_is_active() {
     let tb = s.open_tab(Some(&b.id)).unwrap();
     // tb is active (last opened).
 
-    s.close_tab(&ta.id).unwrap();
+    s.close_tab(&ta.id, None).unwrap();
 
     let remaining = s.tabs().unwrap();
     assert_eq!(remaining.len(), 1);
@@ -335,7 +335,7 @@ fn closing_the_last_remaining_tab_leaves_no_tabs() {
     let a = s.create_query("a", "select 1", None).unwrap();
     let ta = s.open_tab(Some(&a.id)).unwrap();
 
-    s.close_tab(&ta.id).unwrap();
+    s.close_tab(&ta.id, None).unwrap();
 
     assert_eq!(s.tabs().unwrap().len(), 0);
 }

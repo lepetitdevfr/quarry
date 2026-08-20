@@ -176,3 +176,60 @@ fn deleting_a_connection_keeps_the_work_written_against_it() {
     assert_eq!(all[0].connection_id, None);
     assert_eq!(all[0].sql, "select 1");
 }
+
+#[test]
+fn closing_a_scratch_tab_keeps_its_text() {
+    // The defect: closing a tab used to destroy what you had typed,
+    // with no recovery of any kind.
+    let (store, conn_a, _conn_b, _dir) = store();
+    let tab = store.open_tab(None).unwrap();
+    store.save_scratch(&tab.id, "select 42").unwrap();
+
+    store.close_tab(&tab.id, Some(&conn_a)).unwrap();
+
+    let all = store.recent().unwrap();
+    assert_eq!(all.len(), 1);
+    assert_eq!(all[0].sql, "select 42");
+    assert_eq!(all[0].kind, "closed");
+    assert_eq!(all[0].connection_id.as_deref(), Some(conn_a.as_str()));
+}
+
+#[test]
+fn closing_an_empty_tab_records_nothing() {
+    // There is nothing to recover, and a list of blank rows is noise.
+    let (store, _conn_a, _conn_b, _dir) = store();
+    let tab = store.open_tab(None).unwrap();
+
+    store.close_tab(&tab.id, None).unwrap();
+
+    assert!(store.recent().unwrap().is_empty());
+}
+
+#[test]
+fn closing_a_saved_querys_tab_records_nothing() {
+    // Its text is in `queries`; a recent row would duplicate work that
+    // was never at risk.
+    let (store, _conn_a, _conn_b, _dir) = store();
+    let query = store.create_query("saved", "select 42", None).unwrap();
+    let tab = store.open_tab(Some(&query.id)).unwrap();
+    store.save_scratch(&tab.id, "select 42").unwrap();
+
+    store.close_tab(&tab.id, None).unwrap();
+
+    assert!(store.recent().unwrap().is_empty());
+}
+
+#[test]
+fn closing_a_tab_holding_only_whitespace_records_nothing() {
+    // A tab you typed a newline into and abandoned is not work. This is
+    // distinct from the empty case: `scratch_sql` is NULL on a fresh
+    // tab and a real string here, so only one of the two guards catches
+    // each.
+    let (store, _conn_a, _conn_b, _dir) = store();
+    let tab = store.open_tab(None).unwrap();
+    store.save_scratch(&tab.id, "  \n\t ").unwrap();
+
+    store.close_tab(&tab.id, None).unwrap();
+
+    assert!(store.recent().unwrap().is_empty());
+}

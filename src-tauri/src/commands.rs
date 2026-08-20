@@ -435,7 +435,11 @@ pub fn activate_tab(state: tauri::State<'_, AppState>, id: String) -> Result<Vec
 
 #[tauri::command]
 pub fn close_tab(state: tauri::State<'_, AppState>, id: String) -> Result<Vec<Tab>, AppError> {
-    state.library.close_tab(&id)?;
+    // The store knows nothing about which connection is live, so the
+    // command that does hands it over — it is what puts a recovered
+    // draft in the right group in the History list.
+    let connection_id = state.active().as_ref().map(|a| a.id.clone());
+    state.library.close_tab(&id, connection_id.as_deref())?;
     state.library.tabs()
 }
 

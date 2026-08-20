@@ -1,6 +1,6 @@
 use crate::error::AppError;
 use crate::library::model::{Tab, TabPin, TableMode, POSITION_GAP};
-use crate::library::store::{new_id, sql_err, Store};
+use crate::library::store::{new_id, now, sql_err, Store};
 use rusqlite::{named_params, params, Connection, Row};
 
 impl Store {
@@ -249,7 +249,11 @@ impl Store {
     /// `position`, or the leftmost tab if it had none. Runs in a single
     /// transaction so a crash cannot leave zero active tabs while tabs
     /// still exist.
-    pub fn close_tab(&self, id: &str) -> Result<(), AppError> {
+    /// `connection_id` is whatever was live at the time, and is context
+    /// rather than provenance: a tab is not bound to a connection, but
+    /// the database you were looking at when you closed it is the best
+    /// answer to where the text belonged.
+    pub fn close_tab(&self, id: &str, connection_id: Option<&str>) -> Result<(), AppError> {
         let mut conn = self.lock();
         let tx = conn.transaction().map_err(sql_err)?;
 
@@ -268,6 +272,36 @@ impl Store {
                 |r| r.get(0),
             )
             .ok();
+
+        // What the tab was holding, if losing it would lose anything. A
+        // saved query's text lives in `queries`, so closing its tab
+        // costs nothing and a `recent` row would duplicate work that was
+        // never at risk.
+        let keepable: Option<(String, Option<String>)> = tx
+            .query_row(
+                "select scratch_sql, title from tabs
+                 where id = ?1 and query_id is null and scratch_sql is not null",
+                params![id],
+                |r| Ok((r.get(0)?, r.get(1)?)),
+            )
+            .ok()
+            // Emptiness is decided in Rust, not in SQL: SQLite's `trim`
+            // strips spaces and nothing else, so a tab holding a newline
+            // would have counted as work and filled the list with blanks.
+            .filter(|(sql, _): &(String, Option<String>)| !sql.trim().is_empty());
+
+        // Inside this transaction on purpose: the kept text and the
+        // deletion have to land together or neither, or a crash between
+        // them is exactly the loss this exists to prevent.
+        if let Some((sql, title)) = keepable {
+            tx.execute(
+                "insert into recent
+                    (id, kind, sql, connection_id, title, first_at, last_at, run_count)
+                 values (?1, 'closed', ?2, ?3, ?4, ?5, ?5, 0)",
+                params![new_id(), sql, connection_id, title, now()],
+            )
+            .map_err(sql_err)?;
+        }
 
         tx.execute("delete from tabs where id = ?1", params![id])
             .map_err(sql_err)?;
