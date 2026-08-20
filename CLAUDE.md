@@ -77,6 +77,14 @@ Rust integration tests need Docker; they start Postgres 17 via testcontainers.
   than it looks: window dragging needed `core:window:allow-start-dragging`
   added explicitly, and the denial was silent. Capability changes need a
   `tauri dev` restart — they compile into the binary.
+- **Smoke testing starts from a known database.** `scripts/smoke-db/up.sh`
+  runs the persistent `quarry-smoke` Postgres on `localhost:55432`;
+  `scripts/smoke-db/reset.sh` puts its data back exactly as `seed.sql`
+  describes — 500 customers, 5000 orders, 121 revenue rows, one view.
+  Run the reset after any smoke test that writes, or the next one starts
+  from whatever the last one left. The seed itself only ever runs on an
+  empty volume, which is why the reset exists; `up.sh` seeds a volume
+  that has no schema but never overwrites data that is there.
 - **Tests must never reach the real Keychain.** macOS ties an "Always
   Allow" grant to the requesting binary's signature and `cargo test`
   re-links a differently-signed one on every build, so a suite that
