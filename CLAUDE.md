@@ -77,6 +77,15 @@ Rust integration tests need Docker; they start Postgres 17 via testcontainers.
   than it looks: window dragging needed `core:window:allow-start-dragging`
   added explicitly, and the denial was silent. Capability changes need a
   `tauri dev` restart — they compile into the binary.
+- **Tests must never reach the real Keychain.** macOS ties an "Always
+  Allow" grant to the requesting binary's signature and `cargo test`
+  re-links a differently-signed one on every build, so a suite that
+  touches it prompts on every run forever and no amount of allowing
+  settles it. `Store::open_at` — the test constructor — wires
+  `secrets::EphemeralCredentials`; `Store::open()` wires
+  `secrets::Keychain`. Reach credentials through the store
+  (`save_connection_password`, `load_connection_password`), never
+  `secrets::*_password` directly.
 - `src-tauri/src/menu.rs` holds the codebase's **only** `cfg(target_os)`.
   Credentials go through `keyring`, so everything else compiles on any
   platform — keep it that way.

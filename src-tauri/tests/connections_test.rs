@@ -160,18 +160,20 @@ fn deleting_a_connection_removes_its_keychain_entry() {
     let (store, _dir) = store();
     let c = store.create_connection(input("dev", Tag::Local)).unwrap();
 
-    quarry_lib::secrets::save_password(&c.id, "hunter2").unwrap();
+    // Through the store, which owns the credential seam: a test that
+    // reached the real Keychain prompted on every run, because macOS
+    // ties its grants to a code signature and `cargo test` re-links a
+    // new one on every build.
+    store.save_connection_password(&c.id, "hunter2").unwrap();
     assert_eq!(
-        quarry_lib::secrets::load_password(&c.id)
-            .unwrap()
-            .as_deref(),
+        store.load_connection_password(&c.id).unwrap().as_deref(),
         Some("hunter2"),
     );
 
     store.delete_connection(&c.id).unwrap();
 
     assert_eq!(
-        quarry_lib::secrets::load_password(&c.id).unwrap(),
+        store.load_connection_password(&c.id).unwrap(),
         None,
         "a deleted connection must not leave a credential behind",
     );

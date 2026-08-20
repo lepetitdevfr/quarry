@@ -653,7 +653,7 @@ pub async fn connect_saved(
 ) -> Result<ConnectionInfo, AppError> {
     let record = state.library.connection(&id)?;
 
-    let resolved = resolve_password(password, || crate::secrets::load_password(&id))?;
+    let resolved = resolve_password(password, || state.library.load_connection_password(&id))?;
     let password = resolved.password;
 
     let cfg = ConnectionConfig {
@@ -733,15 +733,25 @@ pub async fn connect_saved(
 /// rather than only that one did.
 #[tauri::command]
 pub async fn test_connection(
+    state: tauri::State<'_, AppState>,
     input: ConnectionInput,
     id: Option<String>,
 ) -> Result<String, AppError> {
+    // Resolving the password is all the state this needs, and it happens
+    // here so the dial itself stays a plain function anything can call —
+    // including a test, which cannot build a `State`.
     let password = match (input.password.clone(), id) {
         (Some(typed), _) => Some(typed),
-        (None, Some(id)) => crate::secrets::load_password(&id).ok().flatten(),
+        (None, Some(id)) => state.library.load_connection_password(&id).ok().flatten(),
         (None, None) => None,
     };
 
+    dial(input, password).await
+}
+
+/// Dial a connection and report the server version, saving nothing and
+/// installing nothing.
+pub async fn dial(input: ConnectionInput, password: Option<String>) -> Result<String, AppError> {
     let cfg = ConnectionConfig {
         host: input.host.clone(),
         port: input.port,

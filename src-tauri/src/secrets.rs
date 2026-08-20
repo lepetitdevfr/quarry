@@ -274,6 +274,75 @@ pub fn delete_password(account: &str) -> Result<(), AppError> {
     delete_from(&Platform, account)
 }
 
+/// Where a connection's password is kept, as far as the rest of the app
+/// is concerned.
+///
+/// One trait with two implementations, because a test must never reach
+/// the real Keychain: macOS binds an "Always Allow" grant to the
+/// requesting binary's code signature and `cargo test` re-links a
+/// differently-signed binary on every build, so a suite that touches the
+/// real store prompts the developer on every single run and no amount of
+/// allowing ever settles it. The module's own tests already worked this
+/// way; this extends the same seam to everything that reaches credentials
+/// through `Store`.
+pub trait Credentials: Send + Sync {
+    fn save(&self, id: &str, password: &str) -> Result<(), AppError>;
+    fn load(&self, id: &str) -> Result<Option<String>, AppError>;
+    fn delete(&self, id: &str) -> Result<(), AppError>;
+}
+
+/// The real one: the platform credential store, with the blob rules
+/// above. This is what the app runs.
+pub struct Keychain;
+
+impl Credentials for Keychain {
+    fn save(&self, id: &str, password: &str) -> Result<(), AppError> {
+        save_password(id, password)
+    }
+
+    fn load(&self, id: &str) -> Result<Option<String>, AppError> {
+        load_password(id)
+    }
+
+    fn delete(&self, id: &str) -> Result<(), AppError> {
+        delete_password(id)
+    }
+}
+
+/// A credential store that lives and dies with the process.
+///
+/// For tests. It keeps the same contract — a missing entry loads as
+/// `None`, deleting an absent one succeeds — so a test exercises the
+/// rules the real store follows without asking macOS for permission.
+#[derive(Default)]
+pub struct EphemeralCredentials {
+    items: Mutex<BTreeMap<String, String>>,
+}
+
+impl Credentials for EphemeralCredentials {
+    fn save(&self, id: &str, password: &str) -> Result<(), AppError> {
+        self.lock().insert(id.to_string(), password.to_string());
+        Ok(())
+    }
+
+    fn load(&self, id: &str) -> Result<Option<String>, AppError> {
+        Ok(self.lock().get(id).cloned())
+    }
+
+    fn delete(&self, id: &str) -> Result<(), AppError> {
+        self.lock().remove(id);
+        Ok(())
+    }
+}
+
+impl EphemeralCredentials {
+    fn lock(&self) -> std::sync::MutexGuard<'_, BTreeMap<String, String>> {
+        // Same reasoning as `Store::lock`: the data behind this mutex is
+        // a map, structurally valid whether or not a holder panicked.
+        self.items.lock().unwrap_or_else(|e| e.into_inner())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

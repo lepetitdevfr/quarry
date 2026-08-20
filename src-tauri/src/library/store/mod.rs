@@ -3,6 +3,7 @@ use crate::library::db;
 use crate::library::mirror;
 use crate::library::model::{Collection, LibraryTree, Query, POSITION_GAP};
 use crate::library::paths;
+use crate::secrets::{Credentials, EphemeralCredentials, Keychain};
 use rusqlite::{params, Connection, Row};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -18,6 +19,10 @@ mod tabs;
 pub struct Store {
     conn: Mutex<Connection>,
     mirror_root: PathBuf,
+    /// Where connection passwords live. Injected rather than reached for
+    /// directly so tests never touch the real Keychain — see
+    /// `secrets::Credentials`.
+    credentials: Box<dyn Credentials>,
 }
 
 impl Store {
@@ -27,23 +32,43 @@ impl Store {
         Self::open_at_with_mirror(&paths::database_path()?, &paths::mirror_dir()?)
     }
 
-    /// Test helper: database only, mirror in a sibling temp directory.
+    /// Test helper: database only, mirror in a sibling temp directory,
+    /// and credentials that live and die with the process.
+    ///
+    /// The credential store is the point. `cargo test` re-links a
+    /// differently-signed binary on every build and macOS ties Keychain
+    /// grants to a signature, so any test that reached the real store
+    /// prompted the developer on every run, forever.
     pub fn open_at(path: &Path) -> Result<Self, AppError> {
         let mirror = path
             .parent()
             .unwrap_or_else(|| Path::new("."))
             .join("queries");
-        Self::open_at_with_mirror(path, &mirror)
+        Self::open_at_with(path, &mirror, Box::new(EphemeralCredentials::default()))
     }
 
     /// Open a database at an explicit path with an explicit mirror
-    /// root. Tests use this with a temp directory so they never touch
-    /// the developer's real library.
+    /// root, against the real credential store.
     pub fn open_at_with_mirror(path: &Path, mirror_root: &Path) -> Result<Self, AppError> {
+        Self::open_at_with(path, mirror_root, Box::new(Keychain))
+    }
+
+    fn open_at_with(
+        path: &Path,
+        mirror_root: &Path,
+        credentials: Box<dyn Credentials>,
+    ) -> Result<Self, AppError> {
         Ok(Store {
             conn: Mutex::new(db::open(path)?),
             mirror_root: mirror_root.to_path_buf(),
+            credentials,
         })
+    }
+
+    /// The credential store behind this library, for the commands that
+    /// resolve a password before connecting.
+    pub fn credentials(&self) -> &dyn Credentials {
+        self.credentials.as_ref()
     }
 
     // ---- collections -------------------------------------------------

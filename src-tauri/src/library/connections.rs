@@ -138,7 +138,7 @@ impl Store {
     /// deleting the row would orphan a password with no way to reach it
     /// from the UI again.
     pub fn delete_connection(&self, id: &str) -> Result<(), AppError> {
-        crate::secrets::delete_password(id)?;
+        self.credentials().delete(id)?;
 
         self.lock()
             .execute("delete from connections where id = ?1", params![id])
@@ -164,7 +164,17 @@ impl Store {
     /// place as the record itself, rather than being scattered across
     /// command handlers.
     pub fn save_connection_password(&self, id: &str, password: &str) -> Result<(), AppError> {
-        crate::secrets::save_password(id, password)
+        self.credentials().save(id, password)
+    }
+
+    /// Read a connection's password back.
+    ///
+    /// Here rather than in the command handlers so every credential read
+    /// goes through the same injected store as every write — otherwise a
+    /// test would get an in-memory password on save and a Keychain
+    /// prompt on load.
+    pub fn load_connection_password(&self, id: &str) -> Result<Option<String>, AppError> {
+        self.credentials().load(id)
     }
 }
 
