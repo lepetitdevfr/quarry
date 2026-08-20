@@ -22,6 +22,15 @@ interface Props {
   truncated: boolean;
   /** Applied edits, for a moment, after a batch commits. */
   applied: number | null;
+  /**
+   * True while a write is waiting to be committed or discarded.
+   *
+   * The bar has to say so. A parked write leaves the previous result on
+   * screen — correctly, it is still the last thing that finished — and
+   * without this the only visible change is a `stale` marker, which
+   * describes the grid rather than the transaction that is open.
+   */
+  waiting: boolean;
 }
 
 export function StatusBar({
@@ -34,6 +43,7 @@ export function StatusBar({
   stale,
   truncated,
   applied,
+  waiting,
 }: Props) {
   const savedBadge = saved && <span className="saved-indicator">Saved</span>;
   const appliedBadge = applied !== null && (
@@ -41,6 +51,17 @@ export function StatusBar({
       {applied} change{applied === 1 ? "" : "s"} applied
     </span>
   );
+
+  // A write waiting on a decision outranks even "running": a
+  // transaction is open, and that is the most important true thing
+  // about the connection right now.
+  if (waiting) {
+    return (
+      <div className="status-bar">
+        <span className="status-running">waiting to be confirmed…</span>
+      </div>
+    );
+  }
 
   // Running outranks everything else in the bar. The previous result's
   // row count sitting there unchanged while a statement is in flight is

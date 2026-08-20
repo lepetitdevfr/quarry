@@ -1279,18 +1279,6 @@ export default function App() {
             )}
           </>
         )}
-        {/* The statement has already run; this decides whether it stays.
-          Rendered above the ordinary confirmation because a transaction
-          is open while it is on screen. */}
-      {pendingWrite && (
-        <PendingWriteDialog
-          pending={pendingWrite}
-          seconds={PENDING_WRITE_SECONDS}
-          onCommit={() => void finishPendingWrite(true)}
-          onDiscard={() => void finishPendingWrite(false)}
-        />
-      )}
-
       {confirmRequest && (
           <ConfirmDialog
             message={confirmRequest.message}
@@ -1656,8 +1644,21 @@ export default function App() {
           stale={stale}
           truncated={truncated}
           applied={appliedCount}
+          waiting={pendingWrite !== null}
         />
       </div>
+
+      {/* The statement has already run; this decides whether it stays.
+          Above the ordinary confirmation because a transaction is open
+          for as long as it is on screen. */}
+      {pendingWrite && (
+        <PendingWriteDialog
+          pending={pendingWrite}
+          seconds={PENDING_WRITE_SECONDS}
+          onCommit={() => void finishPendingWrite(true)}
+          onDiscard={() => void finishPendingWrite(false)}
+        />
+      )}
 
       {confirmRequest && (
         <ConfirmDialog
