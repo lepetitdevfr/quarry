@@ -214,6 +214,30 @@ pub struct ConnectionInput {
     pub password: Option<String>,
 }
 
+/// One row of the History list: a statement that was run, or the text
+/// of a tab that was closed.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct RecentItem {
+    pub id: String,
+    /// `run` or `closed`.
+    pub kind: String,
+    pub sql: String,
+    /// The connection it ran against, or was open beside. `None` once
+    /// that connection has been deleted — the work outlives its origin.
+    pub connection_id: Option<String>,
+    /// The closed tab's name, when it had one.
+    pub title: Option<String>,
+    pub first_at: String,
+    pub last_at: String,
+    pub run_count: i64,
+    /// The last run's duration and row count. Both `None` on a closed
+    /// tab, which never ran, and on a run that failed.
+    pub duration_ms: Option<i64>,
+    pub row_count: Option<i64>,
+    /// The last run's error message; `None` when it succeeded.
+    pub error: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

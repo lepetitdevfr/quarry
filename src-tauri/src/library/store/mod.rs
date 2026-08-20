@@ -7,6 +7,7 @@ use rusqlite::{params, Connection, Row};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+mod recent;
 mod tabs;
 
 /// All library reads and writes go through here.
