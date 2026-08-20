@@ -24,7 +24,20 @@ pub struct Parked {
     pub affected: Option<u64>,
 }
 
+impl std::fmt::Debug for Parked {
+    /// Written by hand to leave the held connection out: what is worth
+    /// seeing in a test failure is which statement is parked and what it
+    /// touched, not a pool handle.
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Parked")
+            .field("sql", &self.sql)
+            .field("affected", &self.affected)
+            .finish_non_exhaustive()
+    }
+}
+
 /// What running a guarded write produced.
+#[derive(Debug)]
 pub enum Outcome {
     /// Committed already — indistinguishable from an unguarded run.
     Done(QueryResult),
