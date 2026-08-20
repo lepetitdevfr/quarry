@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use std::path::Path;
 
 /// Bump this when the schema changes and add a migration step below.
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 
 /// Open the database, creating and migrating it if needed.
 ///
@@ -80,10 +80,34 @@ fn migrate(conn: &Connection) -> Result<(), AppError> {
             created_at   text not null
         );
 
+        -- v5: work you ran or closed, so neither is lost. Two kinds of
+        -- row in one table: a `run` is a statement the user executed, a
+        -- `closed` is the unsaved text of a tab that was closed.
+        create table if not exists recent (
+            id            text primary key,
+            kind          text not null,
+            sql           text not null,
+            connection_id text references connections(id) on delete set null,
+            title         text,
+            first_at      text not null,
+            last_at       text not null,
+            run_count     integer not null default 0,
+            duration_ms   integer,
+            row_count     integer,
+            error         text
+        );
+
         create index if not exists idx_collections_parent on collections(parent_id);
         create index if not exists idx_queries_collection on queries(collection_id);
         create index if not exists idx_tabs_position      on tabs(position);
         create index if not exists idx_connections_last_used on connections(last_used_at);
+        -- Runs collapse on identical SQL against the same connection;
+        -- this index is what makes that one statement rather than a
+        -- read-then-write race. Closed rows are outside it deliberately:
+        -- two drafts that read alike are two pieces of work.
+        create unique index if not exists idx_recent_run
+            on recent(sql, connection_id) where kind = 'run';
+        create index if not exists idx_recent_last_at on recent(last_at);
         ",
     )
     .map_err(|e| AppError::Library(e.to_string()))?;
@@ -409,6 +433,61 @@ mod tests {
     }
 
     #[test]
+    fn upgrading_a_v4_database_adds_recent_and_keeps_existing_rows() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("v4.db");
+
+        // A v4 database: everything the app had before history existed.
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "create table tabs (
+                    id          text primary key,
+                    query_id    text,
+                    scratch_sql text,
+                    position    integer not null,
+                    is_active   integer not null default 0,
+                    cursor_pos  integer not null default 0
+                 );
+                 insert into tabs (id, query_id, scratch_sql, position, is_active, cursor_pos)
+                 values ('t1', null, 'select 1', 100, 1, 0);",
+            )
+            .unwrap();
+        }
+
+        let conn = open(&path).unwrap();
+
+        let sql: String = conn
+            .query_row("select scratch_sql from tabs where id = 't1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(
+            sql, "select 1",
+            "an existing tab must survive the migration"
+        );
+
+        // The new table exists and takes a row.
+        conn.execute(
+            "insert into recent (id, kind, sql, first_at, last_at, run_count)
+             values ('r1', 'run', 'select 2', '2026-08-20T00:00:00Z', '2026-08-20T00:00:00Z', 1)",
+            [],
+        )
+        .unwrap();
+
+        let version: i64 = conn
+            .query_row(
+                "select value from meta where key = 'schema_version'",
+                [],
+                |r| r.get::<_, String>(0),
+            )
+            .unwrap()
+            .parse()
+            .unwrap();
+        assert_eq!(version, 5);
+    }
+
+    #[test]
     fn upgrading_a_v1_database_keeps_existing_rows() {
         // The developer has a real library on disk. Adding a table must
         // never cost them their saved queries.
@@ -446,6 +525,8 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
-        assert_eq!(version, "4");
+        // The current version, whatever it is: this test is about the
+        // saved query surviving, not about which version is latest.
+        assert_eq!(version, SCHEMA_VERSION.to_string());
     }
 }
