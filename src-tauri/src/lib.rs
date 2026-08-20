@@ -48,6 +48,7 @@ pub fn run() {
             commands::move_query,
             commands::delete_query,
             commands::list_recent,
+            commands::list_writes,
             commands::forget_recent,
             commands::list_tabs,
             commands::open_tab,

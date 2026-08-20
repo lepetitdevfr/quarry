@@ -180,6 +180,73 @@ fn record_run(
     }
 }
 
+/// Record a write in the audit log.
+///
+/// Fills in the connection from state, so no call site has to remember
+/// to — and copies its name and tag in rather than referencing them,
+/// because the row must still say which database it hit after that
+/// connection is renamed or deleted.
+///
+/// A failure here never fails the user's statement, for the same reason
+/// history's does not: the workspace database is ours, and their write
+/// really did happen.
+fn record_write(
+    state: &tauri::State<'_, AppState>,
+    sql: &str,
+    kind: &str,
+    row_count: Option<i64>,
+    outcome: &str,
+    reason: Option<&str>,
+    undo_sql: Option<String>,
+) {
+    let (connection_id, connection_name, tag) = {
+        let active = state.active();
+        match active.as_ref() {
+            Some(a) => {
+                let name = state
+                    .library
+                    .connection(&a.id)
+                    .map(|c| c.name)
+                    .unwrap_or_else(|_| a.info.dbname.clone());
+                (Some(a.id.clone()), name, a.tag.as_str().to_string())
+            }
+            // Recorded anyway. A write with no connection should be
+            // impossible, and if it happens the audit log is exactly
+            // where that ought to show up.
+            None => (None, "unknown".to_string(), "unknown".to_string()),
+        }
+    };
+
+    if let Err(e) = state
+        .library
+        .record_write(crate::library::model::WriteEntry {
+            connection_id,
+            connection_name,
+            tag,
+            sql: sql.to_string(),
+            kind: kind.to_string(),
+            row_count,
+            outcome: outcome.to_string(),
+            reason: reason.map(str::to_string),
+            undo_sql,
+        })
+    {
+        eprintln!("could not record this write in the audit log: {e}");
+    }
+}
+
+/// The audit log's name for a kind of write.
+fn kind_name(kind: crate::guard::plan::WriteKind) -> &'static str {
+    use crate::guard::plan::WriteKind;
+    match kind {
+        WriteKind::Update => "update",
+        WriteKind::Delete => "delete",
+        WriteKind::Insert => "insert",
+        WriteKind::Ddl => "ddl",
+        WriteKind::Other => "other",
+    }
+}
+
 /// What a DDL statement names, for the confirmation: `public.orders,
 /// ~5M rows`.
 ///
@@ -274,6 +341,15 @@ pub async fn execute(
                 result.affected_rows.map(|n| n as i64),
                 None,
             );
+            record_write(
+                &state,
+                &sql,
+                kind_name(kind),
+                result.affected_rows.map(|n| n as i64),
+                "committed",
+                None,
+                None,
+            );
             Ok(ExecuteResponse::Done(result))
         }
         Ok(crate::exec::guarded::Outcome::Waiting {
@@ -295,6 +371,23 @@ pub async fn execute(
         }
         Err(e) => {
             record_run(&state, &sql, generated, None, None, Some(&e.to_string()));
+            // A refusal is the guard stopping a write on purpose — a
+            // `-- expect:` the database contradicted. Anything else is
+            // the database itself saying no.
+            let outcome = if expect.is_some() {
+                "refused"
+            } else {
+                "failed"
+            };
+            record_write(
+                &state,
+                &sql,
+                kind_name(kind),
+                None,
+                outcome,
+                Some(&e.to_string()),
+                None,
+            );
             Err(e)
         }
     }
@@ -331,23 +424,58 @@ pub async fn resolve_write(
     let outcome = crate::exec::guarded::resolve(parked, commit).await;
 
     match &outcome {
-        Ok(result) if commit => record_run(
-            &state,
-            &sql,
-            false,
-            Some(0),
-            result.affected_rows.map(|n| n as i64),
-            None,
-        ),
-        Ok(_) => record_run(
-            &state,
-            &sql,
-            false,
-            None,
-            None,
-            Some("discarded — rolled back"),
-        ),
-        Err(e) => record_run(&state, &sql, false, None, None, Some(&e.to_string())),
+        Ok(result) if commit => {
+            record_run(
+                &state,
+                &sql,
+                false,
+                Some(0),
+                result.affected_rows.map(|n| n as i64),
+                None,
+            );
+            record_write(
+                &state,
+                &sql,
+                kind_name(crate::guard::write_kind(&sql)),
+                result.affected_rows.map(|n| n as i64),
+                "committed",
+                None,
+                None,
+            );
+        }
+        Ok(_) => {
+            record_run(
+                &state,
+                &sql,
+                false,
+                None,
+                None,
+                Some("discarded — rolled back"),
+            );
+            // Recorded as deliberately as a commit: "I nearly did this
+            // and stopped" is the fact worth having six months later.
+            record_write(
+                &state,
+                &sql,
+                kind_name(crate::guard::write_kind(&sql)),
+                None,
+                "rolled_back",
+                None,
+                None,
+            );
+        }
+        Err(e) => {
+            record_run(&state, &sql, false, None, None, Some(&e.to_string()));
+            record_write(
+                &state,
+                &sql,
+                kind_name(crate::guard::write_kind(&sql)),
+                None,
+                "failed",
+                Some(&e.to_string()),
+                None,
+            );
+        }
     }
 
     outcome
@@ -394,6 +522,7 @@ pub async fn apply_row_edits(
     rows: Vec<RowEdit>,
     deletes: Vec<RowDelete>,
     inserts: Vec<RowInsert>,
+    before: Vec<crate::edit::RowBefore>,
 ) -> Result<Vec<AppliedRow>, AppError> {
     let (pool, policy, unlocked_until) = state.pool_and_guard()?;
 
@@ -403,7 +532,40 @@ pub async fn apply_row_edits(
     // editing on a locked connection; this does not trust it to.
     let read_write = plan_apply(policy, unlocked_until, Instant::now(), &statements)?;
 
-    apply_edits(&pool, &statements, read_write).await
+    // Built before running, not after: the undo is derived from the
+    // values the grid held, and the reply is about to replace them.
+    let summary = statements
+        .iter()
+        .map(|s| s.sql.clone())
+        .collect::<Vec<_>>()
+        .join("\n");
+    let undo = crate::edit::build_undo(&edit, &rows, &before, &deletes);
+    let touched = (rows.len() + deletes.len() + inserts.len()) as i64;
+
+    let outcome = apply_edits(&pool, &statements, read_write).await;
+
+    match &outcome {
+        Ok(_) => record_write(
+            &state,
+            &summary,
+            "batch",
+            Some(touched),
+            "committed",
+            None,
+            undo,
+        ),
+        Err(e) => record_write(
+            &state,
+            &summary,
+            "batch",
+            None,
+            "failed",
+            Some(&e.to_string()),
+            None,
+        ),
+    }
+
+    outcome
 }
 
 /// How long an unlock lasts. Fixed from the moment of unlocking rather
@@ -603,6 +765,13 @@ pub fn delete_query(
 }
 
 // ---- history -----------------------------------------------------------
+
+#[tauri::command]
+pub fn list_writes(
+    state: tauri::State<'_, AppState>,
+) -> Result<Vec<crate::library::model::WriteRecord>, AppError> {
+    state.library.writes()
+}
 
 #[tauri::command]
 pub fn list_recent(state: tauri::State<'_, AppState>) -> Result<Vec<RecentItem>, AppError> {
