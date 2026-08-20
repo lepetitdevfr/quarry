@@ -32,6 +32,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             commands::execute,
             commands::format_sql,
+            commands::resolve_write,
             commands::preview_edits,
             commands::apply_row_edits,
             commands::disconnect,

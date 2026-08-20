@@ -6,7 +6,7 @@ use crate::edit::{
 use crate::error::AppError;
 use crate::exec::{run_query, QueryResult};
 use crate::guard::{decide, Decision, Policy};
-use crate::library::model::{LibraryTree, Query, RecentItem, Tab, TabPin, TableMode};
+use crate::library::model::{LibraryTree, Query, RecentItem, Tab, TabPin, TableMode, Tag};
 use crate::library::store::Store;
 use deadpool_postgres::Pool;
 use serde::Serialize;
@@ -24,6 +24,11 @@ pub struct ActiveConnection {
     pub pool: Pool,
     pub info: ConnectionInfo,
     pub policy: Policy,
+    /// The connection's tag, kept beside the policy it was derived from.
+    /// The policy answers "may this write at all"; the tag answers "how
+    /// carefully" — production asks about every write, whatever its
+    /// policy allows.
+    pub tag: Tag,
     /// When the current unlock expires. `None` means locked.
     ///
     /// Deliberately not persisted: restarting relocks, which is the
@@ -41,6 +46,12 @@ pub struct AppState {
     /// outliving its connection would autocomplete tables from the
     /// wrong database.
     schema: Mutex<Option<crate::schema::Schema>>,
+    /// The one write that may be open, waiting for a decision.
+    ///
+    /// One, not many: the app has one connection and one editor, and a
+    /// second parked transaction would be a lock the user has forgotten
+    /// about. Starting another write rolls this one back first.
+    pending: Mutex<Option<(String, crate::exec::guarded::Parked)>>,
 }
 
 impl AppState {
@@ -51,6 +62,7 @@ impl AppState {
             active: Mutex::new(None),
             library: Store::open()?,
             schema: Mutex::new(None),
+            pending: Mutex::new(None),
         })
     }
 
@@ -71,6 +83,11 @@ impl AppState {
     /// The cached schema, recovering for the same reason as `active`.
     fn schema(&self) -> std::sync::MutexGuard<'_, Option<crate::schema::Schema>> {
         self.schema.lock().unwrap_or_else(|e| e.into_inner())
+    }
+
+    /// The parked write, recovering for the same reason as `active`.
+    fn pending(&self) -> std::sync::MutexGuard<'_, Option<(String, crate::exec::guarded::Parked)>> {
+        self.pending.lock().unwrap_or_else(|e| e.into_inner())
     }
 
     /// Clone the live pool, or report that nothing is connected.
@@ -121,51 +138,216 @@ pub struct ConnectionInfo {
     pub server_version: String,
 }
 
+/// What `execute` returns: a finished result, or a question.
+///
+/// A tagged enum rather than two commands, because the frontend must not
+/// have to guess which shape it is holding.
+#[derive(Debug, Serialize)]
+#[serde(tag = "state", rename_all = "snake_case")]
+pub enum ExecuteResponse {
+    Done(QueryResult),
+    Waiting {
+        token: String,
+        summary: String,
+        affected: Option<u64>,
+        sql: String,
+    },
+}
+
+/// Record a statement in history, unless it is the app's own generated
+/// SQL.
+///
+/// A failure here never fails the user's statement: the workspace
+/// database is ours, not theirs, and their query really did run.
+fn record_run(
+    state: &tauri::State<'_, AppState>,
+    sql: &str,
+    generated: bool,
+    duration_ms: Option<i64>,
+    row_count: Option<i64>,
+    error: Option<&str>,
+) {
+    if generated {
+        return;
+    }
+    let connection_id = state.active().as_ref().map(|a| a.id.clone());
+    if let Err(e) =
+        state
+            .library
+            .record_run(sql, connection_id.as_deref(), duration_ms, row_count, error)
+    {
+        eprintln!("could not record this statement in history: {e}");
+    }
+}
+
+/// What a DDL statement names, for the confirmation: `public.orders,
+/// ~5M rows`.
+///
+/// `None` when the statement is not DDL, or names something the cached
+/// schema does not know. Conservative on purpose: naming the wrong table
+/// would be worse than naming none, and a miss costs the sentence its
+/// detail and nothing else.
+fn ddl_object(
+    state: &tauri::State<'_, AppState>,
+    sql: &str,
+    kind: crate::guard::plan::WriteKind,
+) -> Option<String> {
+    if kind != crate::guard::plan::WriteKind::Ddl {
+        return None;
+    }
+
+    let schema = state.schema();
+    let cached = schema.as_ref()?;
+    let lowered = sql.to_lowercase();
+
+    for node in &cached.schemas {
+        for table in &node.tables {
+            let qualified = format!("{}.{}", node.name, table.name);
+            if lowered.contains(&qualified) {
+                let rows = table
+                    .stats
+                    .as_ref()
+                    .map(|s| format!(", ~{} rows", s.estimated_rows))
+                    .unwrap_or_default();
+                return Some(format!("{qualified}{rows}"));
+            }
+        }
+    }
+
+    None
+}
+
 #[tauri::command]
 pub async fn execute(
     state: tauri::State<'_, AppState>,
     sql: String,
     generated: bool,
-) -> Result<QueryResult, AppError> {
+) -> Result<ExecuteResponse, AppError> {
     let (pool, policy, unlocked_until) = state.pool_and_guard()?;
 
-    // The one chokepoint. Every statement the user runs passes here.
+    // The one chokepoint. Every statement the user runs passes here, and
+    // this decides whether it may run at all — the guarded confirmation
+    // below only decides what to do about one that may.
     let read_write = match decide(policy, unlocked_until, Instant::now(), &sql) {
         Decision::Allow { read_write } => read_write,
         Decision::Deny => return Err(AppError::WriteBlocked(sql.trim().to_string())),
     };
 
-    let outcome = run_query(&pool, &sql, read_write).await;
-
-    // `generated` marks the app's own preview SQL. Recording it would
-    // write a row every time somebody clicks a table in the tree, and
-    // the list would be nothing but `select * from x limit 500`.
-    if !generated {
-        let connection_id = state.active().as_ref().map(|a| a.id.clone());
-        let recorded = match &outcome {
-            Ok(result) => state.library.record_run(
+    // A read runs exactly as it always has: no transaction of its own,
+    // nothing parked, nothing to confirm.
+    if !read_write {
+        let outcome = run_query(&pool, &sql, false).await;
+        match &outcome {
+            Ok(result) => record_run(
+                &state,
                 &sql,
-                connection_id.as_deref(),
+                generated,
                 Some(result.duration_ms as i64),
                 Some(result.row_count as i64),
                 None,
             ),
-            // A failed statement is recorded too: the query you spent
-            // ten minutes failing to get right is work.
-            Err(e) => state.library.record_run(
-                &sql,
-                connection_id.as_deref(),
-                None,
-                None,
-                Some(&e.to_string()),
-            ),
-        };
-        // A history write that failed must not turn a successful SELECT
-        // into an error on screen. The workspace database is ours, not
-        // the user's, and their query really did run.
-        if let Err(e) = recorded {
-            eprintln!("could not record this statement in history: {e}");
+            Err(e) => record_run(&state, &sql, generated, None, None, Some(&e.to_string())),
         }
+        return outcome.map(ExecuteResponse::Done);
+    }
+
+    // Anything still parked is a lock somebody has forgotten about. Roll
+    // it back before taking another.
+    let stale = state.pending().take();
+    if let Some((_, parked)) = stale {
+        let _ = crate::exec::guarded::resolve(parked, false).await;
+    }
+
+    let tag = state.active().as_ref().map(|a| a.tag).unwrap_or(Tag::Local);
+    let kind = crate::guard::write_kind(&sql);
+    let expect = crate::guard::plan::expected_rows(&sql);
+    let object = ddl_object(&state, &sql, kind);
+
+    match crate::exec::guarded::run_guarded(&pool, &sql, tag, kind, expect, object.as_deref()).await
+    {
+        Ok(crate::exec::guarded::Outcome::Done(result)) => {
+            record_run(
+                &state,
+                &sql,
+                generated,
+                Some(result.duration_ms as i64),
+                result.affected_rows.map(|n| n as i64),
+                None,
+            );
+            Ok(ExecuteResponse::Done(result))
+        }
+        Ok(crate::exec::guarded::Outcome::Waiting {
+            parked,
+            summary,
+            affected,
+        }) => {
+            // Recorded when it resolves, not now: what happened to it is
+            // still undecided, and history saying "ran" about a statement
+            // the user then discarded would be the screen lying again.
+            let token = crate::library::store::new_token();
+            *state.pending() = Some((token.clone(), parked));
+            Ok(ExecuteResponse::Waiting {
+                token,
+                summary,
+                affected,
+                sql,
+            })
+        }
+        Err(e) => {
+            record_run(&state, &sql, generated, None, None, Some(&e.to_string()));
+            Err(e)
+        }
+    }
+}
+
+/// Commit or roll back the parked write.
+///
+/// A token that names nothing — already resolved, or the app restarted —
+/// is not an error state: the statement did not run, which is what the
+/// user would have been told had they waited.
+#[tauri::command]
+pub async fn resolve_write(
+    state: tauri::State<'_, AppState>,
+    token: String,
+    commit: bool,
+) -> Result<QueryResult, AppError> {
+    let parked = {
+        let mut slot = state.pending();
+        match slot.as_ref() {
+            Some((held, _)) if *held == token => slot.take().map(|(_, p)| p),
+            _ => None,
+        }
+    };
+
+    let Some(parked) = parked else {
+        return Err(AppError::Query {
+            message: "there is nothing left to confirm — the statement did not run".to_string(),
+            code: None,
+            position: None,
+        });
+    };
+
+    let sql = parked.sql.clone();
+    let outcome = crate::exec::guarded::resolve(parked, commit).await;
+
+    match &outcome {
+        Ok(result) if commit => record_run(
+            &state,
+            &sql,
+            false,
+            Some(0),
+            result.affected_rows.map(|n| n as i64),
+            None,
+        ),
+        Ok(_) => record_run(
+            &state,
+            &sql,
+            false,
+            None,
+            None,
+            Some("discarded — rolled back"),
+        ),
+        Err(e) => record_run(&state, &sql, false, None, None, Some(&e.to_string())),
     }
 
     outcome
@@ -705,6 +887,7 @@ pub async fn connect_saved(
         pool,
         info: info.clone(),
         policy,
+        tag: record.tag,
         // A fresh connection is always locked, whatever the previous
         // one was.
         unlocked_until: None,

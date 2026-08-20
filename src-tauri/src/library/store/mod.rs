@@ -362,6 +362,14 @@ impl Store {
 
 // ---- helpers ---------------------------------------------------------
 
+/// An opaque handle for something held in memory, like a parked write.
+///
+/// Same generator as `new_id`, named for its use so command code does
+/// not reach into a crate-private helper.
+pub fn new_token() -> String {
+    new_id()
+}
+
 pub(crate) fn new_id() -> String {
     uuid::Uuid::new_v4().to_string()
 }
