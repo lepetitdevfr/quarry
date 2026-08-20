@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { ContextMenu, useContextMenu } from "./ContextMenu";
-import { flattenSchema } from "../lib/schema";
+import { flattenSchema, quoteIdent } from "../lib/schema";
 import type { SchemaRow } from "../lib/schema";
 import type { Schema } from "../types";
 
@@ -127,7 +127,10 @@ export function SchemaTree({
         },
       ];
     }
-    const qualified = `${row.tableSchema}.${row.tableName}`;
+    // Quoted only where a bare name would resolve to something else —
+    // the same rule the generated preview follows, so what you copy and
+    // what the app writes cannot disagree.
+    const qualified = `${quoteIdent(row.tableSchema!)}.${quoteIdent(row.tableName!)}`;
     return [
       {
         label: "Open data",

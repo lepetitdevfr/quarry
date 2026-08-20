@@ -165,13 +165,58 @@ export function buildCompletionSchema(
 export const PREVIEW_LIMIT = 500;
 
 /**
- * Quote a Postgres identifier.
+ * Words Postgres will not read as a name unless they are quoted.
+ *
+ * Its reserved category, which is the set that cannot be a table,
+ * column or schema name bare. Anything outside it that still needs
+ * quoting is caught by the shape test in `quoteIdent`.
+ *
+ * Kept deliberately as the reserved list and not the whole keyword
+ * list: quoting `name` or `value` would put the noise back for words
+ * Postgres is perfectly happy to read.
+ */
+const RESERVED = new Set([
+  "all", "analyse", "analyze", "and", "any", "array", "as", "asc",
+  "asymmetric", "both", "case", "cast", "check", "collate", "column",
+  "constraint", "create", "current_catalog", "current_date",
+  "current_role", "current_time", "current_timestamp", "current_user",
+  "default", "deferrable", "desc", "distinct", "do", "else", "end",
+  "except", "false", "fetch", "for", "foreign", "from", "grant", "group",
+  "having", "in", "initially", "intersect", "into", "lateral", "leading",
+  "limit", "localtime", "localtimestamp", "not", "null", "offset", "on",
+  "only", "or", "order", "placing", "primary", "references", "returning",
+  "select", "session_user", "some", "symmetric", "table", "then", "to",
+  "trailing", "true", "union", "unique", "user", "using", "variadic",
+  "when", "where", "window", "with",
+]);
+
+/**
+ * A name Postgres reads back as itself when written bare: lower case,
+ * starting with a letter or underscore, and not a reserved word.
+ *
+ * Anything else — a capital, a space, a hyphen, a leading digit, a
+ * reserved word — either resolves to something different or does not
+ * parse, and must be quoted.
+ */
+function needsQuoting(name: string): boolean {
+  if (!/^[a-z_][a-z0-9_$]*$/.test(name)) return true;
+  return RESERVED.has(name);
+}
+
+/**
+ * Quote a Postgres identifier, but only where quoting changes the
+ * answer.
  *
  * Unquoted identifiers are folded to lower case, so a table created as
  * "Order" would not be found, and a reserved word would not parse at
- * all. A literal double quote inside a name is escaped by doubling it.
+ * all. Everything else is quoted for nothing: `"public"."orders"` is
+ * noise in a statement the user reads, edits and runs, and the app
+ * generating SQL nobody would type is the app talking to itself.
+ *
+ * A literal double quote inside a name is escaped by doubling it.
  */
-function quoteIdent(name: string): string {
+export function quoteIdent(name: string): string {
+  if (!needsQuoting(name)) return name;
   return `"${name.replace(/"/g, '""')}"`;
 }
 

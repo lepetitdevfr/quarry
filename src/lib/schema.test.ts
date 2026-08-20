@@ -4,6 +4,7 @@ import {
   flattenSchema,
   matchesFilter,
   previewSql,
+  quoteIdent,
 } from "./schema";
 import type { Schema } from "../types";
 
@@ -258,30 +259,45 @@ describe("matchesFilter", () => {
 });
 
 describe("previewSql", () => {
-  it("qualifies and quotes the table", () => {
+  it("qualifies the table and quotes nothing that does not need it", () => {
+    // The statement is shown to the user, edited by them, and run. Every
+    // pair of quotes it does not need is noise in SQL nobody would type.
     expect(previewSql("public", "users")).toBe(
-      'select * from "public"."users" limit 500',
+      "select * from public.users limit 500",
     );
   });
 
-  it("survives a name that needs quoting", () => {
-    // An unquoted mixed-case or reserved-word name silently resolves to
-    // something else, or fails outright.
+  it("quotes a name that would resolve to something else unquoted", () => {
+    // Postgres folds an unquoted identifier to lower case, so `Order`
+    // bare finds `order` — a different table, or none.
     expect(previewSql("public", "Order")).toBe(
-      'select * from "public"."Order" limit 500',
+      'select * from public."Order" limit 500',
+    );
+  });
+
+  it("quotes a reserved word", () => {
+    // `select * from public.order` does not parse at all.
+    expect(previewSql("public", "order")).toBe(
+      'select * from public."order" limit 500',
+    );
+    expect(previewSql("user", "t")).toBe(
+      'select * from "user".t limit 500',
+    );
+  });
+
+  it("quotes a name that is not a bare identifier at all", () => {
+    expect(previewSql("public", "two words")).toBe(
+      'select * from public."two words" limit 500',
+    );
+    expect(previewSql("public", "2023_totals")).toBe(
+      'select * from public."2023_totals" limit 500',
     );
   });
 
   it("escapes an embedded double quote", () => {
     // Legal in Postgres, and the only way this builds broken SQL.
     expect(previewSql("public", 'we"ird')).toBe(
-      'select * from "public"."we""ird" limit 500',
-    );
-  });
-
-  it("selects a capped page with no ordering by default", () => {
-    expect(previewSql("public", "users")).toBe(
-      'select * from "public"."users" limit 500',
+      'select * from public."we""ird" limit 500',
     );
   });
 
@@ -290,15 +306,13 @@ describe("previewSql", () => {
     // than the table — which is the entire point of re-running.
     expect(
       previewSql("public", "users", { column: "created_at", direction: "asc" }),
-    ).toBe(
-      'select * from "public"."users" order by "created_at" asc limit 500',
-    );
+    ).toBe("select * from public.users order by created_at asc limit 500");
   });
 
   it("sorts descending", () => {
     expect(
       previewSql("public", "users", { column: "id", direction: "desc" }),
-    ).toBe('select * from "public"."users" order by "id" desc limit 500');
+    ).toBe("select * from public.users order by id desc limit 500");
   });
 
   it("quotes a column name that needs it", () => {
@@ -306,7 +320,34 @@ describe("previewSql", () => {
     // an embedded quote must be doubled or the statement is malformed.
     expect(
       previewSql("public", "users", { column: 'we"ird', direction: "asc" }),
-    ).toBe('select * from "public"."users" order by "we""ird" asc limit 500');
+    ).toBe('select * from public.users order by "we""ird" asc limit 500');
+    expect(
+      previewSql("public", "users", { column: "end", direction: "asc" }),
+    ).toBe('select * from public.users order by "end" asc limit 500');
+  });
+});
+
+describe("quoteIdent", () => {
+  it("leaves an ordinary lower-case name alone", () => {
+    expect(quoteIdent("orders")).toBe("orders");
+    expect(quoteIdent("order_items_2")).toBe("order_items_2");
+    expect(quoteIdent("_private")).toBe("_private");
+  });
+
+  it("quotes anything Postgres would read differently", () => {
+    expect(quoteIdent("Orders")).toBe('"Orders"');
+    expect(quoteIdent("select")).toBe('"select"');
+    expect(quoteIdent("with space")).toBe('"with space"');
+    expect(quoteIdent("1st")).toBe('"1st"');
+    expect(quoteIdent("")).toBe('""');
+  });
+
+  it("does not quote a keyword Postgres accepts as a name", () => {
+    // The reserved list, not every keyword: quoting `name` or `value`
+    // would put the noise back for words Postgres reads happily.
+    expect(quoteIdent("name")).toBe("name");
+    expect(quoteIdent("value")).toBe("value");
+    expect(quoteIdent("type")).toBe("type");
   });
 });
 
