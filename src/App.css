@@ -962,6 +962,17 @@ button:disabled {
   font-size: var(--t-xs);
 }
 
+/* A refused or failed write reads differently from one that landed. The
+   left edge carries it: this list is scanned, not read. */
+.write-row.refused,
+.write-row.failed {
+  border-left: 2px solid var(--error);
+}
+
+.write-row.rolled_back {
+  border-left: 2px solid var(--border);
+}
+
 /* Work from the connection you are on. A left edge rather than a
    heading: it groups without spending a row on saying so. */
 .recent-row.here {

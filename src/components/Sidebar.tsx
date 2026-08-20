@@ -2,9 +2,16 @@ import { useCallback, useRef, useState } from "react";
 import { PaneResizer } from "./PaneResizer";
 import { QueryTree, type Creating } from "./QueryTree";
 import { RecentList } from "./RecentList";
+import { WritesList } from "./WritesList";
 import { SchemaTree } from "./SchemaTree";
 import { DEFAULT_SCHEMA_HEIGHT, clampSectionHeight } from "../lib/layout";
-import type { Connection, LibraryTree, RecentItem, Schema } from "../types";
+import type {
+  Connection,
+  LibraryTree,
+  RecentItem,
+  Schema,
+  WriteRecord,
+} from "../types";
 
 interface Props {
   library: LibraryTree;
@@ -36,6 +43,9 @@ interface Props {
   activeConnectionId: string | null;
   onOpenRecent: (sql: string) => void;
   onForgetRecent: (id: string) => void;
+  /** Every write this app has made, newest first. */
+  writes: WriteRecord[];
+  onOpenWrite: (sql: string) => void;
 }
 
 export function Sidebar(props: Props) {
@@ -49,7 +59,9 @@ export function Sidebar(props: Props) {
   // height maths in a sidebar that is already tight — and the two are
   // alternatives, not competitors: you are either browsing work you
   // saved or recovering work you did not.
-  const [bottom, setBottom] = useState<"queries" | "history">("queries");
+  const [bottom, setBottom] = useState<"queries" | "history" | "writes">(
+    "queries",
+  );
 
   const resize = useCallback((clientY: number) => {
     const shell = shellRef.current;
@@ -108,6 +120,12 @@ export function Sidebar(props: Props) {
             >
               History
             </button>
+            <button
+              className={bottom === "writes" ? "overline active" : "overline"}
+              onClick={() => setBottom("writes")}
+            >
+              Writes
+            </button>
           </div>
           {/* Only the Queries list has anything to create. History is a
               record of what happened, not a place you add to. */}
@@ -145,13 +163,19 @@ export function Sidebar(props: Props) {
             onCommitCreate={props.onCommitCreate}
             onCancelCreate={props.onCancelCreate}
           />
-        ) : (
+        ) : bottom === "history" ? (
           <RecentList
             items={props.recent}
             connections={props.connections}
             activeConnectionId={props.activeConnectionId}
             onOpen={props.onOpenRecent}
             onForget={props.onForgetRecent}
+          />
+        ) : (
+          <WritesList
+            writes={props.writes}
+            connections={props.connections}
+            onOpen={props.onOpenWrite}
           />
         )}
       </section>

@@ -34,6 +34,7 @@ import {
   asAppError,
   execute,
   formatSql,
+  listWrites,
   resolveWrite,
   forgetRecent as forgetRecentIpc,
   listRecent,
@@ -87,6 +88,7 @@ import type {
   LibraryTree,
   PendingWrite,
   RecentItem,
+  WriteRecord,
 } from "./types";
 import type { TableMode } from "./types";
 import "./App.css";
@@ -168,6 +170,14 @@ export default function App() {
 
   const refreshRecent = useCallback(() => {
     void listRecent().then(setRecent);
+  }, []);
+
+  // Every write this app has made. Reloaded wherever history is, since
+  // the same events change both.
+  const [writes, setWrites] = useState<WriteRecord[]>([]);
+
+  const refreshWrites = useCallback(() => {
+    void listWrites().then(setWrites);
   }, []);
 
   // The tab with a statement in flight, so only that tab says "Running…"
@@ -311,6 +321,7 @@ export default function App() {
   // different places. Watching the tab list catches all of them without
   // any of them having to remember.
   useEffect(() => refreshRecent(), [refreshRecent, tabs]);
+  useEffect(() => refreshWrites(), [refreshWrites]);
 
   // The launch screen is a list and a button; a working session is a
   // sidebar, an editor and a grid. Sizing the window to whichever is on
@@ -712,7 +723,10 @@ export default function App() {
       // acknowledgement at all: the bar disappeared and that was that.
       setAppliedCount(count);
       window.setTimeout(() => setAppliedCount(null), SAVED_FLASH_MS);
+      // The batch is in the audit log now, with its undo.
+      refreshWrites();
     } catch (e) {
+      refreshWrites();
       // The whole batch rolled back, so the staged edits stay staged —
       // the user can fix the offending cell and confirm again.
       setError(asAppError(e));
@@ -837,8 +851,10 @@ export default function App() {
       } finally {
         // Only if nothing else started running in the meantime.
         setBusyTabId((busy) => (busy === target ? null : busy));
-        // The statement just became history, whether it worked or not.
+        // The statement just became history, whether it worked or not,
+        // and a write of any kind is now in the audit log too.
         refreshRecent();
+        refreshWrites();
       }
     },
     [connection, activeTabId, refreshRecent],
@@ -922,8 +938,9 @@ export default function App() {
       }
 
       refreshRecent();
+      refreshWrites();
     },
-    [pendingWrite, activeTabId, refreshRecent],
+    [pendingWrite, activeTabId, refreshRecent, refreshWrites],
   );
 
   // Opens, never runs — the same rule the schema tree follows. The
@@ -1347,6 +1364,8 @@ export default function App() {
           onOpenTableStructure={(s, t) => void openTableStructure(s, t)}
           activeTable={tableTarget}
           recent={recent}
+          writes={writes}
+          onOpenWrite={(sql) => void openRecent(sql)}
           connections={connections}
           activeConnectionId={connection?.id ?? null}
           onOpenRecent={(sql) => void openRecent(sql)}
