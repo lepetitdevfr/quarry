@@ -40,7 +40,21 @@ fn dollar_quoted(sql: &str) -> bool {
     false
 }
 
+/// How wide a clause may be and still keep its keyword's company.
+///
+/// Under it, a clause is one line: `where status = 'paid'`. Over it, the
+/// keyword keeps its own line and the parts land underneath, one each —
+/// the only layout that stays readable for a fourteen-column select
+/// list. 80 because that is where a line stops being scannable, and not
+/// a setting because defaults are the product.
+const INLINE_WIDTH: usize = 80;
+
 /// Lay out one statement.
+///
+/// One clause per line, each clause keeping its keyword: `select *` on
+/// one line, `from orders` on the next. The alternative — a bare
+/// `select`, then `*` indented under it — spends a line on every keyword
+/// and makes a five-clause query twelve lines long.
 ///
 /// Keyword case is left exactly as typed. Upper-casing is what most
 /// formatters do, but this app writes its own SQL in lower case — the
@@ -73,6 +87,15 @@ pub fn pretty(sql: &str) -> Result<String, AppError> {
             uppercase: None,
             lines_between_queries: 1,
             dialect: Dialect::PostgreSql,
+            // The three that decide the shape. A clause that fits stays
+            // with its keyword; one that does not breaks into a list.
+            max_inline_top_level: Some(INLINE_WIDTH),
+            max_inline_arguments: Some(INLINE_WIDTH),
+            max_inline_block: INLINE_WIDTH,
+            // A join is a clause, not part of `from`. Three joins on one
+            // line is the thing somebody reaches for this button to
+            // escape.
+            joins_as_top_level: true,
             ..Default::default()
         },
     ))
@@ -94,12 +117,41 @@ mod tests {
     }
 
     #[test]
-    fn breaks_a_one_liner_onto_its_clauses() {
-        let out = done("select id, email from users where plan = 'free' order by id limit 10");
+    fn breaks_a_one_liner_onto_its_clauses_each_keeping_its_keyword() {
+        let out = done("select * from orders where status = 'paid' limit 5");
 
-        assert!(out.contains("select\n"), "got:\n{out}");
-        assert!(out.contains("from\n"), "got:\n{out}");
-        assert!(out.contains("where\n"), "got:\n{out}");
+        assert_eq!(
+            out, "select *\nfrom orders\nwhere status = 'paid'\nlimit 5",
+            "got:\n{out}"
+        );
+    }
+
+    #[test]
+    fn a_clause_too_wide_to_fit_breaks_into_a_list() {
+        // The inline rule is for clauses that stay readable on one line.
+        // A fourteen-column select list does not, and cramming it there
+        // would defeat the point of pressing the button.
+        let wide = format!(
+            "select {} from users",
+            (1..=14)
+                .map(|n| format!("column_number_{n}"))
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
+        let out = done(&wide);
+
+        assert!(
+            out.starts_with("select\n  column_number_1,\n"),
+            "got:\n{out}"
+        );
+        assert!(out.contains("\nfrom users"), "got:\n{out}");
+    }
+
+    #[test]
+    fn a_join_gets_its_own_line() {
+        let out = done("select * from a join b on a.id = b.a_id where a.x = 1");
+
+        assert!(out.contains("\njoin b on a.id = b.a_id"), "got:\n{out}");
     }
 
     #[test]
