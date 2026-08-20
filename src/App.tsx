@@ -53,11 +53,6 @@ import {
   toggleDelete,
   totalPending,
 } from "./lib/pendingEdits";
-import type {
-  Pending,
-  PendingDeletes,
-  PendingInserts,
-} from "./lib/pendingEdits";
 import { formatCountdown } from "./lib/guard";
 import { shouldNotify } from "./lib/updates";
 import {
@@ -66,6 +61,12 @@ import {
   clampEditorHeight,
 } from "./lib/layout";
 import { isTruncated } from "./lib/gridSort";
+import {
+  pruneResults,
+  resultFor,
+  withResult,
+} from "./lib/tabResults";
+import type { TabResult, TabResults } from "./lib/tabResults";
 import type { SortState } from "./lib/gridSort";
 import { sortedIndices } from "./lib/gridSort";
 import { toCsv, toJson, toSqlInsert } from "./lib/exportRows";
@@ -76,10 +77,8 @@ import type {
   AppErrorPayload,
   Connection,
   ConnectionInput,
-  EditStatement,
   GuardStatus,
   LibraryTree,
-  QueryResult,
 } from "./types";
 import type { TableMode } from "./types";
 import "./App.css";
@@ -123,7 +122,7 @@ export default function App() {
   const {
     connections,
     active: connection,
-    connecting,
+    connectingId,
     loaded: connectionsLoaded,
     actions: connActions,
   } = useConnections();
@@ -135,9 +134,14 @@ export default function App() {
   // supply a password inline instead of having to edit the connection.
   const [passwordFor, setPasswordFor] = useState<string | null>(null);
 
-  const [result, setResult] = useState<QueryResult | null>(null);
-  const [error, setError] = useState<AppErrorPayload | null>(null);
-  const [busy, setBusy] = useState(false);
+  // Results belong to the tab that ran them. As ten pieces of app-level
+  // state they belonged to nobody: a brand-new tab showed the previous
+  // tab's rows, and closing a tab left its grid on screen under somebody
+  // else's editor. See `lib/tabResults.ts`.
+  const [tabResults, setTabResults] = useState<TabResults>({});
+  // The tab with a statement in flight, so only that tab says "Running…"
+  // — a spinner on a tab that is not running is the same lie in miniature.
+  const [busyTabId, setBusyTabId] = useState<string | null>(null);
   // Seconds the in-flight statement has been running. A query that
   // takes a while used to look identical to one that had finished: the
   // Run button said "Running…" and nothing else moved.
@@ -147,7 +151,7 @@ export default function App() {
   const [appliedCount, setAppliedCount] = useState<number | null>(null);
 
   useEffect(() => {
-    if (!busy) {
+    if (busyTabId === null) {
       setElapsed(0);
       return;
     }
@@ -157,20 +161,8 @@ export default function App() {
       100,
     );
     return () => window.clearInterval(handle);
-  }, [busy]);
+  }, [busyTabId]);
 
-  // Cell edits staged against `result`, and the statements the backend
-  // would run for them while the SQL panel is open.
-  const [pending, setPending] = useState<Pending>(emptyPending());
-  // Rows staged for deletion, and the row the grid currently has
-  // selected — the toolbar's Delete row button acts on it, and the
-  // selection lives inside the grid.
-  const [deletes, setDeletes] = useState<PendingDeletes>(emptyDeletes());
-  // Rows staged for insertion. Cleared wherever the staged edits are:
-  // a staged row that outlived its result would be applied against
-  // whatever replaced it.
-  const [inserts, setInserts] = useState<PendingInserts>(emptyInserts());
-  const [selectedRow, setSelectedRow] = useState<number | null>(null);
   // The SQL behind a Data tab, shown in an editor above the grid. Held
   // here rather than in the tab record: it is a scratch edit of a
   // generated query, and persisting it would make a table tab reopen
@@ -180,7 +172,6 @@ export default function App() {
   // is what stops a sort from regenerating the query and discarding the
   // edit.
   const [tableSqlEdited, setTableSqlEdited] = useState(false);
-  const [editSql, setEditSql] = useState<EditStatement[] | null>(null);
   const [applying, setApplying] = useState(false);
 
   // Deliberately not persisted: one integer of UI state, restored by a
@@ -215,6 +206,74 @@ export default function App() {
 
   const { library, tabs, activeTab, loaded, queryById, autosave, actions } =
     useLibrary();
+
+  // ---- the active tab's results ---------------------------------------
+  //
+  // The result, the error, the sort, the staged edits and the grid's
+  // selection all belong to one tab now. Everything below reads and
+  // writes the active tab's own copy, and the setters keep the names and
+  // the shape the single-result version had — including functional
+  // updates — so every call site still says what it means; what changed
+  // is which tab it lands on.
+  //
+  // Anything that has to survive a tab switch mid-flight names its tab
+  // explicitly instead: see `runSql`.
+  const activeTabId = activeTab?.id ?? null;
+  const current = resultFor(tabResults, activeTabId);
+  const {
+    result,
+    error,
+    ranSql,
+    ranGenerated,
+    sort,
+    pending,
+    deletes,
+    inserts,
+    selectedRow,
+    editSql,
+  } = current;
+  const busy = busyTabId !== null && busyTabId === activeTabId;
+
+  const setters = useMemo(() => {
+    function setter<K extends keyof TabResult>(key: K) {
+      return (value: TabResult[K] | ((previous: TabResult[K]) => TabResult[K])) =>
+        setTabResults((all) => {
+          const previous = resultFor(all, activeTabId)[key];
+          const next =
+            typeof value === "function"
+              ? (value as (previous: TabResult[K]) => TabResult[K])(previous)
+              : value;
+          return withResult(all, activeTabId, { [key]: next });
+        });
+    }
+    return {
+      setResult: setter("result"),
+      setError: setter("error"),
+      setSort: setter("sort"),
+      setPending: setter("pending"),
+      setDeletes: setter("deletes"),
+      setInserts: setter("inserts"),
+      setSelectedRow: setter("selectedRow"),
+      setEditSql: setter("editSql"),
+    };
+  }, [activeTabId]);
+  const {
+    setResult,
+    setError,
+    setSort,
+    setPending,
+    setDeletes,
+    setInserts,
+    setSelectedRow,
+    setEditSql,
+  } = setters;
+
+  // A closed tab takes its rows with it. Pruning here rather than in the
+  // close handler covers every way a tab can disappear — ⌘W, the ×,
+  // "close others" — with one rule.
+  useEffect(() => {
+    setTabResults((all) => pruneResults(all, tabs.map((t) => t.id)));
+  }, [tabs]);
 
   // The launch screen is a list and a button; a working session is a
   // sidebar, an editor and a grid. Sizing the window to whichever is on
@@ -399,14 +458,6 @@ export default function App() {
 
   // Sort lives here rather than in the grid because a table Data tab
   // sorts by re-running the query, which only App can do.
-  const [sort, setSort] = useState<SortState | null>(null);
-  // The statement behind the current result, for truncation detection
-  // and for re-running a Data tab in a new order.
-  const [ranSql, setRanSql] = useState("");
-  // Whether that statement was the app's own generated preview rather
-  // than something a person typed. Only the app's cap can truncate a
-  // result: a `LIMIT` the user wrote is the question they asked.
-  const [ranGenerated, setRanGenerated] = useState(false);
 
   // The editor's text is local while typing; autosave persists it.
   const [text, setText] = useState("");
@@ -665,30 +716,41 @@ export default function App() {
   // statement rather than being re-derived later, because the same
   // string is app-written on one tab and hand-edited on the next.
   const runSql = useCallback(
-    async (sql: string, generated = false) => {
+    async (sql: string, generated = false, target = activeTabId) => {
       if (!connection) return;
-      setBusy(true);
-      setError(null);
+      // The target tab is fixed before the first await and every write
+      // below names it. Switching tabs mid-flight must neither move the
+      // "Running…" to the tab you landed on nor drop the rows into it.
+      setBusyTabId(target);
+      setTabResults((all) => withResult(all, target, { error: null }));
       try {
-        setResult(await execute(sql));
-        setRanSql(sql);
-        setRanGenerated(generated);
-        // Staged changes belong to the rows they were staged against.
-        setPending(emptyPending());
-        setDeletes(emptyDeletes());
-        setInserts(emptyInserts());
-        setSelectedRow(null);
-        setEditSql(null);
+        const next = await execute(sql);
+        setTabResults((all) =>
+          withResult(all, target, {
+            result: next,
+            ranSql: sql,
+            ranGenerated: generated,
+            // Staged changes belong to the rows they were staged against.
+            pending: emptyPending(),
+            deletes: emptyDeletes(),
+            inserts: emptyInserts(),
+            selectedRow: null,
+            editSql: null,
+          }),
+        );
       } catch (e) {
-        setError(asAppError(e));
         // The previous result deliberately stays on screen. A sort on a
         // Data tab is a re-run, so a failed sort would otherwise throw
         // away the rows you already had — worse than the failure.
+        setTabResults((all) =>
+          withResult(all, target, { error: asAppError(e) }),
+        );
       } finally {
-        setBusy(false);
+        // Only if nothing else started running in the meantime.
+        setBusyTabId((busy) => (busy === target ? null : busy));
       }
     },
-    [connection],
+    [connection, activeTabId],
   );
 
   // `sql` is the statement the editor extracted under the cursor;
@@ -709,12 +771,21 @@ export default function App() {
   // from the cached schema.
   const openTableData = useCallback(
     async (schemaName: string, tableName: string) => {
-      setSort(null);
-      await actions.openTableTab(schemaName, tableName, "data", "preview");
+      // The preview tab is reused by the next click, so it can arrive
+      // holding the previous table's sort. Clearing it on the tab we are
+      // actually about to fill, rather than on whichever tab was active
+      // a moment ago, is the whole point of aiming these by id.
+      const target = await actions.openTableTab(
+        schemaName,
+        tableName,
+        "data",
+        "preview",
+      );
+      setTabResults((all) => withResult(all, target, { sort: null }));
       const sql = previewSql(schemaName, tableName);
       setTableSql(sql);
       setTableSqlEdited(false);
-      await runSql(sql, true);
+      await runSql(sql, true, target);
     },
     [actions, runSql],
   );
@@ -950,14 +1021,15 @@ export default function App() {
     async (id: string, password?: string) => {
       setConnectError(null);
       try {
-        await connActions.connect(id, password);
-        setResult(null);
-        setPending(emptyPending());
-        setDeletes(emptyDeletes());
-        setInserts(emptyInserts());
-        setSelectedRow(null);
-        setEditSql(null);
-        setError(null);
+        const info = await connActions.connect(id, password);
+        // A cancelled or superseded attempt is not a switch and must not
+        // clear anybody's rows.
+        if (info === null) return;
+        // Every tab, not just this one: rows fetched from the database
+        // you just left are not an answer about the one you arrived at,
+        // and a tab you switch to later would have shown them as if they
+        // were. The tabs and their SQL survive; only the results go.
+        setTabResults({});
         setPickerOpen(false);
         setPasswordFor(null);
       } catch (e) {
@@ -1046,7 +1118,8 @@ export default function App() {
               standalone
               connections={connections}
               activeId={null}
-              connecting={connecting}
+              connectingId={connectingId}
+              onCancelConnect={() => connActions.cancelConnect()}
               onPick={(id) => void switchTo(id)}
               onNew={() => setEditing("new")}
               onEdit={(id) =>
@@ -1209,7 +1282,8 @@ export default function App() {
               <ConnectionPicker
                 connections={connections}
                 activeId={connection.id}
-                connecting={connecting}
+                connectingId={connectingId}
+                onCancelConnect={() => connActions.cancelConnect()}
                 onPick={(id) => void switchTo(id)}
                 onNew={() => {
                   setPickerOpen(false);

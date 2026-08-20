@@ -103,12 +103,20 @@ export function useLibrary() {
     openPreview: async (title: string, sql: string) =>
       setTabs(await ipc.openPreviewTab(title, sql)),
     promoteTab: async (id: string) => setTabs(await ipc.promoteTab(id)),
+    // Returns the id of the tab that ended up active, so the caller can
+    // aim a query's results at it. Reading the active tab afterwards
+    // would race: this resolves before React has re-rendered with the
+    // new list.
     openTableTab: async (
       schema: string,
       table: string,
       mode: TableMode,
       pin: TabPin,
-    ) => setTabs(await ipc.openTableTab(schema, table, mode, pin)),
+    ): Promise<string | null> => {
+      const next = await ipc.openTableTab(schema, table, mode, pin);
+      setTabs(next);
+      return next.find((t) => t.is_active)?.id ?? null;
+    },
     setTabMode: async (id: string, mode: TableMode) =>
       setTabs(await ipc.setTabMode(id, mode)),
 

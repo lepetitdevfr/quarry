@@ -37,7 +37,7 @@ async fn connecting_with_no_password_fails() {
     let pool =
         build_pool(&cfg, Policy::Free).expect("build_pool should succeed even without a password");
 
-    let err = ping(&pool)
+    let err = ping(&pool, "test")
         .await
         .expect_err("ping should fail: the server requires a password we didn't supply");
 

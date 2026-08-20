@@ -25,7 +25,7 @@ async fn require_refuses_a_server_without_tls() {
 
     let pool =
         build_pool(&config_for(db.port, "require"), Policy::Free).expect("pool should build");
-    let result = ping(&pool).await;
+    let result = ping(&pool, "test").await;
 
     assert!(
         result.is_err(),
@@ -42,7 +42,7 @@ async fn prefer_falls_back_to_plaintext() {
     // back, and must still connect. If this ever fails, the fix above
     // has been over-applied and every non-TLS database is unreachable.
     let pool = build_pool(&config_for(db.port, "prefer"), Policy::Free).expect("pool should build");
-    let version = ping(&pool)
+    let version = ping(&pool, "test")
         .await
         .expect("prefer should fall back and connect");
 
@@ -55,7 +55,7 @@ async fn disable_connects_without_tls() {
 
     let pool =
         build_pool(&config_for(db.port, "disable"), Policy::Free).expect("pool should build");
-    let version = ping(&pool).await.expect("disable should connect");
+    let version = ping(&pool, "test").await.expect("disable should connect");
 
     assert!(version.contains("PostgreSQL"));
 }
@@ -72,7 +72,7 @@ async fn verify_full_refuses_a_server_without_tls() {
     // TLS and does not fall back to plaintext.
     let pool =
         build_pool(&config_for(db.port, "verify-full"), Policy::Free).expect("pool should build");
-    let result = ping(&pool).await;
+    let result = ping(&pool, "test").await;
 
     assert!(
         result.is_err(),

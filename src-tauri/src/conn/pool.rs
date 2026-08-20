@@ -8,6 +8,7 @@ use rustls::client::danger::{HandshakeSignatureValid, ServerCertVerified, Server
 use rustls::pki_types::{CertificateDer, ServerName, UnixTime};
 use rustls::{DigitallySignedStruct, SignatureScheme};
 use std::sync::Arc;
+use std::time::Duration;
 use tokio_postgres::NoTls;
 use tokio_postgres_rustls::MakeRustlsConnect;
 
@@ -216,11 +217,46 @@ impl ServerCertVerifier for NoVerifyVerifier {
     }
 }
 
+/// How long to wait for a server to answer before giving up on it.
+///
+/// Nothing below this call has a ceiling of its own: a paused container,
+/// a dropped VPN or a firewalled port leaves the TCP connect hanging,
+/// and the UI sat there with no spinner, no error and no way out until
+/// the server came back — then completed the switch silently, minutes
+/// later. Ten seconds is longer than any healthy handshake and shorter
+/// than a person's patience.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// Fail a connection attempt that has taken too long, naming the target
+/// so the message says which server went quiet.
+///
+/// Split out from `ping` so the deadline can be tested without a
+/// database: the failure it exists for is precisely the one no reachable
+/// server will reproduce.
+async fn within_connect_timeout<T>(
+    target: &str,
+    work: impl std::future::Future<Output = Result<T, AppError>>,
+) -> Result<T, AppError> {
+    match tokio::time::timeout(CONNECT_TIMEOUT, work).await {
+        Ok(result) => result,
+        Err(_) => Err(AppError::Connection(format!(
+            "{target} did not answer within {}s",
+            CONNECT_TIMEOUT.as_secs()
+        ))),
+    }
+}
+
 /// Prove the connection works and report the server version.
-pub async fn ping(pool: &Pool) -> Result<String, AppError> {
-    let client = pool.get().await?;
-    let row = client.query_one("SELECT version()", &[]).await?;
-    Ok(row.get::<_, String>(0))
+///
+/// `target` is only for the message — `host:port`, so a timeout says
+/// which server it waited for.
+pub async fn ping(pool: &Pool, target: &str) -> Result<String, AppError> {
+    within_connect_timeout(target, async {
+        let client = pool.get().await?;
+        let row = client.query_one("SELECT version()", &[]).await?;
+        Ok(row.get::<_, String>(0))
+    })
+    .await
 }
 
 #[cfg(test)]
@@ -233,6 +269,36 @@ mod tests {
     /// provider is actually available. `install_default` returns `Err` if
     /// a provider is already installed (e.g. by an earlier test in this
     /// binary), which is fine — we only care that one ends up installed.
+    /// A server that never answers must fail on its own, with a message
+    /// that names it. Driven on a paused clock, so the ten-second
+    /// deadline costs the test nothing: `tokio::time::pause` makes time
+    /// jump to the next deadline whenever the runtime goes idle.
+    #[tokio::test(start_paused = true)]
+    async fn a_server_that_never_answers_times_out_and_says_which_one() {
+        let err = within_connect_timeout::<String>("db.example:5432", async {
+            std::future::pending::<Result<String, AppError>>().await
+        })
+        .await
+        .expect_err("a hang must not be reported as a connection");
+
+        let message = err.to_string();
+        assert!(
+            message.contains("db.example:5432") && message.contains("10s"),
+            "message was: {message}"
+        );
+    }
+
+    /// The deadline must not touch a server that does answer.
+    #[tokio::test(start_paused = true)]
+    async fn a_server_that_answers_is_left_alone() {
+        let version =
+            within_connect_timeout("db.example:5432", async { Ok("PostgreSQL 17".to_string()) })
+                .await
+                .expect("an answer inside the deadline is not a timeout");
+
+        assert_eq!(version, "PostgreSQL 17");
+    }
+
     #[test]
     fn builds_a_tls_connector() {
         let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();

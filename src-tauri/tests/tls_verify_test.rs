@@ -96,7 +96,7 @@ async fn require_accepts_a_self_signed_certificate() {
     let cfg = ConnectionConfig::from_url(&url).expect("test URL should parse");
     let pool = build_pool(&cfg, Policy::Free).expect("pool should build");
 
-    let version = ping(&pool)
+    let version = ping(&pool, "test")
         .await
         .expect("require should complete a TLS handshake against a self-signed cert");
     assert!(version.contains("PostgreSQL"));

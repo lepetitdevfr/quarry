@@ -3,7 +3,7 @@ mod common;
 #[tokio::test]
 async fn harness_starts_a_working_postgres() {
     let db = common::start().await;
-    let version = quarry_lib::conn::ping(&db.pool)
+    let version = quarry_lib::conn::ping(&db.pool, "test")
         .await
         .expect("ping should succeed against the container");
     assert!(

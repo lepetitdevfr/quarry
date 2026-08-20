@@ -25,7 +25,7 @@ fn pool() -> deadpool_postgres::Pool {
 #[tokio::test]
 #[ignore]
 async fn connects_and_reports_server_version() {
-    let version = ping(&pool()).await.expect("ping should succeed");
+    let version = ping(&pool(), "test").await.expect("ping should succeed");
     println!("server: {version}");
     assert!(version.contains("PostgreSQL"));
 }

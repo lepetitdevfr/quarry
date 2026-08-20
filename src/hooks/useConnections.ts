@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import * as ipc from "../lib/ipc";
 import type { Connection, ConnectionInfo, ConnectionInput } from "../types";
 
@@ -11,8 +11,13 @@ import type { Connection, ConnectionInfo, ConnectionInput } from "../types";
 export function useConnections() {
   const [connections, setConnections] = useState<Connection[]>([]);
   const [active, setActive] = useState<ConnectionInfo | null>(null);
-  const [connecting, setConnecting] = useState(false);
+  // Which connection is being dialled, not merely that one is: the
+  // picker names it while it waits.
+  const [connectingId, setConnectingId] = useState<string | null>(null);
   const [loaded, setLoaded] = useState(false);
+  // Bumped by every attempt and by every cancel, so a reply can tell
+  // whether anyone is still waiting for it.
+  const attempt = useRef(0);
 
   useEffect(() => {
     let cancelled = false;
@@ -27,17 +32,43 @@ export function useConnections() {
     };
   }, []);
 
+  /**
+   * Dial a saved connection.
+   *
+   * Returns `null` when the attempt was cancelled or superseded, which
+   * is not a failure and must not be reported as one. A cancelled
+   * attempt that lands anyway is disconnected immediately: the backend
+   * installed a live connection nobody asked for any more, and leaving
+   * it there would make the app connected to a database it says it is
+   * not connected to.
+   */
   const connect = useCallback(async (id: string, password?: string) => {
-    setConnecting(true);
+    const token = ++attempt.current;
+    setConnectingId(id);
     try {
       const info = await ipc.connectSaved(id, password);
+      if (token !== attempt.current) {
+        await ipc.disconnect();
+        return null;
+      }
       setActive(info);
-      // Connecting changes last_used_at, which changes the order.
       setConnections(await ipc.listConnections());
       return info;
     } finally {
-      setConnecting(false);
+      setConnectingId((current) =>
+        token === attempt.current ? null : current,
+      );
     }
+  }, []);
+
+  /**
+   * Stop waiting. The request itself cannot be recalled — it is a
+   * round trip already in flight — so this abandons its reply and lets
+   * the backend's own deadline end it.
+   */
+  const cancelConnect = useCallback(() => {
+    attempt.current += 1;
+    setConnectingId(null);
   }, []);
 
   const disconnect = useCallback(async () => {
@@ -47,6 +78,7 @@ export function useConnections() {
 
   const actions = {
     connect,
+    cancelConnect,
     disconnect,
     create: async (input: ConnectionInput) =>
       setConnections(await ipc.createConnection(input)),
@@ -59,5 +91,5 @@ export function useConnections() {
     },
   };
 
-  return { connections, active, connecting, loaded, actions };
+  return { connections, active, connectingId, loaded, actions };
 }

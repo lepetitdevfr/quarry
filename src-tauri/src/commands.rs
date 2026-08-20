@@ -588,7 +588,8 @@ pub async fn connect_saved(
     // Build and verify BEFORE touching the active slot: a failed
     // connect must leave the user disconnected, never half-switched.
     let pool = build_pool(&cfg, policy)?;
-    let server_version = match ping(&pool).await {
+    let target = format!("{}:{}", record.host, record.port);
+    let server_version = match ping(&pool, &target).await {
         Ok(v) => v,
         // A failure with no password is almost always the missing
         // password rather than anything else the driver reports —

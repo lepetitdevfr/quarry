@@ -833,6 +833,18 @@ button:disabled {
   opacity: 0.9;
 }
 
+/* Sits under the row it belongs to, quiet — it is a state, not an
+   alarm. The Cancel link is the only control left enabled while a
+   connection is being dialled. */
+.picker-connecting {
+  display: flex;
+  align-items: center;
+  gap: var(--s-2);
+  padding: 2px 8px 6px;
+  color: var(--muted);
+  font-size: var(--t-sm);
+}
+
 .picker-empty {
   margin: 8px;
   color: var(--muted);

@@ -334,7 +334,9 @@ async fn a_wrong_password_reports_its_sqlstate() {
     let cfg = ConnectionConfig::from_url(&url).expect("test URL should parse");
     let pool = build_pool(&cfg, Policy::Free).expect("pool should build");
 
-    let err = ping(&pool).await.expect_err("wrong password should fail");
+    let err = ping(&pool, "test")
+        .await
+        .expect_err("wrong password should fail");
 
     // Serialize the way the UI receives it, so this asserts on the real
     // IPC payload rather than the internal Rust shape.

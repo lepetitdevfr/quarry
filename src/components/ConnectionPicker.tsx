@@ -5,7 +5,10 @@ import type { Connection } from "../types";
 interface Props {
   connections: Connection[];
   activeId: string | null;
-  connecting: boolean;
+  /** The connection being dialled, if any. */
+  connectingId: string | null;
+  /** Stop waiting for it. */
+  onCancelConnect: () => void;
   onPick: (id: string) => void;
   onNew: () => void;
   onEdit: (id: string) => void;
@@ -17,7 +20,8 @@ interface Props {
 export function ConnectionPicker({
   connections,
   activeId,
-  connecting,
+  connectingId,
+  onCancelConnect,
   onPick,
   onNew,
   onEdit,
@@ -57,7 +61,7 @@ export function ConnectionPicker({
             <button
               ref={i === recent ? recentRef : undefined}
               className={`picker-row${c.id === activeId ? " active" : ""}`}
-              disabled={connecting}
+              disabled={connectingId !== null}
               // The name is what identifies a connection — it is typed by
               // the person who made it. The target stays as the tooltip
               // for the moment the name is not enough to tell two apart.
@@ -78,6 +82,23 @@ export function ConnectionPicker({
                 {c.tag}
               </span>
             </button>
+            {/* Said out loud, on the row it applies to. An unreachable
+                server used to look exactly like a click that did not
+                register: no spinner, no error, and a switch that
+                completed silently minutes later. */}
+            {c.id === connectingId && (
+              <span className="picker-connecting">
+                Connecting…
+                <button
+                  className="link"
+                  onClick={onCancelConnect}
+                  // The row itself is disabled while dialling; this must
+                  // not be, or there is no way out.
+                >
+                  Cancel
+                </button>
+              </span>
+            )}
             <button
               className="row-action"
               title="Edit connection"
