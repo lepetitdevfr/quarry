@@ -1,3 +1,25 @@
+## [0.5.0](https://github.com/lepetitdevfr/quarry/compare/v0.4.1...v0.5.0) (2026-08-20)
+
+### Features
+
+* **history:** browse and recover recent work from the sidebar ([9bfd481](https://github.com/lepetitdevfr/quarry/commit/9bfd481bad74b4a540838688783a2d43d34a3f70))
+* **history:** closing a tab keeps its unsaved text ([14f1948](https://github.com/lepetitdevfr/quarry/commit/14f19489cdf5f51260a346b762d016547460d0a6))
+* **history:** decide the list's order and summary ([5d4bc85](https://github.com/lepetitdevfr/quarry/commit/5d4bc8522d6889af47473d06a00ded8a88bf08dd))
+* **history:** expose recent work over IPC ([f735777](https://github.com/lepetitdevfr/quarry/commit/f73577771816abb9b8e0a479193bac13d2ee9163))
+* **history:** record every statement the user runs ([9e2ace2](https://github.com/lepetitdevfr/quarry/commit/9e2ace2b06b7e1b7249c46d80f477c000dd4889c))
+* **library:** add the recent table at schema version 5 ([d9f797e](https://github.com/lepetitdevfr/quarry/commit/d9f797e79398c9b0e33a7b836e1a02374b12273a))
+* **library:** record and read recent work ([303e786](https://github.com/lepetitdevfr/quarry/commit/303e78640f872f4a3d468b8fad0236fc58f34ef1))
+* **schema:** show views in the tree, and test a connection before saving ([c9456b9](https://github.com/lepetitdevfr/quarry/commit/c9456b99e7c7fff37ba94f9324dcef09da530fd1))
+* **secrets:** keep every password in one Keychain item ([5a10a2d](https://github.com/lepetitdevfr/quarry/commit/5a10a2d995e2183e4ff060f46834f8c3ef05a118))
+* **ui:** identify connections by name, not by their URL ([150b7e2](https://github.com/lepetitdevfr/quarry/commit/150b7e2aa4204314f4a187d72adce1e1129fb2b2))
+
+### Fixes
+
+* **history:** open recovered work into a tab that already holds it ([f4ed2bd](https://github.com/lepetitdevfr/quarry/commit/f4ed2bd48df2b349d17fae5eff81bbcde660795a))
+* **tabs:** open onto a focused editor ([58f1add](https://github.com/lepetitdevfr/quarry/commit/58f1add226fe4b444026c47889c949fe1fc36204))
+* **trust:** give every result a tab, and every connect a deadline ([529843d](https://github.com/lepetitdevfr/quarry/commit/529843dca3575b15d7fd823f6f74036635791909))
+* **trust:** stop the status bar, refusals and picker from misleading ([5efacfb](https://github.com/lepetitdevfr/quarry/commit/5efacfb6b9d7e2795e9cd912f8c48a575cc6dabd))
+
 ## [0.4.1](https://github.com/lepetitdevfr/quarry/compare/v0.4.0...v0.4.1) (2026-08-19)
 
 ### Fixes
