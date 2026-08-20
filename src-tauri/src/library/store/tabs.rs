@@ -51,6 +51,28 @@ impl Store {
         read_tab(&conn, &id)
     }
 
+    /// Point an untitled tab at a query that has just been created from
+    /// its text.
+    ///
+    /// The alternative — close the scratch tab, open one for the query —
+    /// was worse in two ways: the close recorded the text in History as
+    /// unsaved work, which is precisely what it is not, and the new tab
+    /// id made the editor reseed from the database mid-save. Repointing
+    /// keeps the tab, its position and its focus; only what it is bound
+    /// to changes.
+    pub fn attach_query(&self, tab_id: &str, query_id: &str) -> Result<(), AppError> {
+        let conn = self.lock();
+        conn.execute(
+            "update tabs
+                set query_id = :query_id, scratch_sql = null, title = null,
+                    is_preview = 0
+              where id = :id",
+            named_params! { ":id": tab_id, ":query_id": query_id },
+        )
+        .map_err(sql_err)?;
+        activate(&conn, tab_id)
+    }
+
     pub fn tabs(&self) -> Result<Vec<Tab>, AppError> {
         let conn = self.lock();
         let mut stmt = conn

@@ -194,6 +194,14 @@ export async function openTabWithSql(sql: string): Promise<Tab[]> {
   return invoke<Tab[]>("open_tab_with_sql", { sql });
 }
 
+/** Bind an untitled tab to the query just created from its text. */
+export async function attachQuery(
+  tabId: string,
+  queryId: string,
+): Promise<Tab[]> {
+  return invoke<Tab[]>("attach_query", { tabId, queryId });
+}
+
 export async function openTab(queryId: string | null): Promise<Tab[]> {
   return invoke<Tab[]>("open_tab", { queryId });
 }

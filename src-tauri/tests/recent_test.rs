@@ -282,3 +282,43 @@ fn closing_a_tab_holding_only_whitespace_records_nothing() {
 
     assert!(store.recent().unwrap().is_empty());
 }
+
+#[test]
+fn saving_an_untitled_tab_does_not_record_its_text_as_lost() {
+    // Saving is the opposite of losing. The scratch tab used to be
+    // closed and replaced during a save, which logged the text as
+    // unsaved work in the very list that exists to catch work nobody
+    // saved.
+    let (store, _conn_a, _conn_b, _dir) = store();
+    let tab = store.open_tab(None).unwrap();
+    store.save_scratch(&tab.id, "select 42").unwrap();
+
+    let created = store.create_query("kept", "select 42", None).unwrap();
+    store.save_query(&created.id, "select 42").unwrap();
+    store.attach_query(&tab.id, &created.id).unwrap();
+
+    assert!(store.recent().unwrap().is_empty());
+}
+
+#[test]
+fn attaching_a_query_keeps_the_same_tab_active() {
+    // The tab, its position and its focus survive a save: only what it
+    // is bound to changes. A new tab id would make the editor reseed
+    // itself from the database in the middle of saving.
+    let (store, _conn_a, _conn_b, _dir) = store();
+    let tab = store.open_tab(None).unwrap();
+    store.save_scratch(&tab.id, "select 42").unwrap();
+    let created = store.create_query("kept", "select 42", None).unwrap();
+
+    store.attach_query(&tab.id, &created.id).unwrap();
+
+    let tabs = store.tabs().unwrap();
+    assert_eq!(tabs.len(), 1);
+    assert_eq!(tabs[0].id, tab.id, "the tab must survive the save");
+    assert!(tabs[0].is_active);
+    assert_eq!(tabs[0].query_id.as_deref(), Some(created.id.as_str()));
+    assert_eq!(
+        tabs[0].scratch_sql, None,
+        "the text lives in the query now, not in the tab"
+    );
+}

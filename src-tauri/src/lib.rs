@@ -49,6 +49,7 @@ pub fn run() {
             commands::list_tabs,
             commands::open_tab,
             commands::open_tab_with_sql,
+            commands::attach_query,
             commands::activate_tab,
             commands::close_tab,
             commands::save_scratch,

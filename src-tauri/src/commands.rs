@@ -462,6 +462,17 @@ pub fn open_tab_with_sql(
     state.library.tabs()
 }
 
+/// Bind an untitled tab to the query just created from its text.
+#[tauri::command]
+pub fn attach_query(
+    state: tauri::State<'_, AppState>,
+    tab_id: String,
+    query_id: String,
+) -> Result<Vec<Tab>, AppError> {
+    state.library.attach_query(&tab_id, &query_id)?;
+    state.library.tabs()
+}
+
 #[tauri::command]
 pub fn activate_tab(state: tauri::State<'_, AppState>, id: String) -> Result<Vec<Tab>, AppError> {
     state.library.activate_tab(&id)?;

@@ -168,10 +168,11 @@ export function useLibrary() {
         const created = await ipc.createQuery(nameIfNew, sql, null);
         await ipc.saveQuery(created.id, sql);
         setLibrary(await ipc.libraryTree());
-        // Repoint the tab at the new query: close the scratch tab and
-        // open one for the saved query.
-        await ipc.closeTab(tab.id);
-        setTabs(await ipc.openTab(created.id));
+        // Repoint the tab in place. Closing it and opening another put
+        // the just-saved text into History as unsaved work — which is
+        // exactly what it is not — and handed the editor a new tab id to
+        // reseed itself from mid-save.
+        setTabs(await ipc.attachQuery(tab.id, created.id));
       }
     },
   };
