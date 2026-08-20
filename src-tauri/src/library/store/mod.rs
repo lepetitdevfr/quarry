@@ -10,6 +10,7 @@ use std::sync::Mutex;
 
 pub(crate) mod recent;
 mod tabs;
+mod writes;
 
 /// All library reads and writes go through here.
 ///

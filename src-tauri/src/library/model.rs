@@ -238,6 +238,52 @@ pub struct RecentItem {
     pub error: Option<String>,
 }
 
+/// One write this app performed, and how it ended.
+///
+/// `connection_name` and `tag` are copied in rather than joined: the row
+/// must still say which database it hit after that connection is renamed
+/// or deleted, and an audit line that loses its subject is not an audit
+/// line.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WriteRecord {
+    pub id: String,
+    pub at: String,
+    pub connection_id: Option<String>,
+    pub connection_name: String,
+    pub tag: String,
+    pub sql: String,
+    /// `update`, `delete`, `insert`, `ddl`, `other`, or `batch` for the
+    /// grid's own edits.
+    pub kind: String,
+    pub row_count: Option<i64>,
+    /// `committed`, `rolled_back`, `refused` or `failed`.
+    pub outcome: String,
+    /// Why it was refused, or how it failed. `None` when it committed.
+    pub reason: Option<String>,
+    /// SQL that would put it back, where that is derivable. `None` for
+    /// typed statements, which are recorded but not reversible.
+    pub undo_sql: Option<String>,
+}
+
+/// What is known about a write at the moment it is recorded.
+///
+/// A struct rather than nine positional arguments: a call site reading
+/// `record_write(id, name, tag, sql, kind, count, outcome, reason, undo)`
+/// cannot be checked by eye, and a swapped pair of strings compiles
+/// silently.
+#[derive(Debug, Clone)]
+pub struct WriteEntry {
+    pub connection_id: Option<String>,
+    pub connection_name: String,
+    pub tag: String,
+    pub sql: String,
+    pub kind: String,
+    pub row_count: Option<i64>,
+    pub outcome: String,
+    pub reason: Option<String>,
+    pub undo_sql: Option<String>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
