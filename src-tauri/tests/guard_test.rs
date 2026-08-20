@@ -164,3 +164,42 @@ fn a_read_on_a_locked_connection_never_opts_out_of_read_only() {
         Decision::Allow { read_write: false },
     );
 }
+
+// ---- what kind of write ------------------------------------------------
+//
+// `classify` answers whether a statement writes. `write_kind` answers
+// what sort of write it is, off the same parse, because the guarded
+// confirmation judges DDL differently: it has no rowcount, and it names
+// something instead.
+
+use quarry_lib::guard::plan::WriteKind;
+use quarry_lib::guard::write_kind;
+
+#[test]
+fn names_the_kind_of_write_a_statement_is() {
+    assert_eq!(write_kind("update t set a = 1"), WriteKind::Update);
+    assert_eq!(write_kind("delete from t where a = 1"), WriteKind::Delete);
+    assert_eq!(
+        write_kind("insert into t (a) values (1)"),
+        WriteKind::Insert
+    );
+    assert_eq!(write_kind("drop table t"), WriteKind::Ddl);
+    assert_eq!(write_kind("truncate t"), WriteKind::Ddl);
+    assert_eq!(write_kind("alter table t add column b int"), WriteKind::Ddl);
+    assert_eq!(write_kind("create table t (a int)"), WriteKind::Ddl);
+    assert_eq!(write_kind("create index i on t (a)"), WriteKind::Ddl);
+}
+
+#[test]
+fn a_statement_the_parser_cannot_read_has_no_particular_kind() {
+    // It is still a write — `classify` says so — and judging it on its
+    // rowcount can only ask more often than necessary.
+    assert_eq!(write_kind("this is not sql at all"), WriteKind::Other);
+}
+
+#[test]
+fn a_read_has_no_write_kind_either() {
+    // Reads never reach the guarded path, but the function must not
+    // claim a select is an update if one ever does.
+    assert_eq!(write_kind("select * from t"), WriteKind::Other);
+}

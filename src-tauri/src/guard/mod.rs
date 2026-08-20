@@ -163,6 +163,46 @@ pub enum Decision {
     Deny,
 }
 
+/// What kind of write a buffer holds, for `plan::verdict`.
+///
+/// Reads the same parse `classify` does, so the two cannot disagree
+/// about what a statement is. A buffer holding several statements takes
+/// the kind of the first write in it; execution is one statement at a
+/// time, so that is the one being judged.
+pub fn write_kind(sql: &str) -> plan::WriteKind {
+    use plan::WriteKind;
+
+    let statements = match Parser::parse_sql(&PostgreSqlDialect {}, sql) {
+        Ok(statements) => statements,
+        Err(_) => return WriteKind::Other,
+    };
+
+    for statement in &statements {
+        // sqlparser 0.58 mixes newtype and struct variants across these;
+        // the shapes below are the ones that version actually has. If a
+        // later upgrade changes one, fix the pattern rather than dropping
+        // the arm — a DDL form falling through to `Other` is judged on a
+        // rowcount it does not have, so the confirmation would say "this
+        // will change the database" instead of naming the table.
+        let kind = match statement {
+            Statement::Update { .. } => WriteKind::Update,
+            Statement::Delete(_) => WriteKind::Delete,
+            Statement::Insert(_) => WriteKind::Insert,
+            Statement::Drop { .. }
+            | Statement::Truncate { .. }
+            | Statement::AlterTable { .. }
+            | Statement::CreateView { .. }
+            | Statement::CreateSchema { .. }
+            | Statement::CreateTable(_)
+            | Statement::CreateIndex(_) => WriteKind::Ddl,
+            _ => continue,
+        };
+        return kind;
+    }
+
+    WriteKind::Other
+}
+
 /// Decide whether a buffer may run.
 ///
 /// `now` is passed in rather than read here so the decision stays a pure
