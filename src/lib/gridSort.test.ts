@@ -124,31 +124,55 @@ describe("sortedIndices", () => {
   });
 });
 
-import { isTruncated } from "./gridSort";
+import { fillsLimit, isTruncated } from "./gridSort";
 
-describe("isTruncated", () => {
+describe("fillsLimit", () => {
   it("flags a result that exactly fills its own LIMIT", () => {
     // 500 rows back from `limit 500` almost certainly means there are
     // more. Sorting these in memory is not sorting the table.
-    expect(isTruncated(500, "select * from users limit 500")).toBe(true);
+    expect(fillsLimit(500, "select * from users limit 500")).toBe(true);
   });
 
   it("does not flag a result short of its LIMIT", () => {
-    expect(isTruncated(12, "select * from users limit 500")).toBe(false);
+    expect(fillsLimit(12, "select * from users limit 500")).toBe(false);
   });
 
   it("does not flag a statement with no LIMIT", () => {
-    expect(isTruncated(500, "select * from users")).toBe(false);
+    expect(fillsLimit(500, "select * from users")).toBe(false);
   });
 
   it("treats SQL it cannot read as complete", () => {
     // Conservative on purpose: a spurious "this is truncated" warning
     // on every ordinary query would train the user to ignore it.
-    expect(isTruncated(500, "")).toBe(false);
-    expect(isTruncated(500, "select * from t limit $1")).toBe(false);
+    expect(fillsLimit(500, "")).toBe(false);
+    expect(fillsLimit(500, "select * from t limit $1")).toBe(false);
   });
 
   it("is case-insensitive and tolerates trailing whitespace and a semicolon", () => {
-    expect(isTruncated(500, "SELECT * FROM users LIMIT 500;  ")).toBe(true);
+    expect(fillsLimit(500, "SELECT * FROM users LIMIT 500;  ")).toBe(true);
+  });
+});
+
+describe("isTruncated", () => {
+  it("flags a generated preview that came back full", () => {
+    expect(
+      isTruncated(500, "select * from public.users limit 500", true),
+    ).toBe(true);
+  });
+
+  it("does not flag a LIMIT the user typed, however exactly it is filled", () => {
+    // The defect this rule exists to kill: `limit 5` returning 5 rows is
+    // a complete answer to the question asked, and calling it truncated
+    // taught the user to ignore the flag.
+    expect(isTruncated(5, "select * from users limit 5", false)).toBe(false);
+    expect(isTruncated(500, "select * from users limit 500", false)).toBe(
+      false,
+    );
+  });
+
+  it("does not flag a generated statement that came back short", () => {
+    expect(
+      isTruncated(12, "select * from public.users limit 500", true),
+    ).toBe(false);
   });
 });

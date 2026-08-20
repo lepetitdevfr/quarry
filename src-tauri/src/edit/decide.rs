@@ -253,8 +253,23 @@ pub fn decide_editability(columns: &[SourceColumn], facts: Option<&TableFacts>) 
         }
     }
     if !missing.is_empty() {
+        // What to say about it depends on whether the result is a plain
+        // projection. `select email, plan from users` can be fixed by
+        // adding the key, and saying so is the most useful sentence
+        // available. `select plan, count(*) … group by plan` cannot:
+        // adding `id` to that query changes what the rows mean, so the
+        // advice is an instruction that does not work — the exact
+        // failure this whole surface exists to avoid. The metadata
+        // already separates the two: a computed column is one Postgres
+        // reported no source table for.
+        let computed = columns.iter().any(|c| c.table_oid.is_none());
+        let missing = missing.join(", ");
         return EditInfo::blocked(
-            format!("add {} to the query to edit these rows", missing.join(", ")),
+            if computed {
+                format!("this result computes values and has no {missing} — there is no way back to the rows")
+            } else {
+                format!("add {missing} to the query to edit these rows")
+            },
             columns.len(),
         );
     }

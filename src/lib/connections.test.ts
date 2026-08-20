@@ -55,3 +55,36 @@ describe("colourForTag", () => {
     expect(colours.size).toBe(3);
   });
 });
+
+import { mostRecentlyUsedIndex } from "./connections";
+
+/** Only the field the choice depends on. */
+function used(last_used_at: string | null) {
+  return { last_used_at };
+}
+
+describe("mostRecentlyUsedIndex", () => {
+  it("picks the latest timestamp, wherever it sits in the frozen order", () => {
+    expect(
+      mostRecentlyUsedIndex([
+        used("2026-08-01T10:00:00Z"),
+        used("2026-08-20T09:00:00Z"),
+        used("2026-08-19T23:59:59Z"),
+      ]),
+    ).toBe(1);
+  });
+
+  it("ignores connections that were never used", () => {
+    expect(
+      mostRecentlyUsedIndex([used(null), used("2026-08-01T10:00:00Z"), used(null)]),
+    ).toBe(1);
+  });
+
+  it("falls back to the first row when nothing was ever used", () => {
+    expect(mostRecentlyUsedIndex([used(null), used(null)])).toBe(0);
+  });
+
+  it("does not throw on an empty list", () => {
+    expect(mostRecentlyUsedIndex([])).toBe(0);
+  });
+});

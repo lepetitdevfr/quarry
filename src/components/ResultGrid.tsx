@@ -10,7 +10,7 @@ import {
 } from "../lib/gridSelection";
 import type { CellRef, SelectionRange } from "../lib/gridSelection";
 import { ContextMenu, useContextMenu, type MenuItem } from "./ContextMenu";
-import { isTruncated, nextSort, sortedIndices } from "../lib/gridSort";
+import { fillsLimit, nextSort, sortedIndices } from "../lib/gridSort";
 import type { SortState } from "../lib/gridSort";
 import {
   MIN_WIDTH,
@@ -510,7 +510,7 @@ export function ResultGrid({
 
   // Only a locally sorted page can mislead: a Data tab's ordering was
   // done by the database over the whole table.
-  const partial = !serverSorted && sort !== null && isTruncated(result.rows.length, sql);
+  const partial = !serverSorted && sort !== null && fillsLimit(result.rows.length, sql);
 
   return (
     <div className="result-grid" ref={scrollRef}>

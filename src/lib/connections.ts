@@ -60,3 +60,32 @@ export function parseConnectionUrl(raw: string): ParsedUrl | null {
     password: url.password === "" ? null : decodeURIComponent(url.password),
   };
 }
+
+/**
+ * Which row the launch screen should focus, so Enter connects to the
+ * connection you last used.
+ *
+ * The list itself is in a frozen alphabetical order — a dropdown that
+ * reorders under the pointer makes the same physical row a different
+ * database on different opens, and one of those rows is production.
+ * That order is not the one worth focusing, so the two are separated:
+ * position is stable, focus follows use.
+ *
+ * Returns 0 for an empty list or one nothing has ever connected to,
+ * which is the first row either way.
+ */
+export function mostRecentlyUsedIndex(
+  connections: { last_used_at: string | null }[],
+): number {
+  let best = 0;
+  let bestUsed: string | null = null;
+  connections.forEach((c, i) => {
+    if (c.last_used_at === null) return;
+    // ISO-8601 timestamps, so string order is time order.
+    if (bestUsed === null || c.last_used_at > bestUsed) {
+      bestUsed = c.last_used_at;
+      best = i;
+    }
+  });
+  return best;
+}

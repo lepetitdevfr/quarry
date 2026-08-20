@@ -48,3 +48,42 @@ describe("asAppError", () => {
     });
   });
 });
+
+import { hintFor } from "./errors";
+
+/** The payload shape a Postgres failure arrives in. */
+function queryError(message: string, code: string | null) {
+  return { kind: "query" as const, message, code, position: null };
+}
+
+describe("hintFor", () => {
+  it("teaches ⌘↵ on the multi-statement refusal", () => {
+    const hint = hintFor(
+      queryError(
+        "cannot insert multiple commands into a prepared statement",
+        "42601",
+      ),
+    );
+    expect(hint).toContain("⌘↵");
+    expect(hint).toContain("one statement at a time");
+  });
+
+  it("does not hint on other syntax errors sharing the SQLSTATE", () => {
+    // 42601 is all of syntax_error. A hint about running one statement
+    // on a plain typo would be advice for a problem the user does not
+    // have.
+    expect(hintFor(queryError('syntax error at or near "slect"', "42601"))).toBe(
+      null,
+    );
+  });
+
+  it("does not hint on an ordinary failure", () => {
+    expect(
+      hintFor(queryError('relation "usres" does not exist', "42P01")),
+    ).toBe(null);
+  });
+
+  it("does not hint on an error with no SQLSTATE at all", () => {
+    expect(hintFor(queryError("connection closed", null))).toBe(null);
+  });
+});

@@ -226,6 +226,31 @@ fn a_missing_primary_key_column_names_what_to_add() {
 }
 
 #[test]
+fn an_aggregate_result_is_not_told_to_add_a_key_it_cannot_add() {
+    // `select plan, count(*) from users group by plan` — `plan` is a real
+    // column, `count(*)` is computed, and `id` is absent. The old advice
+    // said "add id to the query to edit these rows", which changes the
+    // grouping: an instruction that cannot be followed is worse than no
+    // instruction, because the user tries it.
+    let info = decide_editability(
+        &[col(3, "\"text\""), computed("\"int8\"")],
+        Some(&users_table()),
+    );
+
+    assert!(!info.editable);
+    assert!(
+        !reason(&info).contains("add id"),
+        "must not advise adding a key to a computed result, reason was: {}",
+        reason(&info)
+    );
+    assert!(
+        reason(&info).contains("id") && reason(&info).contains("computes values"),
+        "reason was: {}",
+        reason(&info)
+    );
+}
+
+#[test]
 fn an_alias_edits_the_real_column_not_the_header() {
     // `select id, email as e from users`: the header is `e`, but the
     // attnum still points at `email`.

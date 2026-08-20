@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
+import { mostRecentlyUsedIndex } from "../lib/connections";
 import type { Connection } from "../types";
 
 interface Props {
@@ -23,14 +24,23 @@ export function ConnectionPicker({
   onDelete,
   standalone = false,
 }: Props) {
-  const firstRef = useRef<HTMLButtonElement>(null);
+  const recentRef = useRef<HTMLButtonElement>(null);
+
+  // The list order is frozen alphabetically, so the most recently used
+  // connection is no longer row 0 — it has to be found. Focusing row 0
+  // regardless would point Enter at whichever name sorts first, and one
+  // of these rows is production.
+  const recent = useMemo(
+    () => mostRecentlyUsedIndex(connections),
+    [connections],
+  );
 
   // Focus the most recently used connection so Enter connects to it.
   // Fast for the common case, but still a deliberate keystroke — the
   // app never connects on its own.
   useEffect(() => {
-    if (standalone) firstRef.current?.focus();
-  }, [standalone]);
+    if (standalone) recentRef.current?.focus();
+  }, [standalone, recent]);
 
   return (
     <div className={`connection-picker${standalone ? " standalone" : ""}`}>
@@ -45,7 +55,7 @@ export function ConnectionPicker({
         {connections.map((c, i) => (
           <li key={c.id}>
             <button
-              ref={i === 0 ? firstRef : undefined}
+              ref={i === recent ? recentRef : undefined}
               className={`picker-row${c.id === activeId ? " active" : ""}`}
               disabled={connecting}
               // The name is what identifies a connection — it is typed by
@@ -54,9 +64,19 @@ export function ConnectionPicker({
               title={`${c.user}@${c.host}:${c.port}/${c.dbname}`}
               onClick={() => onPick(c.id)}
             >
-              <span className="dot" style={{ background: c.colour }} />
               <span className="picker-name">{c.name}</span>
-              <span className="picker-tag overline">{c.tag}</span>
+              {/* The colour rides on the tag chip, which says what it
+                  means. As a bare dot it read as a health light — a
+                  paused local database still showed a confident green. */}
+              <span
+                className="picker-tag overline"
+                style={{
+                  color: c.colour,
+                  borderColor: c.colour,
+                }}
+              >
+                {c.tag}
+              </span>
             </button>
             <button
               className="row-action"

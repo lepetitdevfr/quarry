@@ -101,16 +101,34 @@ export function sortedIndices(
 }
 
 /**
- * Whether the result looks like only part of what the query would
- * return — a row count that exactly fills a `LIMIT` in the statement.
+ * Whether the row count exactly fills a `LIMIT` written in the
+ * statement — so the rows on screen are a page rather than the whole
+ * answer.
  *
  * Deliberately conservative. This drives a warning marker, and a
  * warning that appears on ordinary queries is a warning the user learns
  * to ignore, so anything unreadable (a parameter, no limit, SQL this
  * regex does not match) counts as complete.
  */
-export function isTruncated(rowCount: number, sql: string): boolean {
+export function fillsLimit(rowCount: number, sql: string): boolean {
   const match = /\blimit\s+(\d+)\s*;?\s*$/i.exec(sql);
   if (!match) return false;
   return rowCount === Number(match[1]);
+}
+
+/**
+ * Whether *the app* cut this result short.
+ *
+ * Only true when the statement was one the app wrote — the generated
+ * `select * … limit PREVIEW_LIMIT` behind a Data tab. A `LIMIT` the
+ * user typed is the question they asked, and answering it in full is
+ * not truncation: labelling `limit 5` "truncated" made the one flag
+ * that should mean "you are not seeing everything" mean nothing.
+ */
+export function isTruncated(
+  rowCount: number,
+  sql: string,
+  appGenerated: boolean,
+): boolean {
+  return appGenerated && fillsLimit(rowCount, sql);
 }

@@ -18,7 +18,7 @@ interface Props {
    * has since been edited.
    */
   stale: boolean;
-  /** True when the row count is the statement's LIMIT, not the table. */
+  /** True when the app's own cap cut the result short. */
   truncated: boolean;
   /** Applied edits, for a moment, after a batch commits. */
   applied: number | null;
@@ -55,11 +55,16 @@ export function StatusBar({
     );
   }
 
+  // The panel above holds the message — it wraps, it scrolls, and it
+  // carries the position link. This bar is one non-wrapping line, so
+  // repeating the text here truncated the same sentence twice on screen
+  // and read as two separate failures. It states that the statement
+  // failed, and the SQLSTATE, which is the part worth carrying.
   if (error) {
     return (
       <div className="status-bar error">
         {error.code && <span className="sqlstate">{error.code}</span>}
-        <span>{error.message}</span>
+        <span>Statement failed — see above.</span>
         {savedBadge}
       </div>
     );
@@ -93,13 +98,13 @@ export function StatusBar({
         {result.row_count} {result.row_count === 1 ? "row" : "rows"} ·{" "}
         {result.duration_ms} ms
       </span>
-      {/* The limit is the statement's, so the count is a page rather than
-          an answer. Saying so here is cheaper than the alternative:
+      {/* The cap is the app's, so the count is a page rather than an
+          answer. Saying so here is cheaper than the alternative:
           somebody reading "500 rows" as the size of the table. */}
       {truncated && (
         <span
           className="status-truncated"
-          title="the statement's LIMIT was reached — there are more rows"
+          title="the app fetched its first page — there are more rows"
         >
           truncated
         </span>

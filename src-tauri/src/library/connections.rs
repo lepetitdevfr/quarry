@@ -22,7 +22,13 @@ impl Store {
                 "select id, name, host, port, \"user\", dbname, sslmode, tag,
                         colour, last_used_at, created_at
                  from connections
-                 order by last_used_at is null, last_used_at desc, name",
+                 -- Frozen order, deliberately. Sorting by last use meant
+                 -- the same physical row in the dropdown was a different
+                 -- database on different opens, and one of the rows is
+                 -- production. `last_used_at` is still read: the launch
+                 -- screen focuses the most recently used row wherever it
+                 -- now sits.
+                 order by name collate nocase, id",
             )
             .map_err(sql_err)?;
 

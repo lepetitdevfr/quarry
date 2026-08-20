@@ -1,3 +1,4 @@
+import { hintFor } from "../lib/errors";
 import type { AppErrorPayload } from "../types";
 
 interface Props {
@@ -18,6 +19,10 @@ interface Props {
  * go rather than a number to squint at.
  */
 export function ErrorPanel({ error, onGoToPosition, onDismiss }: Props) {
+  // Postgres says what broke; this says what to do about it, on the
+  // few errors where the app knows something Postgres does not.
+  const hint = hintFor(error);
+
   return (
     <div className="error-panel" role="alert">
       <div className="error-panel-head">
@@ -27,6 +32,7 @@ export function ErrorPanel({ error, onGoToPosition, onDismiss }: Props) {
           Dismiss
         </button>
       </div>
+      {hint && <p className="error-panel-hint">{hint}</p>}
       {error.position !== null && (
         <dl>
           <dt>Position</dt>

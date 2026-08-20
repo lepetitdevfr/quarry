@@ -403,6 +403,10 @@ export default function App() {
   // The statement behind the current result, for truncation detection
   // and for re-running a Data tab in a new order.
   const [ranSql, setRanSql] = useState("");
+  // Whether that statement was the app's own generated preview rather
+  // than something a person typed. Only the app's cap can truncate a
+  // result: a `LIMIT` the user wrote is the question they asked.
+  const [ranGenerated, setRanGenerated] = useState(false);
 
   // The editor's text is local while typing; autosave persists it.
   const [text, setText] = useState("");
@@ -657,14 +661,18 @@ export default function App() {
     [activeTab, autosave, actions],
   );
 
+  // `generated` marks the app's own preview SQL. It rides with the
+  // statement rather than being re-derived later, because the same
+  // string is app-written on one tab and hand-edited on the next.
   const runSql = useCallback(
-    async (sql: string) => {
+    async (sql: string, generated = false) => {
       if (!connection) return;
       setBusy(true);
       setError(null);
       try {
         setResult(await execute(sql));
         setRanSql(sql);
+        setRanGenerated(generated);
         // Staged changes belong to the rows they were staged against.
         setPending(emptyPending());
         setDeletes(emptyDeletes());
@@ -706,7 +714,7 @@ export default function App() {
       const sql = previewSql(schemaName, tableName);
       setTableSql(sql);
       setTableSqlEdited(false);
-      await runSql(sql);
+      await runSql(sql, true);
     },
     [actions, runSql],
   );
@@ -742,7 +750,7 @@ export default function App() {
         const sql = previewSql(tableTarget.schema, tableTarget.table);
         setTableSql(sql);
         setTableSqlEdited(false);
-        await runSql(sql);
+        await runSql(sql, true);
       }
     },
     [activeTab, tableTarget, actions, runSql],
@@ -770,6 +778,7 @@ export default function App() {
           tableTarget.table,
           column && next ? { column, direction: next.direction } : undefined,
         ),
+        true,
       );
     },
     [tableTarget, activeTab?.mode, result, runSql, tableSqlEdited],
@@ -788,10 +797,11 @@ export default function App() {
   const stale =
     result !== null && ranSql !== "" && !currentSql.includes(ranSql);
 
-  // The row count is the statement's LIMIT rather than the size of the
-  // answer. The grid already flagged this for a local sort; the status
-  // bar is where it belongs for everything else.
-  const truncated = result !== null && isTruncated(result.rows.length, ranSql);
+  // The app's own cap cut the rows short — a generated preview that came
+  // back full. A `LIMIT` the user typed is not truncation, and saying it
+  // was on every limited query is what made the flag worthless.
+  const truncated =
+    result !== null && isTruncated(result.rows.length, ranSql, ranGenerated);
 
   const [exporting, setExporting] = useState(false);
 
@@ -1171,17 +1181,27 @@ export default function App() {
               title={`${connection.user}@${connection.host}:${connection.port}/${connection.dbname}`}
               onClick={() => setPickerOpen((open) => !open)}
             >
-              <span
-                className="dot"
-                style={{
-                  background:
-                    connections.find((c) => c.id === connection.id)?.colour ?? "#888",
-                }}
-              />
               <span className="connection-name">
                 {connections.find((c) => c.id === connection.id)?.name ??
                   connection.dbname}
               </span>
+              {/* The tag, spelled out. It used to be a coloured dot,
+                  which reads as a health light — and the one thing the
+                  header must never be vague about is whether this is
+                  production. */}
+              {connections.find((c) => c.id === connection.id) && (
+                <span
+                  className="picker-tag overline"
+                  style={{
+                    color: connections.find((c) => c.id === connection.id)!
+                      .colour,
+                    borderColor: connections.find((c) => c.id === connection.id)!
+                      .colour,
+                  }}
+                >
+                  {connections.find((c) => c.id === connection.id)!.tag}
+                </span>
+              )}
               <span className="caret">▾</span>
             </button>
 
@@ -1394,10 +1414,12 @@ export default function App() {
           </div>
         )}
         {/* A guard denial already has its own strip with the way out, so
-            it does not also get the panel. Everything else does: the
-            status bar is one non-wrapping line, and a constraint
-            violation quoting its own expression does not fit on one. */}
-        {error && error.kind !== "write_blocked" && (
+            it does not also get the panel — but only when that strip is
+            actually on screen. Everything else gets the panel: the
+            status bar now says "see above" and nothing else, so an error
+            with neither strip nor panel would leave it pointing at an
+            empty space. */}
+        {error && !(error.kind === "write_blocked" && locked) && (
           <ErrorPanel
             error={error}
             onGoToPosition={(position) => goToPosition.current?.(position)}

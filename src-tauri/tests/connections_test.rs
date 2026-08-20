@@ -90,25 +90,38 @@ fn deletes_a_connection() {
 }
 
 #[test]
-fn orders_by_most_recently_used_then_name() {
+fn orders_by_name_and_does_not_move_when_a_connection_is_used() {
     let (store, _dir) = store();
     let a = store.create_connection(input("alpha", Tag::Local)).unwrap();
     let b = store.create_connection(input("beta", Tag::Local)).unwrap();
     let _c = store.create_connection(input("gamma", Tag::Local)).unwrap();
 
-    store.touch_connection(&b.id).unwrap();
-    std::thread::sleep(std::time::Duration::from_millis(10));
-    store.touch_connection(&a.id).unwrap();
-
-    let names: Vec<String> = store
+    let before: Vec<String> = store
         .connections()
         .unwrap()
         .into_iter()
         .map(|c| c.name)
         .collect();
 
-    // Used ones first, most recent first; never-used sort last by name.
-    assert_eq!(names, vec!["alpha", "beta", "gamma"]);
+    store.touch_connection(&b.id).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(10));
+    store.touch_connection(&a.id).unwrap();
+
+    let after: Vec<String> = store
+        .connections()
+        .unwrap()
+        .into_iter()
+        .map(|c| c.name)
+        .collect();
+
+    // The point of the order is that it does not move. A list that
+    // reshuffles on use makes the same physical row a different
+    // database on different opens — and one of these rows is production.
+    assert_eq!(before, vec!["alpha", "beta", "gamma"]);
+    assert_eq!(
+        after, before,
+        "using a connection must not reorder the list"
+    );
 }
 
 #[test]
