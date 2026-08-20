@@ -1,3 +1,16 @@
+## [0.6.0](https://github.com/lepetitdevfr/quarry/compare/v0.5.0...v0.6.0) (2026-08-20)
+
+### Features
+
+* **editor:** format the statement under the cursor ([5d49aca](https://github.com/lepetitdevfr/quarry/commit/5d49aca8c3aebf8629b6f845979b39b4e6bec0aa))
+* **editor:** keep each clause with its keyword when formatting ([8357808](https://github.com/lepetitdevfr/quarry/commit/83578082baf4dd845452bd334993be337a5b21ec))
+* **schema:** quote a generated name only where quoting changes it ([e2a1a32](https://github.com/lepetitdevfr/quarry/commit/e2a1a32d3b6fc785be6e1ea7e64dc6a54adc4f3b))
+
+### Fixes
+
+* **library:** save an untitled tab in place instead of replacing it ([437e395](https://github.com/lepetitdevfr/quarry/commit/437e395e21222468d35d96647aa2afb1a8bbbf8f))
+* **tabs:** save the tab that asked to be saved ([f138552](https://github.com/lepetitdevfr/quarry/commit/f1385529b97f302842e4cde61f5a70bcaa4e25c6))
+
 ## [0.5.0](https://github.com/lepetitdevfr/quarry/compare/v0.4.1...v0.5.0) (2026-08-20)
 
 ### Features
