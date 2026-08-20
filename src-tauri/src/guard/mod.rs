@@ -1,3 +1,5 @@
+pub mod plan;
+
 use crate::library::model::Tag;
 use sqlparser::ast::{Query, SetExpr, Statement};
 use sqlparser::dialect::PostgreSqlDialect;
