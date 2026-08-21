@@ -36,3 +36,17 @@ export function matchesWrite(write: WriteRecord, filter: string): boolean {
     write.connection_name.toLowerCase().includes(needle)
   );
 }
+
+/**
+ * Whether this write belongs to the connection in question.
+ *
+ * A row whose connection has since been deleted belongs to nobody, and
+ * is only ever shown unscoped: it must not pass as work against whatever
+ * you happen to be connected to now.
+ */
+export function writeIsHere(
+  write: WriteRecord,
+  activeConnectionId: string | null,
+): boolean {
+  return activeConnectionId !== null && write.connection_id === activeConnectionId;
+}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { describeWrite, matchesWrite } from "./writes";
+import { describeWrite, matchesWrite, writeIsHere } from "./writes";
 import type { WriteRecord } from "../types";
 
 function record(over: Partial<WriteRecord>): WriteRecord {
@@ -87,5 +87,22 @@ describe("matchesWrite", () => {
 
   it("matches everything on an empty filter", () => {
     expect(matchesWrite(record({}), "")).toBe(true);
+  });
+});
+
+describe("writeIsHere", () => {
+  it("recognises a write against the connection you are on", () => {
+    expect(writeIsHere(record({ connection_id: "conn-a" }), "conn-a")).toBe(true);
+    expect(writeIsHere(record({ connection_id: "other" }), "conn-a")).toBe(false);
+  });
+
+  it("says no when nothing is connected", () => {
+    expect(writeIsHere(record({ connection_id: "conn-a" }), null)).toBe(false);
+  });
+
+  it("says no for a write whose connection was deleted", () => {
+    // It belongs to nobody. Passing it off as work against the current
+    // database would be the log inventing a fact.
+    expect(writeIsHere(record({ connection_id: null }), "conn-a")).toBe(false);
   });
 });

@@ -55,6 +55,16 @@ text that matches an existing closed row for the same connection now moves that
 row's `last_at` instead of inserting. Runs are unaffected; they already
 collapsed.
 
+**Scoped to the connection you are on, by default.** *(Revised
+2026-08-21.)* The original decision showed every database's work, current
+connection first, on the grounds that nothing should be hidden and that
+people reconnect precisely in order to find an old query. The first half
+does not survive use: both lists are read to answer a question about the
+database in front of you, and rows from three other databases are noise
+in the way of it. The second half does survive, so the other work is one
+click away rather than gone — the view carries a scope toggle, and it is
+only offered while there is a connection to scope to.
+
 **One list, not two.** The user's question is "where is that thing I had", not
 "was it typed or executed". Closed tabs and executed statements share one
 surface.

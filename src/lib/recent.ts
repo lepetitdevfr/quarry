@@ -1,5 +1,15 @@
 import type { RecentItem } from "../types";
 
+/**
+ * Whether a list shows only the database you are connected to.
+ *
+ * `here` while connected hides everything else; with no connection there
+ * is nothing to scope by, so it shows everything rather than nothing —
+ * an empty list would read as "you have no history" instead of "you are
+ * not connected".
+ */
+export type Scope = "here" | "all";
+
 /** One row of the History list, with what the view needs decided. */
 export interface RecentRow {
   item: RecentItem;
@@ -29,11 +39,16 @@ export function groupRecent(
   items: RecentItem[],
   activeConnectionId: string | null,
   filter: string,
+  scope: Scope = "all",
 ): RecentRow[] {
   const newestFirst = (a: RecentItem, b: RecentItem) =>
     a.last_at < b.last_at ? 1 : a.last_at > b.last_at ? -1 : 0;
 
-  const kept = items.filter((i) => matches(i, filter));
+  const scoped =
+    scope === "here" && activeConnectionId !== null
+      ? items.filter((i) => i.connection_id === activeConnectionId)
+      : items;
+  const kept = scoped.filter((i) => matches(i, filter));
   // A row whose connection was deleted belongs to nobody. It must not
   // pass as work from whatever you happen to be connected to now.
   const here = (i: RecentItem) =>

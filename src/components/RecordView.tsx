@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { ContextMenu, useContextMenu } from "./ContextMenu";
 import { groupRecent, summarise } from "../lib/recent";
-import { describeWrite, matchesWrite } from "../lib/writes";
+import type { Scope } from "../lib/recent";
+import { describeWrite, matchesWrite, writeIsHere } from "../lib/writes";
 import type { Connection, RecentItem, WriteRecord } from "../types";
 
 interface Props {
@@ -45,15 +46,29 @@ export function RecordView({
   onForget,
 }: Props) {
   const [filter, setFilter] = useState("");
+  // Scoped to the connection you are on, by default. Both lists are
+  // almost always read to answer a question about the database in front
+  // of you; the other databases' work is still one click away rather
+  // than gone, because reconnecting to find an old query is a real
+  // thing people do.
+  const [scope, setScope] = useState<Scope>("here");
   const { menu, open: openMenu, close: closeMenu } = useContextMenu();
 
   const history = useMemo(
-    () => groupRecent(items, activeConnectionId, filter),
-    [items, activeConnectionId, filter],
+    () => groupRecent(items, activeConnectionId, filter, scope),
+    [items, activeConnectionId, filter, scope],
   );
   const written = useMemo(
-    () => writes.filter((w) => matchesWrite(w, filter)),
-    [writes, filter],
+    () =>
+      writes
+        .filter(
+          (w) =>
+            scope === "all" ||
+            activeConnectionId === null ||
+            writeIsHere(w, activeConnectionId),
+        )
+        .filter((w) => matchesWrite(w, filter)),
+    [writes, filter, scope, activeConnectionId],
   );
 
   const isWrites = record === "writes";
@@ -87,6 +102,25 @@ export function RecordView({
           onChange={(e) => setFilter(e.target.value)}
           spellCheck={false}
         />
+        {/* Only worth offering while there is a connection to scope to.
+            Disconnected, "this connection" would mean nothing and the
+            list already shows everything. */}
+        {activeConnectionId !== null && (
+          <div className="record-scope">
+            <button
+              className={scope === "here" ? "overline active" : "overline"}
+              onClick={() => setScope("here")}
+            >
+              This connection
+            </button>
+            <button
+              className={scope === "all" ? "overline active" : "overline"}
+              onClick={() => setScope("all")}
+            >
+              All
+            </button>
+          </div>
+        )}
       </header>
 
       {empty && (
@@ -95,7 +129,12 @@ export function RecordView({
             ? isWrites
               ? "Nothing yet. Every write this app makes is recorded here."
               : "Nothing yet. Statements you run and tabs you close land here."
-            : "Nothing matches."}
+            : scope === "here" && filter === ""
+              ? // Distinguishing the two reasons for an empty list
+                // matters: one means you have nothing, the other means
+                // you are looking at the wrong slice of it.
+                "Nothing against this connection yet — All shows every database."
+              : "Nothing matches."}
         </p>
       )}
 

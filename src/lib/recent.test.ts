@@ -116,3 +116,63 @@ describe("summarise", () => {
     expect(text).not.toContain("×");
   });
 });
+
+describe("groupRecent scoped to one connection", () => {
+  it("hides other connections' work when scoped here", () => {
+    const rows = groupRecent(
+      [
+        item({ id: "mine", connection_id: "conn-a" }),
+        item({ id: "theirs", connection_id: "other" }),
+      ],
+      "conn-a",
+      "",
+      "here",
+    );
+
+    expect(rows.map((r) => r.item.id)).toEqual(["mine"]);
+  });
+
+  it("shows everything when scoped all", () => {
+    const rows = groupRecent(
+      [
+        item({ id: "mine", connection_id: "conn-a" }),
+        item({ id: "theirs", connection_id: "other" }),
+      ],
+      "conn-a",
+      "",
+      "all",
+    );
+
+    expect(rows).toHaveLength(2);
+  });
+
+  it("shows everything when scoped here with no connection", () => {
+    // An empty list would read as "you have no history" rather than
+    // "you are not connected to anything".
+    const rows = groupRecent([item({ connection_id: "conn-a" })], null, "", "here");
+
+    expect(rows).toHaveLength(1);
+  });
+
+  it("hides work whose connection was deleted when scoped here", () => {
+    // It belongs to nobody, so it must not pass as work against the
+    // database you are on.
+    const rows = groupRecent([item({ connection_id: null })], "conn-a", "", "here");
+
+    expect(rows).toHaveLength(0);
+  });
+
+  it("still filters within the scope", () => {
+    const rows = groupRecent(
+      [
+        item({ id: "1", connection_id: "conn-a", sql: "select from orders" }),
+        item({ id: "2", connection_id: "conn-a", sql: "select 1" }),
+      ],
+      "conn-a",
+      "orders",
+      "here",
+    );
+
+    expect(rows.map((r) => r.item.id)).toEqual(["1"]);
+  });
+});

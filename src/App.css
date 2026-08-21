@@ -1937,6 +1937,26 @@ button,
   max-width: 320px;
 }
 
+/* Which slice of the list you are looking at. Quiet, and to the right
+   of the filter: it is a scope, not a filter of its own. */
+.record-scope {
+  display: flex;
+  gap: var(--s-2);
+  margin-left: auto;
+}
+
+.record-scope button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--faint);
+  cursor: pointer;
+}
+
+.record-scope button.active {
+  color: var(--text);
+}
+
 .record-empty {
   color: var(--muted);
 }
