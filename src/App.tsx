@@ -404,6 +404,8 @@ export default function App() {
     next: () => {},
     previous: () => {},
     newTab: () => {},
+    history: () => {},
+    writes: () => {},
   });
   useEffect(() => {
     // Wraps at both ends: with three tabs open, "next" from the last
@@ -419,6 +421,8 @@ export default function App() {
       next: () => step(1),
       previous: () => step(-1),
       newTab: () => void actions.newTab(),
+      history: () => void actions.openRecord("history"),
+      writes: () => void actions.openRecord("writes"),
     };
   });
 
@@ -428,6 +432,8 @@ export default function App() {
       listen("menu://new-tab", () => tabCommands.current.newTab()),
       listen("menu://next-tab", () => tabCommands.current.next()),
       listen("menu://prev-tab", () => tabCommands.current.previous()),
+      listen("menu://open-history", () => tabCommands.current.history()),
+      listen("menu://open-writes", () => tabCommands.current.writes()),
     ];
     return () => {
       for (const pending of subscriptions) {
@@ -1485,24 +1491,6 @@ export default function App() {
               which pulled the eye away from the connection identity
               next to it. Hidden on a table tab, where "save" has no
               query to name. */}
-          {/* The two records the app keeps about itself. Tabs rather
-              than sidebar lists: a statement is a line of SQL, and the
-              sidebar was truncating the only two lists whose whole
-              purpose is being read. */}
-          <button
-            className="btn-small"
-            title="What you have run and closed"
-            onClick={() => void actions.openRecord("history")}
-          >
-            History
-          </button>
-          <button
-            className="btn-small"
-            title="What this app has written"
-            onClick={() => void actions.openRecord("writes")}
-          >
-            Writes
-          </button>
           {!tableTarget && !recordTab && (
             <button
               className="btn-small"

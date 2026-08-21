@@ -153,9 +153,15 @@ Stop it with `docker stop quarry-smoke`.
 | `⇧⌘⌫` | Stage the selected row for deletion, or undo it (discards a staged new row) |
 | `⇧⌘N` | Stage a new row in the result grid |
 | `esc` | Cancel the cell edit in progress |
+| `⌥⌘F` | Format the statement under the cursor |
+| `⇧⌥⌘F` | Format the whole buffer |
 | `⌘S` | Save the current query to the library |
+| `⌘T` | New tab |
+| `⌥⌘←` / `⌥⌘→` | Previous / next tab |
 | `⌘W` | Close the active tab (the window, once no tabs are left) |
 | `⇧⌘W` | Close the window |
+| `⌘Y` | History — everything you have run or closed |
+| `⇧⌘Y` | Writes — everything this app has written, and how it ended |
 
 ## Limitations
 

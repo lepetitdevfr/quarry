@@ -37,6 +37,10 @@ pub const CLOSE_TAB_ID: &str = "close_tab";
 /// Menu item id for Close Window.
 pub const CLOSE_WINDOW_ID: &str = "close_window";
 
+/// Menu item ids for the two records the app keeps about itself.
+pub const HISTORY_ID: &str = "open_history";
+pub const WRITES_ID: &str = "open_writes";
+
 /// Menu item ids for the rest of the tab family. Same reason as Close
 /// Tab: on macOS these accelerators are swallowed by AppKit before the
 /// webview sees them, so a `keydown` listener in the frontend cannot
@@ -53,6 +57,8 @@ pub const CLOSE_TAB_EVENT: &str = "menu://close-tab";
 pub const NEW_TAB_EVENT: &str = "menu://new-tab";
 pub const NEXT_TAB_EVENT: &str = "menu://next-tab";
 pub const PREV_TAB_EVENT: &str = "menu://prev-tab";
+pub const HISTORY_EVENT: &str = "menu://open-history";
+pub const WRITES_EVENT: &str = "menu://open-writes";
 
 /// Build the menu. See the module comment for why this is macOS-only.
 #[cfg(target_os = "macos")]
@@ -112,6 +118,15 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         Some("Alt+CmdOrCtrl+Left"),
     )?;
 
+    // The app's own records. In the menu rather than on a toolbar
+    // because that is where a Mac app puts a view you open occasionally
+    // and read deliberately — and because two more buttons above the
+    // editor were two more things competing with the query.
+    //
+    // ⌘Y is what Safari uses for History, which is the same idea.
+    let history = MenuItem::with_id(app, HISTORY_ID, "History", true, Some("CmdOrCtrl+Y"))?;
+    let writes = MenuItem::with_id(app, WRITES_ID, "Writes", true, Some("Shift+CmdOrCtrl+Y"))?;
+
     let window_menu = Submenu::with_items(
         app,
         "Window",
@@ -167,7 +182,12 @@ pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
                 app,
                 "View",
                 true,
-                &[&PredefinedMenuItem::fullscreen(app, None)?],
+                &[
+                    &history,
+                    &writes,
+                    &PredefinedMenuItem::separator(app)?,
+                    &PredefinedMenuItem::fullscreen(app, None)?,
+                ],
             )?,
             &window_menu,
             &Submenu::with_items(app, "Help", true, &[])?,
@@ -194,6 +214,12 @@ pub fn on_event<R: Runtime>(app: &AppHandle<R>, id: &str) {
         }
         NEW_TAB_ID => {
             let _ = app.emit(NEW_TAB_EVENT, ());
+        }
+        HISTORY_ID => {
+            let _ = app.emit(HISTORY_EVENT, ());
+        }
+        WRITES_ID => {
+            let _ = app.emit(WRITES_EVENT, ());
         }
         NEXT_TAB_ID => {
             let _ = app.emit(NEXT_TAB_EVENT, ());
