@@ -71,6 +71,57 @@ tests and a build, because it is the platform users run and the only one that
 compiles the Keychain branch.
 
 
+## Signing and notarising the macOS build
+
+**Assessed:** 2026-08-21, without doing it — the owner has not bought an Apple
+Developer membership yet and does not want to now. Written down so the day it
+happens is an hour of work rather than an afternoon of research.
+
+The unified roadmap classifies this as a **release gate**, not a feature: it
+does nothing for anyone who has already installed, and its whole value is
+acquisition. It blocks no wave and must be done before v1 is announced.
+
+Two things it buys beyond removing the Gatekeeper warning:
+
+- **It fixes the Keychain re-prompt.** macOS ties an "Always Allow" grant to
+  the requesting binary's code signature, which is why a rebuilt binary loses
+  access to entries it saved moments earlier. A stable Developer ID signature
+  on released builds makes the grant stick — this is an in-app defect, not
+  only a download-page one.
+- **It is the precondition for an updater** that is not "download the dmg
+  again".
+
+### What it takes
+
+Membership is $99/year; enrolment is usually same-day, occasionally ~48 hours
+if Apple asks for identity verification. Then:
+
+1. Create a **Developer ID Application** certificate in the developer portal
+   (not a Mac App Store one — this is distribution outside the store) and
+   export it as a `.p12` with a password.
+2. Add repository secrets: `APPLE_CERTIFICATE` (the `.p12`, base64),
+   `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY` (the certificate's
+   common name, e.g. `Developer ID Application: NAME (TEAMID)`), and for
+   notarisation either `APPLE_ID` + `APPLE_PASSWORD` (an app-specific
+   password, not the account one) + `APPLE_TEAM_ID`, or an App Store Connect
+   key as `APPLE_API_ISSUER` + `APPLE_API_KEY` + `APPLE_API_KEY_PATH`.
+3. Pass them as `env:` on the existing **Build** step in
+   `.github/workflows/release.yml`. Nothing else changes: Tauri 2 signs,
+   submits for notarisation and staples the ticket itself when those variables
+   are present, so there is no `codesign` or `notarytool` scripting to write.
+
+Budget the first run at build time plus five to fifteen minutes of
+notarisation. Notarisation requires the hardened runtime, which Tauri enables
+when signing; if the Keychain access turns out to need an entitlements file,
+that is the one thing here that could take longer than an hour.
+
+### Decide at the same time: Intel
+
+The release matrix has a single macOS entry, `aarch64-macos`, so Intel Macs
+are not served at all today. Signing does not change that, but the two
+questions arrive together — either a universal binary or a second matrix row,
+and both are a bigger conversation than signing itself.
+
 ## Windows and Linux builds
 
 **Assessed:** 2026-08-15. **Code port done:** 2026-08-16 — see
