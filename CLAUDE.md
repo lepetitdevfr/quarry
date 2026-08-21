@@ -13,7 +13,9 @@ sequence of shipped stages, and `README.md` for what it does.
 Releases are manual: Actions → Release → Run workflow. semantic-release picks
 the version from the commit messages, builds macOS, Linux and Windows, and
 publishes to the **public** repo `lepetitdevfr/quarry-releases` — this repo
-stays private.
+stays private. When Actions minutes run out,
+`scripts/release-local.sh` does the same three steps on this Mac — macOS
+`.dmg` only, since a Mac cannot build the Linux or Windows bundles.
 
 ## The load-bearing decisions
 

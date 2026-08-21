@@ -5,3 +5,6 @@ src-tauri/target/
 *.log
 .superpowers/
 .codegraph/
+
+# The local release script stages the .dmg here before uploading it.
+dist-artifacts/
