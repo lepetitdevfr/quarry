@@ -109,6 +109,8 @@ export function useLibrary() {
     // effect reads the right text the first time. Filling a tab after
     // opening it loses the race against that effect.
     openTabWithSql: async (sql: string) => setTabs(await ipc.openTabWithSql(sql)),
+    openRecord: async (record: "history" | "writes") =>
+      setTabs(await ipc.openRecordTab(record)),
     activateTab: async (id: string) => setTabs(await ipc.activateTab(id)),
     closeTab: async (id: string) => setTabs(await ipc.closeTab(id)),
     openPreview: async (title: string, sql: string) =>

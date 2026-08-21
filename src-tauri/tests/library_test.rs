@@ -720,3 +720,79 @@ fn switching_mode_pins_the_tab() {
     assert_eq!(tabs[0].mode, Some(TableMode::Data));
     assert!(!tabs[0].is_preview, "switching mode pins the tab");
 }
+
+// ---- record tabs -------------------------------------------------------
+//
+// History and Writes outgrew the sidebar: a statement is a line of SQL
+// and the sidebar is 250px wide, so the two lists that exist to be read
+// were the ones that could not be. They open as tabs in the main area
+// instead.
+
+#[test]
+fn opening_a_record_shows_it_in_a_tab() {
+    let (s, _dir) = store();
+
+    let tabs = s.open_record_tab("history").unwrap();
+
+    let tab = tabs.iter().find(|t| t.record.as_deref() == Some("history"));
+    let tab = tab.expect("a history tab should exist");
+    assert!(tab.is_active);
+    assert_eq!(tab.query_id, None, "a record tab holds no query");
+    assert_eq!(tab.target_table, None, "and no table");
+}
+
+#[test]
+fn opening_the_same_record_twice_focuses_the_one_tab() {
+    // Two copies of one list is two places to look.
+    let (s, _dir) = store();
+
+    s.open_record_tab("writes").unwrap();
+    let tabs = s.open_record_tab("writes").unwrap();
+
+    assert_eq!(
+        tabs.iter()
+            .filter(|t| t.record.as_deref() == Some("writes"))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn the_two_records_are_two_different_tabs() {
+    let (s, _dir) = store();
+
+    s.open_record_tab("history").unwrap();
+    let tabs = s.open_record_tab("writes").unwrap();
+
+    assert_eq!(tabs.iter().filter(|t| t.record.is_some()).count(), 2);
+    assert!(
+        tabs.iter()
+            .find(|t| t.record.as_deref() == Some("writes"))
+            .unwrap()
+            .is_active,
+        "the one just opened takes focus"
+    );
+}
+
+#[test]
+fn a_record_tab_survives_a_restart() {
+    // It is an ordinary tab in every other respect, including being
+    // restored — closing it is how you get rid of it.
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("w.db");
+    {
+        let s = Store::open_at(&path).unwrap();
+        s.open_record_tab("history").unwrap();
+    }
+
+    let s = Store::open_at(&path).unwrap();
+
+    assert_eq!(
+        s.tabs()
+            .unwrap()
+            .iter()
+            .filter(|t| t.record.as_deref() == Some("history"))
+            .count(),
+        1
+    );
+}

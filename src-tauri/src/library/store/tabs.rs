@@ -77,6 +77,49 @@ impl Store {
         Ok(())
     }
 
+    /// Open the tab showing one of the app's own records, or focus it
+    /// if it is already open.
+    ///
+    /// One tab per record, never two: they show the same thing, and a
+    /// second copy of a list is a second place to look.
+    pub fn open_record_tab(&self, record: &str) -> Result<Vec<Tab>, AppError> {
+        let conn = self.lock();
+
+        let existing: Option<String> = conn
+            .query_row(
+                "select id from tabs where record = ?1",
+                params![record],
+                |r| r.get(0),
+            )
+            .ok();
+
+        let id = match existing {
+            Some(id) => id,
+            None => {
+                let id = new_id();
+                let position = next_tab_position(&conn)?;
+                conn.execute(
+                    "insert into tabs
+                       (id, query_id, scratch_sql, position, is_active, cursor_pos,
+                        is_preview, title, record)
+                     values (:id, null, null, :position, 0, 0, 0, :title, :record)",
+                    named_params! {
+                        ":id": id,
+                        ":position": position,
+                        ":title": record,
+                        ":record": record,
+                    },
+                )
+                .map_err(sql_err)?;
+                id
+            }
+        };
+
+        activate(&conn, &id)?;
+        drop(conn);
+        self.tabs()
+    }
+
     pub fn tabs(&self) -> Result<Vec<Tab>, AppError> {
         let conn = self.lock();
         let mut stmt = conn
@@ -402,7 +445,7 @@ fn activate(conn: &Connection, id: &str) -> Result<(), AppError> {
 /// The tab columns. Both places that select a tab share this, so every
 /// name `tab_from_row` reads below is guaranteed to be in the result.
 const TAB_COLUMNS: &str = "id, query_id, scratch_sql, position, is_active, cursor_pos,
-     is_preview, title, target_schema, target_table, mode";
+     is_preview, title, target_schema, target_table, mode, record";
 
 fn tab_from_row(row: &Row) -> rusqlite::Result<Tab> {
     // Read out early: whether there is a target decides how a missing
@@ -418,6 +461,7 @@ fn tab_from_row(row: &Row) -> rusqlite::Result<Tab> {
         cursor_pos: row.get("cursor_pos")?,
         is_preview: row.get::<_, i64>("is_preview")? != 0,
         title: row.get("title")?,
+        record: row.get("record")?,
         target_schema: row.get("target_schema")?,
         // `mode` is NULL on an ordinary query tab, so the decode only
         // runs when there is actually a mode stored. A tab that DOES

@@ -181,6 +181,11 @@ export interface Tab {
   cursor_pos: number;
   is_preview: boolean;
   title: string | null;
+  /**
+   * One of the app's own records this tab shows: `history` or `writes`.
+   * Null on every other kind of tab.
+   */
+  record: string | null;
   /** Both set on a table tab, both null on a query tab. */
   target_schema: string | null;
   target_table: string | null;

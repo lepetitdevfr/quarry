@@ -77,6 +77,10 @@ Rust integration tests need Docker; they start Postgres 17 via testcontainers.
   than it looks: window dragging needed `core:window:allow-start-dragging`
   added explicitly, and the denial was silent. Capability changes need a
   `tauri dev` restart — they compile into the binary.
+- **A migration test must never pin the schema version number.** Assert
+  `SCHEMA_VERSION`, not the literal — the test's job is that the new
+  table arrived and the old rows survived, and a hardcoded number breaks
+  the suite on the next bump. This has been rediscovered three times.
 - **Smoke testing starts from a known database.** `scripts/smoke-db/up.sh`
   runs the persistent `quarry-smoke` Postgres on `localhost:55432`;
   `scripts/smoke-db/reset.sh` puts its data back exactly as `seed.sql`

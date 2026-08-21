@@ -263,6 +263,11 @@ export async function attachQuery(
   return invoke<Tab[]>("attach_query", { tabId, queryId });
 }
 
+/** Open the tab showing `history` or `writes`, or focus the open one. */
+export async function openRecordTab(record: string): Promise<Tab[]> {
+  return invoke<Tab[]>("open_record_tab", { record });
+}
+
 export async function openTab(queryId: string | null): Promise<Tab[]> {
   return invoke<Tab[]>("open_tab", { queryId });
 }

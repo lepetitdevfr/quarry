@@ -3,7 +3,7 @@ use rusqlite::Connection;
 use std::path::Path;
 
 /// Bump this when the schema changes and add a migration step below.
-pub const SCHEMA_VERSION: i64 = 6;
+pub const SCHEMA_VERSION: i64 = 7;
 
 /// Open the database, creating and migrating it if needed.
 ///
@@ -63,7 +63,8 @@ fn migrate(conn: &Connection) -> Result<(), AppError> {
             title         text,
             target_schema text,
             target_table  text,
-            mode          text
+            mode          text,
+            record        text
         );
 
         create table if not exists connections (
@@ -148,6 +149,12 @@ fn migrate(conn: &Connection) -> Result<(), AppError> {
     add_column_if_missing(conn, "tabs", "target_schema", "text")?;
     add_column_if_missing(conn, "tabs", "target_table", "text")?;
     add_column_if_missing(conn, "tabs", "mode", "text")?;
+
+    // v7: a tab may show one of the app's own records — `history` or
+    // `writes` — instead of a query or a table. They outgrew the
+    // sidebar: a statement is a line of SQL and the sidebar is 250px,
+    // so the list that exists to be read was the one that could not be.
+    add_column_if_missing(conn, "tabs", "record", "text")?;
 
     // Preview tabs are transient. Purging them here rather than filtering
     // them on restore means a crash cannot leave one behind.
@@ -572,8 +579,12 @@ mod tests {
                 |r| r.get(0),
             )
             .unwrap();
+        // The current version, whatever it is. A migration test is
+        // about the new table arriving and the old rows surviving; it
+        // has no business knowing which version happens to be latest,
+        // and pinning the number here has broken this suite on every
+        // bump since.
         assert_eq!(version, SCHEMA_VERSION.to_string());
-        assert_eq!(SCHEMA_VERSION, 6);
     }
 
     #[test]

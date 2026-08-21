@@ -60,6 +60,10 @@ pub struct Tab {
     /// for a preview. `None` for ordinary tabs, which take their label
     /// from their query.
     pub title: Option<String>,
+    /// One of the app's own records this tab shows: `history` or
+    /// `writes`. `None` on every other kind of tab, and never set at the
+    /// same time as a query or a table — a tab shows one thing.
+    pub record: Option<String>,
     /// Schema and table this tab targets. Both are `None` on an
     /// ordinary query tab; both are `Some` on a table tab. They move
     /// together — one set without the other is a bug, not a state.

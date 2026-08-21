@@ -16,6 +16,7 @@ import type { ExportFormat } from "./components/GridToolbar";
 import { PasswordRetry } from "./components/PasswordRetry";
 import { PendingWriteDialog } from "./components/PendingWriteDialog";
 import type { Creating } from "./components/QueryTree";
+import { RecordView } from "./components/RecordView";
 import { ResultGrid } from "./components/ResultGrid";
 import { Sidebar } from "./components/Sidebar";
 import { SidebarResizer } from "./components/SidebarResizer";
@@ -508,6 +509,12 @@ export default function App() {
     activeTab?.target_schema && activeTab.target_table
       ? { schema: activeTab.target_schema, table: activeTab.target_table }
       : null;
+
+  // Which of the app's own records this tab shows, if it shows one.
+  // They are tabs rather than sidebar lists because a statement is a
+  // line of SQL: the two lists that exist to be read were the ones the
+  // sidebar was truncating.
+  const recordTab = activeTab?.record ?? null;
 
   const detail = useMemo(
     () =>
@@ -1363,13 +1370,6 @@ export default function App() {
           onOpenTableData={(s, t) => void openTableData(s, t)}
           onOpenTableStructure={(s, t) => void openTableStructure(s, t)}
           activeTable={tableTarget}
-          recent={recent}
-          writes={writes}
-          onOpenWrite={(sql) => void openRecent(sql)}
-          connections={connections}
-          activeConnectionId={connection?.id ?? null}
-          onOpenRecent={(sql) => void openRecent(sql)}
-          onForgetRecent={(id) => void forgetRecent(id)}
         />
       </div>
       <SidebarResizer onResize={setSidebarWidth} />
@@ -1485,7 +1485,25 @@ export default function App() {
               which pulled the eye away from the connection identity
               next to it. Hidden on a table tab, where "save" has no
               query to name. */}
-          {!tableTarget && (
+          {/* The two records the app keeps about itself. Tabs rather
+              than sidebar lists: a statement is a line of SQL, and the
+              sidebar was truncating the only two lists whose whole
+              purpose is being read. */}
+          <button
+            className="btn-small"
+            title="What you have run and closed"
+            onClick={() => void actions.openRecord("history")}
+          >
+            History
+          </button>
+          <button
+            className="btn-small"
+            title="What this app has written"
+            onClick={() => void actions.openRecord("writes")}
+          >
+            Writes
+          </button>
+          {!tableTarget && !recordTab && (
             <button
               className="btn-small"
               title="Save this query (⌘S)"
@@ -1508,7 +1526,17 @@ export default function App() {
           onCancelName={() => setNaming(null)}
         />
 
-        {tableTarget ? (
+        {recordTab ? (
+          <RecordView
+            record={recordTab}
+            items={recent}
+            writes={writes}
+            connections={connections}
+            activeConnectionId={connection?.id ?? null}
+            onOpen={(sql) => void openRecent(sql)}
+            onForget={(id) => void forgetRecent(id)}
+          />
+        ) : tableTarget ? (
           <TableView
             schemaName={tableTarget.schema}
             tableName={tableTarget.table}

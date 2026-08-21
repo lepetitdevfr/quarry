@@ -831,6 +831,16 @@ pub fn attach_query(
     state.library.tabs()
 }
 
+/// Open the tab showing `history` or `writes`, or focus it if it is
+/// already open.
+#[tauri::command]
+pub fn open_record_tab(
+    state: tauri::State<'_, AppState>,
+    record: String,
+) -> Result<Vec<Tab>, AppError> {
+    state.library.open_record_tab(&record)
+}
+
 #[tauri::command]
 pub fn activate_tab(state: tauri::State<'_, AppState>, id: String) -> Result<Vec<Tab>, AppError> {
     state.library.activate_tab(&id)?;

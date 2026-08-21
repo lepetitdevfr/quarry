@@ -911,80 +911,6 @@ button:disabled {
 
 /* Two names, one section. The inactive one stays legible: it is a place
    to go, not a disabled control. */
-.section-tabs {
-  display: flex;
-  gap: var(--s-3);
-  /* Takes the slack and gives it back first: the create button must
-     never be the thing that gets pushed out of a narrow sidebar. */
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-}
-
-.section-tabs button {
-  background: none;
-  border: none;
-  padding: 0;
-  color: var(--faint);
-  cursor: pointer;
-}
-
-.section-tabs button.active {
-  color: var(--text);
-}
-
-.recent-rows {
-  flex: 1;
-  overflow-y: auto;
-}
-
-/* Two lines: the statement, then the quiet facts about it. */
-.recent-row {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 6px 8px;
-  cursor: default;
-}
-
-.recent-row:hover,
-.recent-row:focus-visible {
-  background: var(--hover);
-}
-
-.recent-sql {
-  font-family: var(--mono);
-  font-size: var(--t-sm);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.recent-meta {
-  display: flex;
-  align-items: center;
-  gap: var(--s-2);
-  color: var(--faint);
-  font-size: var(--t-xs);
-}
-
-/* A refused or failed write reads differently from one that landed. The
-   left edge carries it: this list is scanned, not read. */
-.write-row.refused,
-.write-row.failed {
-  border-left: 2px solid var(--error);
-}
-
-.write-row.rolled_back {
-  border-left: 2px solid var(--border);
-}
-
-/* Work from the connection you are on. A left edge rather than a
-   heading: it groups without spending a row on saying so. */
-.recent-row.here {
-  border-left: 2px solid var(--border);
-}
-
 /* The tree's only badge. Quiet: it says what a row is, and it appears
    on the minority of rows where "table" would be wrong. */
 .relation-badge {
@@ -1980,4 +1906,103 @@ button,
 
 .status-spacer {
   margin-left: auto;
+}
+
+/* ---- the record tabs: history and writes ---------------------------- */
+/*
+   They lived in the sidebar first and did not fit: a statement is a line
+   of SQL and the sidebar is 250px, so the two lists whose whole purpose
+   is being read were the ones being truncated.
+*/
+
+.record-view {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: var(--s-3);
+}
+
+.record-head {
+  display: flex;
+  align-items: center;
+  gap: var(--s-3);
+  margin-bottom: var(--s-3);
+}
+
+.record-head h2 {
+  margin: 0;
+}
+
+.record-head .schema-filter {
+  max-width: 320px;
+}
+
+.record-empty {
+  color: var(--muted);
+}
+
+.record-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.record-table th {
+  padding: var(--s-1) var(--s-2);
+  border-bottom: 1px solid var(--border);
+  color: var(--faint);
+  font-size: var(--t-xs);
+  font-weight: normal;
+  letter-spacing: 0.06em;
+  text-align: left;
+  text-transform: uppercase;
+}
+
+.record-table td {
+  padding: var(--s-2);
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+/* The columns carrying facts stay narrow, so the statement — the reason
+   this view exists — takes the rest of the width. */
+.record-when,
+.record-where,
+.record-what {
+  white-space: nowrap;
+  width: 1%;
+}
+
+.record-connection {
+  margin-left: var(--s-2);
+  color: var(--muted);
+  font-size: var(--t-sm);
+}
+
+/* Wraps and keeps its newlines: a formatted statement is worth reading
+   as it was written, which the sidebar could never show. */
+.record-sql {
+  margin: 0;
+  max-height: 8lh;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: var(--t-sm);
+  line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.record-row:hover {
+  background: var(--hover);
+}
+
+.record-row.here td:first-child {
+  border-left: 2px solid var(--border);
+}
+
+.record-row.refused td,
+.record-row.failed td {
+  color: var(--error);
+}
+
+.record-row.rolled_back td {
+  color: var(--muted);
 }

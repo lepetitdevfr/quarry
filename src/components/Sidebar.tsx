@@ -2,17 +2,9 @@ import { useCallback, useRef, useState } from "react";
 import { ContextMenu, useContextMenu } from "./ContextMenu";
 import { PaneResizer } from "./PaneResizer";
 import { QueryTree, type Creating } from "./QueryTree";
-import { RecentList } from "./RecentList";
-import { WritesList } from "./WritesList";
 import { SchemaTree } from "./SchemaTree";
 import { DEFAULT_SCHEMA_HEIGHT, clampSectionHeight } from "../lib/layout";
-import type {
-  Connection,
-  LibraryTree,
-  RecentItem,
-  Schema,
-  WriteRecord,
-} from "../types";
+import type { LibraryTree, Schema } from "../types";
 
 interface Props {
   library: LibraryTree;
@@ -38,15 +30,6 @@ interface Props {
   onOpenTableStructure: (schema: string, table: string) => void;
   /** The table the active tab is showing, so the tree can mark it. */
   activeTable: { schema: string; table: string } | null;
-  /** Everything run or closed, newest first. */
-  recent: RecentItem[];
-  connections: Connection[];
-  activeConnectionId: string | null;
-  onOpenRecent: (sql: string) => void;
-  onForgetRecent: (id: string) => void;
-  /** Every write this app has made, newest first. */
-  writes: WriteRecord[];
-  onOpenWrite: (sql: string) => void;
 }
 
 export function Sidebar(props: Props) {
@@ -54,15 +37,6 @@ export function Sidebar(props: Props) {
   // left. Measuring both would have them fight over the remainder.
   const [schemaHeight, setSchemaHeight] = useState(DEFAULT_SCHEMA_HEIGHT);
   const shellRef = useRef<HTMLElement>(null);
-
-  // Queries and History share the bottom section rather than stacking.
-  // A third stacked section would need a second resizer and three-way
-  // height maths in a sidebar that is already tight — and the two are
-  // alternatives, not competitors: you are either browsing work you
-  // saved or recovering work you did not.
-  const [bottom, setBottom] = useState<"queries" | "history" | "writes">(
-    "queries",
-  );
 
   // Creating lives behind one button rather than two labelled ones.
   // Three tab names and two labels do not fit the sidebar at any width
@@ -114,31 +88,8 @@ export function Sidebar(props: Props) {
 
       <section className="sidebar-section queries">
         <header className="sidebar-header">
-          <div className="section-tabs">
-            <button
-              className={bottom === "queries" ? "overline active" : "overline"}
-              onClick={() => setBottom("queries")}
-            >
-              Queries
-            </button>
-            <button
-              className={bottom === "history" ? "overline active" : "overline"}
-              onClick={() => setBottom("history")}
-            >
-              History
-            </button>
-            <button
-              className={bottom === "writes" ? "overline active" : "overline"}
-              onClick={() => setBottom("writes")}
-            >
-              Writes
-            </button>
-          </div>
-          {/* Only the Queries list has anything to create. History and
-              Writes are records of what happened, not places you add
-              to. */}
-          {bottom === "queries" && (
-            <div className="sidebar-header-actions">
+          <span className="overline">Queries</span>
+          <div className="sidebar-header-actions">
               <button
                 className="row-action"
                 title="New query or folder"
@@ -152,39 +103,22 @@ export function Sidebar(props: Props) {
               >
                 +
               </button>
-            </div>
-          )}
+          </div>
         </header>
-        {bottom === "queries" ? (
-          <QueryTree
-            library={props.library}
-            activeQueryId={props.activeQueryId}
-            onOpen={props.onOpen}
-            onRenameQuery={props.onRenameQuery}
-            onDeleteQuery={props.onDeleteQuery}
-            onMoveQuery={props.onMoveQuery}
-            onRenameCollection={props.onRenameCollection}
-            onDeleteCollection={props.onDeleteCollection}
-            onNewQueryInCollection={props.onNewQueryInCollection}
-            creating={props.creating}
-            onCommitCreate={props.onCommitCreate}
-            onCancelCreate={props.onCancelCreate}
-          />
-        ) : bottom === "history" ? (
-          <RecentList
-            items={props.recent}
-            connections={props.connections}
-            activeConnectionId={props.activeConnectionId}
-            onOpen={props.onOpenRecent}
-            onForget={props.onForgetRecent}
-          />
-        ) : (
-          <WritesList
-            writes={props.writes}
-            connections={props.connections}
-            onOpen={props.onOpenWrite}
-          />
-        )}
+        <QueryTree
+          library={props.library}
+          activeQueryId={props.activeQueryId}
+          onOpen={props.onOpen}
+          onRenameQuery={props.onRenameQuery}
+          onDeleteQuery={props.onDeleteQuery}
+          onMoveQuery={props.onMoveQuery}
+          onRenameCollection={props.onRenameCollection}
+          onDeleteCollection={props.onDeleteCollection}
+          onNewQueryInCollection={props.onNewQueryInCollection}
+          creating={props.creating}
+          onCommitCreate={props.onCommitCreate}
+          onCancelCreate={props.onCancelCreate}
+        />
       </section>
 
       <ContextMenu menu={menu} onClose={closeMenu} />
