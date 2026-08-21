@@ -1,3 +1,28 @@
+## [0.7.0](https://github.com/lepetitdevfr/quarry/compare/v0.6.0...v0.7.0) (2026-08-21)
+
+### Features
+
+* **conn:** let Postgres end a transaction nobody is answering ([0eea8f2](https://github.com/lepetitdevfr/quarry/commit/0eea8f250c0e26ba29b41c49a6e9b490208d8532))
+* **edit:** derive what would put a grid edit back ([a3f2a9a](https://github.com/lepetitdevfr/quarry/commit/a3f2a9aaf624b1ad8b1baacb707f8591ea644516))
+* **edit:** send the values a batch is about to overwrite ([1372b77](https://github.com/lepetitdevfr/quarry/commit/1372b77dd0a0c41f530409778739295bc29ab4ea))
+* **exec:** confirm a write before it commits ([f375e0c](https://github.com/lepetitdevfr/quarry/commit/f375e0cd0a9947a13cb15c551bf3a4a21af9d88b))
+* **exec:** park a guarded write and resolve it by token ([e3a09ed](https://github.com/lepetitdevfr/quarry/commit/e3a09edf4945d0946058e3df134f018f086b8185))
+* **exec:** record every write, and how it ended ([d9a6727](https://github.com/lepetitdevfr/quarry/commit/d9a6727aef6150505d10ad7c34f0f3133b58e1b9))
+* **exec:** run a write in a transaction that waits for a decision ([823c057](https://github.com/lepetitdevfr/quarry/commit/823c057e16163fb5b0ece1e1cf8cdf8f0df30ae9))
+* **guard:** decide what to do about a write before committing it ([75166ec](https://github.com/lepetitdevfr/quarry/commit/75166ec09f21ddb645672fc3b2d0e930ec6923e5))
+* **guard:** name the kind of write from the parse we already do ([d904b1c](https://github.com/lepetitdevfr/quarry/commit/d904b1c15231fafa86ec23160dfe93ca5bb35750))
+* **history:** read the records in a tab, not down the side ([abaa5b8](https://github.com/lepetitdevfr/quarry/commit/abaa5b8eb9db2ea40a1ae39544d90dfb4e936ee5))
+* **history:** scope the records to the connection you are on ([70a84c7](https://github.com/lepetitdevfr/quarry/commit/70a84c7720e61c5183cd13241e1de2f914adf344))
+* **history:** show what this app wrote ([97cbc6a](https://github.com/lepetitdevfr/quarry/commit/97cbc6a3ee7f1e396b2fab4f194c00843b53647f))
+* **library:** add the writes table at schema version 6 ([69c69af](https://github.com/lepetitdevfr/quarry/commit/69c69af4d9142a673c2d55ec0952268b3475995c))
+* **library:** record what this app wrote and how it ended ([9a79eea](https://github.com/lepetitdevfr/quarry/commit/9a79eea248200516bc5c3fc0dd68889360f1d9ed))
+* **menu:** open the records from the View menu ([e43d355](https://github.com/lepetitdevfr/quarry/commit/e43d3558c78df358ca8c1f02b1de2b1aa8764963))
+
+### Fixes
+
+* **exec:** render the write confirmation where you can see it ([9649b47](https://github.com/lepetitdevfr/quarry/commit/9649b47b5c44918d1f824e0b0d53e55f5e13716f))
+* **sidebar:** put creating behind one button so three tabs fit ([53f93e0](https://github.com/lepetitdevfr/quarry/commit/53f93e06db75f298e6f9cadef434724880322e4f))
+
 ## [0.6.0](https://github.com/lepetitdevfr/quarry/compare/v0.5.0...v0.6.0) (2026-08-20)
 
 ### Features
