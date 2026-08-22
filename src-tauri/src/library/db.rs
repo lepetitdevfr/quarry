@@ -2,8 +2,32 @@ use crate::error::AppError;
 use rusqlite::Connection;
 use std::path::Path;
 
-/// Bump this when the schema changes and add a migration step below.
-pub const SCHEMA_VERSION: i64 = 7;
+/// The schema every database is brought up to before any versioned step
+/// runs. It is the schema as it stood at version 7, written so that
+/// applying it to a database at any earlier version — or to one that
+/// already has it — converges on the same result.
+///
+/// Nothing new goes in here. New schema changes are steps in
+/// [`MIGRATIONS`]; the baseline exists only to give the databases that
+/// shipped before versioning a floor to start from.
+const BASELINE_VERSION: i64 = 7;
+
+/// The schema changes made since the baseline, in order. Index 0 is the
+/// step that takes a database from [`BASELINE_VERSION`] to the next
+/// version, so index `i` produces version `BASELINE_VERSION + i + 1`.
+///
+/// To change the schema, append one entry. Never edit or remove an
+/// entry that has shipped: someone's database has already run it, and
+/// the only record of what it did is the text itself.
+///
+/// Unlike the baseline, a step is applied exactly once and so does not
+/// need to be idempotent. That is the point of versioning them — it is
+/// what lets a step drop a column, backfill a value, or tighten a
+/// constraint, none of which can be expressed as `if not exists`.
+const MIGRATIONS: &[&str] = &[];
+
+/// The version a database is at once every step has run.
+pub const SCHEMA_VERSION: i64 = BASELINE_VERSION + MIGRATIONS.len() as i64;
 
 /// Open the database, creating and migrating it if needed.
 ///
@@ -20,12 +44,113 @@ pub fn open(path: &Path) -> Result<Connection, AppError> {
         .map_err(|e| AppError::Library(e.to_string()))?;
 
     migrate(&conn)?;
+    tidy_up_tabs(&conn)?;
     Ok(conn)
 }
 
-/// Apply the schema. Every statement is `if not exists`, so running
-/// this on an already-migrated database is a no-op.
+/// What opening a database at `current` has to do to bring it up to
+/// date, given how many steps exist past the baseline.
+#[derive(Debug, PartialEq, Eq)]
+struct Plan {
+    /// Whether the baseline has to be applied first.
+    baseline: bool,
+    /// The indices into the step list still to run, in order.
+    steps: std::ops::Range<usize>,
+}
+
+/// Decide which work an open has left to do.
+///
+/// Split out from the statements themselves because this is the part
+/// that can be wrong in a way no schema will catch: run a step twice and
+/// it fails or double-applies, skip one and the column never arrives.
+fn plan(current: i64, steps: usize) -> Result<Plan, AppError> {
+    let target = BASELINE_VERSION + steps as i64;
+
+    // A database written by a newer build. Its extra columns are
+    // invisible to this one and its constraints are not ours to guess
+    // at, so opening it read-write would corrupt work we cannot see.
+    if current > target {
+        return Err(AppError::Library(format!(
+            "this library was created by a newer version of Quarry \
+             (database schema {current}, this build understands {target}). \
+             Update Quarry to open it."
+        )));
+    }
+
+    // Everything that shipped before versioning reports version 0,
+    // whatever its schema actually is: `user_version` was never set.
+    // The baseline is idempotent precisely so that this one branch can
+    // serve all of them — a database from v1 and a database from v7
+    // both come out of it at v7, and neither loses a row.
+    let baseline = current < BASELINE_VERSION;
+    let applied = current.max(BASELINE_VERSION);
+
+    Ok(Plan {
+        baseline,
+        steps: (applied - BASELINE_VERSION) as usize..steps,
+    })
+}
+
+/// Bring the database up to [`SCHEMA_VERSION`].
+///
+/// The version lives in SQLite's own `user_version` header field rather
+/// than in a table of ours, so that the stamp commits in the same
+/// transaction as the statements it describes. A crash mid-migration
+/// therefore leaves the database at the last version that fully
+/// applied, never at a version whose changes only half-arrived.
 fn migrate(conn: &Connection) -> Result<(), AppError> {
+    migrate_with(conn, MIGRATIONS)
+}
+
+/// The body of [`migrate`], with the step list as a parameter so that a
+/// test can supply its own. With `MIGRATIONS` empty there is otherwise
+/// no way to prove a step runs once and only once, which is the whole
+/// reason the versions exist.
+fn migrate_with(conn: &Connection, migrations: &[&str]) -> Result<(), AppError> {
+    let current: i64 = conn
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .map_err(|e| AppError::Library(e.to_string()))?;
+
+    let plan = plan(current, migrations.len())?;
+    let target = BASELINE_VERSION + migrations.len() as i64;
+
+    let tx = conn
+        .unchecked_transaction()
+        .map_err(|e| AppError::Library(e.to_string()))?;
+
+    if plan.baseline {
+        apply_baseline(&tx)?;
+        tx.pragma_update(None, "user_version", BASELINE_VERSION)
+            .map_err(|e| AppError::Library(e.to_string()))?;
+    }
+
+    for i in plan.steps {
+        tx.execute_batch(migrations[i])
+            .map_err(|e| AppError::Library(e.to_string()))?;
+        tx.pragma_update(None, "user_version", BASELINE_VERSION + i as i64 + 1)
+            .map_err(|e| AppError::Library(e.to_string()))?;
+    }
+
+    // `meta.schema_version` is no longer what decides anything — it is
+    // written so that a build from before this change can still read a
+    // version out of a database this one has touched.
+    tx.execute(
+        "insert into meta (key, value) values ('schema_version', ?1)
+         on conflict(key) do update set value = excluded.value",
+        [target.to_string()],
+    )
+    .map_err(|e| AppError::Library(e.to_string()))?;
+
+    tx.commit().map_err(|e| AppError::Library(e.to_string()))?;
+    Ok(())
+}
+
+/// Apply the version 7 schema to a database at any earlier version.
+///
+/// Every statement is `if not exists` and every column is added only
+/// after checking, so running this on a database that already has some
+/// or all of it is a no-op.
+fn apply_baseline(conn: &Connection) -> Result<(), AppError> {
     conn.execute_batch(
         "
         create table if not exists meta (
@@ -156,6 +281,13 @@ fn migrate(conn: &Connection) -> Result<(), AppError> {
     // so the list that exists to be read was the one that could not be.
     add_column_if_missing(conn, "tabs", "record", "text")?;
 
+    Ok(())
+}
+
+/// Housekeeping at open time. Not a migration: it runs on every launch
+/// and depends on what the last session left behind, not on which
+/// schema version the database is at.
+fn tidy_up_tabs(conn: &Connection) -> Result<(), AppError> {
     // Preview tabs are transient. Purging them here rather than filtering
     // them on restore means a crash cannot leave one behind.
     conn.execute("delete from tabs where is_preview = 1", [])
@@ -170,13 +302,6 @@ fn migrate(conn: &Connection) -> Result<(), AppError> {
          where id = (select id from tabs order by position limit 1)
            and not exists (select 1 from tabs where is_active = 1)",
         [],
-    )
-    .map_err(|e| AppError::Library(e.to_string()))?;
-
-    conn.execute(
-        "insert into meta (key, value) values ('schema_version', ?1)
-         on conflict(key) do update set value = excluded.value",
-        [SCHEMA_VERSION.to_string()],
     )
     .map_err(|e| AppError::Library(e.to_string()))?;
 
@@ -554,6 +679,17 @@ mod tests {
             // again: what is being tested is the upgrade of a database
             // that never had one.
             conn.execute("drop table if exists writes", []).unwrap();
+            // And put it back to what a v5 database on disk actually
+            // looks like. Every database that shipped before versioning
+            // reports `user_version` 0 — leaving the stamp this build
+            // just wrote would make the next open skip the baseline and
+            // test nothing.
+            conn.pragma_update(None, "user_version", 0).unwrap();
+            conn.execute(
+                "update meta set value = '5' where key = 'schema_version'",
+                [],
+            )
+            .unwrap();
         }
 
         let conn = open(&path).unwrap();
@@ -686,5 +822,208 @@ mod tests {
         // The current version, whatever it is: this test is about the
         // saved query surviving, not about which version is latest.
         assert_eq!(version, SCHEMA_VERSION.to_string());
+    }
+
+    #[test]
+    fn plans_the_baseline_for_a_database_from_before_versioning() {
+        // Everything that shipped before this change reports 0, whatever
+        // schema it actually has.
+        assert_eq!(
+            plan(0, 0).unwrap(),
+            Plan {
+                baseline: true,
+                steps: 0..0
+            }
+        );
+        // A v5 database still has to run every step past the baseline.
+        assert_eq!(
+            plan(5, 2).unwrap(),
+            Plan {
+                baseline: true,
+                steps: 0..2
+            }
+        );
+    }
+
+    #[test]
+    fn plans_no_baseline_once_it_has_been_stamped() {
+        // The baseline is the expensive part — a full DDL batch and a
+        // pragma per column. Once stamped it must never run again.
+        assert_eq!(
+            plan(BASELINE_VERSION, 2).unwrap(),
+            Plan {
+                baseline: false,
+                steps: 0..2
+            }
+        );
+    }
+
+    #[test]
+    fn plans_only_the_steps_not_yet_applied() {
+        // Half-migrated: one step in, two to go.
+        assert_eq!(
+            plan(BASELINE_VERSION + 1, 3).unwrap(),
+            Plan {
+                baseline: false,
+                steps: 1..3
+            }
+        );
+    }
+
+    #[test]
+    fn plans_nothing_for_an_up_to_date_database() {
+        let up_to_date = plan(BASELINE_VERSION + 2, 2).unwrap();
+        assert!(!up_to_date.baseline);
+        assert!(up_to_date.steps.is_empty(), "nothing left to run");
+    }
+
+    #[test]
+    fn plans_refuse_a_database_from_a_newer_build() {
+        // Its extra columns are invisible to this build and its
+        // constraints are not ours to guess at. Opening it read-write
+        // would corrupt work we cannot see.
+        let err = plan(BASELINE_VERSION + 3, 1).unwrap_err();
+        let AppError::Library(message) = err else {
+            panic!("expected a library error");
+        };
+        assert!(
+            message.contains("newer version"),
+            "the message must say why: {message}"
+        );
+    }
+
+    #[test]
+    fn opening_refuses_a_database_from_a_newer_build() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("future.db");
+
+        {
+            let conn = open(&path).unwrap();
+            conn.pragma_update(None, "user_version", SCHEMA_VERSION + 1)
+                .unwrap();
+        }
+
+        assert!(
+            open(&path).is_err(),
+            "a database from a newer build must not be opened"
+        );
+    }
+
+    #[test]
+    fn a_fresh_database_is_stamped_with_the_current_version() {
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open(&dir.path().join("fresh.db")).unwrap();
+
+        let version: i64 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        // The current version, whatever it is: pinning the number here
+        // would break the suite on the next bump.
+        assert_eq!(version, SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn a_database_from_before_versioning_is_stamped_after_the_baseline() {
+        // The bridge every existing installation crosses exactly once:
+        // a real schema on disk with no stamp on it.
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("unstamped.db");
+
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "create table tabs (
+                    id          text primary key,
+                    query_id    text,
+                    scratch_sql text,
+                    position    integer not null,
+                    is_active   integer not null default 0,
+                    cursor_pos  integer not null default 0
+                 );
+                 insert into tabs (id, query_id, scratch_sql, position, is_active, cursor_pos)
+                 values ('t1', null, 'select 1', 100, 1, 0);",
+            )
+            .unwrap();
+            let version: i64 = conn
+                .pragma_query_value(None, "user_version", |r| r.get(0))
+                .unwrap();
+            assert_eq!(version, 0, "the fixture must be unstamped");
+        }
+
+        let conn = open(&path).unwrap();
+
+        let sql: String = conn
+            .query_row("select scratch_sql from tabs where id = 't1'", [], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(sql, "select 1", "the existing tab must survive");
+
+        let version: i64 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, SCHEMA_VERSION);
+    }
+
+    #[test]
+    fn a_step_runs_once_however_often_the_database_is_opened() {
+        // The property the whole change exists for. `MIGRATIONS` is
+        // empty, so the step list is supplied here: a step that is not
+        // idempotent, which is exactly the kind the old converged
+        // schema could not express.
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open(&dir.path().join("stepped.db")).unwrap();
+
+        let steps: &[&str] = &[
+            "create table sample (id integer primary key, n integer not null);
+             insert into sample (id, n) values (1, 1);",
+        ];
+
+        migrate_with(&conn, steps).unwrap();
+        migrate_with(&conn, steps).unwrap();
+        migrate_with(&conn, steps).unwrap();
+
+        let rows: i64 = conn
+            .query_row("select count(*) from sample", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(rows, 1, "the step must have been applied exactly once");
+
+        let version: i64 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, BASELINE_VERSION + 1);
+    }
+
+    #[test]
+    fn a_failing_step_leaves_the_database_where_it_was() {
+        // A crash or a bad statement partway through must not leave a
+        // database at a version whose changes only half-arrived. One
+        // transaction covers the statements and the stamp together.
+        let dir = tempfile::tempdir().unwrap();
+        let conn = open(&dir.path().join("failing.db")).unwrap();
+
+        let steps: &[&str] = &[
+            "create table good (id integer primary key);",
+            "this is not sql;",
+        ];
+
+        assert!(migrate_with(&conn, steps).is_err());
+
+        let version: i64 = conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .unwrap();
+        assert_eq!(
+            version, BASELINE_VERSION,
+            "the version must not advance past what applied"
+        );
+
+        let tables: i64 = conn
+            .query_row(
+                "select count(*) from sqlite_master where type='table' and name='good'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(tables, 0, "the successful step must have rolled back too");
     }
 }

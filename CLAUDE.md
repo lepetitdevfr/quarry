@@ -77,6 +77,13 @@ Rust integration tests need Docker; they start Postgres 17 via testcontainers.
   than it looks: window dragging needed `core:window:allow-start-dragging`
   added explicitly, and the denial was silent. Capability changes need a
   `tauri dev` restart — they compile into the binary.
+- **Schema changes are versioned steps, not edits to a converged batch.**
+  `src-tauri/src/library/db.rs` holds a `BASELINE` (the v7 schema, still
+  idempotent, applied once to every database that predates versioning) and a
+  `MIGRATIONS` list of steps past it, stamped into SQLite's `user_version`
+  inside the same transaction. To change the schema, append one entry to
+  `MIGRATIONS` — never edit a step that has shipped, and never add to the
+  baseline. `SCHEMA_VERSION` derives itself from the list length.
 - **A migration test must never pin the schema version number.** Assert
   `SCHEMA_VERSION`, not the literal — the test's job is that the new
   table arrived and the old rows survived, and a hardcoded number breaks
