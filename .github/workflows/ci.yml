@@ -1,15 +1,22 @@
 name: CI
 
+# These suites no longer run on every push. A private repo bills its Actions
+# minutes and macOS runs at a 10x multiplier, so testing every commit spent
+# the month's quota on code that was never going to be released.
+#
+# They run in two places now: before a release, called by the Release
+# workflow, and on demand here. Between releases the gate is local —
+# `npm test && npm run build`, and `cargo test && cargo clippy --all-targets
+# -- -D warnings && cargo fmt --check` in src-tauri. Nothing on GitHub will
+# tell you main is broken until you go to release it.
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_call:
+  workflow_dispatch:
 
-# A second push to the same branch cancels the first: the older run's result
-# is about code nobody is looking at any more.
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
+# No concurrency group. The push-triggered version cancelled superseded runs,
+# which was right when a run belonged to a commit nobody was looking at any
+# more; a run that a release is waiting on must never be cancelled out from
+# under it.
 
 jobs:
   frontend:

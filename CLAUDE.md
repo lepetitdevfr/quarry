@@ -55,6 +55,11 @@ the reasoning; do not re-derive them.
 
 ## Verification — all pass on `main`, so any failure is new
 
+**Nothing on GitHub runs these on push any more.** CI triggers only from the
+Release workflow (and manually), to keep a private repo's Actions minutes for
+builds that ship. Between releases these commands are the only gate, so run
+them before you consider a stage done.
+
 ```bash
 npm test && npm run build
 ```

@@ -4,6 +4,11 @@ name: Release
 # you start it. Three platforms take about twenty minutes, and most commits do
 # not deserve a release.
 #
+# This is also the only thing on GitHub that runs the test suites — CI stopped
+# triggering on push to keep a private repo's Actions minutes for the builds
+# that ship. Expect a release run to be longer than it used to be, and to fail
+# at the start rather than at the build if main is broken.
+#
 # semantic-release still picks the version from the commit messages when it
 # runs — `feat:` bumps the minor, `fix:` and `refactor:` the patch, a
 # `BREAKING CHANGE:` footer the major; `docs:`, `test:`, `ci:` and `chore:`
@@ -30,9 +35,24 @@ env:
   RELEASES_REPO: lepetitdevfr/quarry-releases
 
 jobs:
-  # Runs first and alone: the version has to exist before anything is built,
-  # because it is baked into tauri.conf.json and names every artifact.
+  # The test suites, which no longer run on push — releasing is now the only
+  # thing that runs them on GitHub. Nothing is versioned or built until they
+  # pass, so a release is the point where a broken main is caught.
+  #
+  # Skipped for a rebuild: that version was already tested and released, and
+  # this workflow would be testing the branch tip rather than the tag anyway.
+  test:
+    if: inputs.rebuild_tag == ''
+    uses: ./.github/workflows/ci.yml
+
+  # The version has to exist before anything is built, because it is baked
+  # into tauri.conf.json and names every artifact.
   version:
+    needs: test
+    # `always()` because `needs: test` would otherwise skip this whole
+    # workflow on a rebuild, where the test job is deliberately skipped. The
+    # result check is what actually gates: a failed suite stops the release.
+    if: always() && (needs.test.result == 'success' || needs.test.result == 'skipped')
     runs-on: ubuntu-latest
     permissions:
       contents: write
