@@ -114,6 +114,20 @@ fn a_free_connection_allows_everything() {
 }
 
 #[test]
+fn a_read_on_a_free_connection_stays_a_read() {
+    // The 0.7.0 defect: `Free` returned `read_write: true` for every
+    // statement, so a table preview ran down the guarded-write path and
+    // the user was asked to confirm that "500 rows will change" — with
+    // no columns to show, because that path reports a count and not a
+    // result set.
+    let now = Instant::now();
+    assert_eq!(
+        decide(Policy::Free, None, now, "select * from orders limit 500"),
+        Decision::Allow { read_write: false },
+    );
+}
+
+#[test]
 fn a_locked_connection_allows_reads_and_denies_writes() {
     let now = Instant::now();
 

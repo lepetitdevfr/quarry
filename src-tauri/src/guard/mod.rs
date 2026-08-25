@@ -213,12 +213,17 @@ pub fn decide(
     now: Instant,
     sql: &str,
 ) -> Decision {
-    if policy == Policy::Free {
-        return Decision::Allow { read_write: true };
-    }
-
+    // Classification comes first, whatever the policy. A read is a read
+    // on every connection: it runs outside a transaction of its own, is
+    // never parked, and never asks. Letting `Free` skip this sent every
+    // `select` down the guarded-write path, where a preview of 500 rows
+    // came back as "500 rows will change" and no columns at all.
     if classify(sql) == Access::Read {
         return Decision::Allow { read_write: false };
+    }
+
+    if policy == Policy::Free {
+        return Decision::Allow { read_write: true };
     }
 
     // A write on a locked connection: allowed only inside a live unlock
