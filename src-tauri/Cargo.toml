@@ -1,6 +1,6 @@
 [package]
 name = "quarry"
-version = "0.7.0"
+version = "0.7.1"
 description = "A keyboard-first PostgreSQL client with a production write-guard"
 authors = ["Lepetitdev"]
 license = "MIT"

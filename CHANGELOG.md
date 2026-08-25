@@ -1,3 +1,13 @@
+## [0.7.1](https://github.com/lepetitdevfr/quarry/compare/v0.7.0...v0.7.1) (2026-08-25)
+
+### Fixes
+
+* **guard:** classify before the free-policy shortcut ([5d50de1](https://github.com/lepetitdevfr/quarry/commit/5d50de170ce8ce80f9e96aaa06578b2a64938276))
+
+### Internal
+
+* **library:** version the schema instead of converging on it ([727dd71](https://github.com/lepetitdevfr/quarry/commit/727dd71adf4c5805c4f3009e5a39883d502210ad))
+
 ## [0.7.0](https://github.com/lepetitdevfr/quarry/compare/v0.6.0...v0.7.0) (2026-08-21)
 
 ### Features
