@@ -27,3 +27,37 @@ export function formatCell(value: CellValue): FormattedCell {
   }
   return { text: value, kind: "text" };
 }
+
+/**
+ * A byte count in the largest unit that keeps it readable.
+ *
+ * Decimal units, matching what `pg_size_pretty` and the rest of the
+ * Postgres tooling show, so a number here can be compared with one from
+ * psql without mental arithmetic.
+ */
+export function formatBytes(bytes: number): string {
+  const units = ["B", "kB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = 0;
+
+  while (value >= 1000 && unit < units.length - 1) {
+    value /= 1000;
+    unit += 1;
+  }
+
+  // Bytes are whole things; anything larger has been divided and reads
+  // better with one decimal.
+  return unit === 0 ? `${value} B` : `${value.toFixed(1)} ${units[unit]}`;
+}
+
+/**
+ * The planner's row estimate, or "unknown".
+ *
+ * `pg_class.reltuples` is -1 on a table that has never been analyzed.
+ * Rendering that as "-1" is absurd and rendering it as "0" is plausible
+ * and therefore worse — someone would believe it.
+ */
+export function formatRowEstimate(estimate: number): string {
+  if (estimate < 0) return "unknown";
+  return estimate.toLocaleString("en-US");
+}

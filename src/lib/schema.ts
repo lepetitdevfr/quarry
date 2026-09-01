@@ -1,4 +1,7 @@
-import type { Schema, SchemaTable } from "../types";
+import type { Completion } from "@codemirror/autocomplete";
+import type { SQLNamespace } from "@codemirror/lang-sql";
+import type { Schema, SchemaColumn, SchemaTable } from "../types";
+import { formatBytes, formatRowEstimate } from "./format";
 
 /**
  * One rendered line of the tree.
@@ -114,16 +117,104 @@ export function flattenSchema(
 }
 
 /**
- * Build the object `@codemirror/lang-sql` expects: table name → column
- * names. Tables in `public` are exposed twice, qualified and bare,
- * because `public` is on the default search path and nobody types it.
+ * One completion entry for a column.
+ *
+ * The type goes in `detail`, which the list renders dim and
+ * right-aligned: knowing `total` is `numeric` and `created_at` is
+ * `timestamptz` while writing the comparison is most of what the
+ * sidebar was being opened for.
+ *
+ * `info` carries what does not fit on the line — nullability, default,
+ * the full foreign key target — and is shown only for the entry the
+ * cursor is on, so it costs nothing to read.
  */
-export function buildCompletionSchema(
-  schema: Schema | null,
-): Record<string, string[]> {
+function columnCompletion(
+  column: SchemaColumn,
+  table: SchemaTable,
+): Completion {
+  const marks: string[] = [column.type_name];
+  if (column.is_primary_key) marks.push("pk");
+  if (column.references) {
+    // The schema is dropped when it is the column's own, because
+    // `orders.customer_id → customers.id` is the sentence people
+    // actually say about their own database.
+    const fk = column.references;
+    const target =
+      fk.schema === table.schema
+        ? `${fk.table}.${fk.column}`
+        : `${fk.schema}.${fk.table}.${fk.column}`;
+    marks.push(`→ ${target}`);
+  }
+
+  const facts: string[] = [];
+  if (!column.nullable) facts.push("not null");
+  if (column.default !== null) facts.push(`default ${column.default}`);
+
+  return {
+    label: column.name,
+    type: "property",
+    detail: marks.join(" "),
+    info: facts.length > 0 ? facts.join(", ") : undefined,
+    // The key you were most likely reaching for, first. A join is
+    // written on keys, and typing `o.` in one wants `id` and
+    // `customer_id` above the twelve descriptive columns that sort
+    // alphabetically ahead of them.
+    boost: column.is_primary_key ? 2 : column.references ? 1 : 0,
+    apply: applyFor(column.name),
+  };
+}
+
+/**
+ * One completion entry for a table, view or materialised view.
+ *
+ * Replaces the bare `{label, type: "type"}` lang-sql would generate for
+ * a name it found in the namespace, which is why the namespace is built
+ * in `{self, children}` form rather than as a plain array of columns.
+ */
+function tableCompletion(table: SchemaTable, boost: number): Completion {
+  const size = table.stats
+    ? `~${formatRowEstimate(table.stats.estimated_rows)} rows, ${formatBytes(
+        table.stats.total_bytes,
+      )}`
+    : null;
+
+  return {
+    label: table.name,
+    type: "type",
+    // Only views are labelled. An ordinary table is the default the eye
+    // already assumes — the same rule the tree follows.
+    detail: relationLabel(table.kind),
+    info: [table.comment, size].filter(Boolean).join(" — ") || undefined,
+    boost,
+    apply: applyFor(table.name),
+  };
+}
+
+/**
+ * What inserting this name must actually type.
+ *
+ * lang-sql quotes identifiers itself for the plain-string form of the
+ * schema, and not at all for `Completion` objects we build. Supplying
+ * `apply` puts that back, through `quoteIdent` rather than lang-sql's
+ * looser shape test: a column called `order` needs quoting for a reason
+ * a regex over its characters cannot see.
+ */
+function applyFor(name: string): string | undefined {
+  const quoted = quoteIdent(name);
+  return quoted === name ? undefined : quoted;
+}
+
+/**
+ * Build the namespace `@codemirror/lang-sql` completes from: schema →
+ * table → columns, each level carrying its own metadata.
+ *
+ * Tables in `public` are exposed twice, qualified and bare, because
+ * `public` is on the default search path and nobody types it.
+ */
+export function buildCompletionSchema(schema: Schema | null): SQLNamespace {
   if (!schema) return {};
 
-  const built: Record<string, string[]> = {};
+  const built: Record<string, SQLNamespace> = {};
 
   // How many schemas hold a table of each name, so a bare name is only
   // offered when it means one thing.
@@ -136,8 +227,11 @@ export function buildCompletionSchema(
 
   for (const node of schema.schemas) {
     for (const table of node.tables) {
-      const columns = table.columns.map((c) => c.name);
-      built[`${node.name}.${table.name}`] = columns;
+      const children = table.columns.map((c) => columnCompletion(c, table));
+      built[`${node.name}.${table.name}`] = {
+        self: tableCompletion(table, node.name === "public" ? 1 : 0),
+        children,
+      };
 
       // The bare name too, because nobody re-qualifies in a WHERE:
       // `select * from od_pdp.invoice where invoice.reason is not null`
@@ -152,7 +246,14 @@ export function buildCompletionSchema(
       const holders = owners.get(table.name) ?? [];
       const unambiguous = holders.length === 1;
       if (unambiguous || node.name === "public") {
-        built[table.name] = columns;
+        // A bare name from outside `public` sorts below the public
+        // tables it shares the list with: the unqualified name in a
+        // statement resolves through `search_path`, which reaches
+        // `public` first, so that is the one being offered first.
+        built[table.name] = {
+          self: tableCompletion(table, node.name === "public" ? 1 : -1),
+          children,
+        };
       }
     }
   }

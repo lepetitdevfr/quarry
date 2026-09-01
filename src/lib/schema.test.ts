@@ -6,6 +6,8 @@ import {
   previewSql,
   quoteIdent,
 } from "./schema";
+import type { Completion } from "@codemirror/autocomplete";
+import type { SQLNamespace } from "@codemirror/lang-sql";
 import type { Schema } from "../types";
 
 const SCHEMA: Schema = {
@@ -43,8 +45,8 @@ const SCHEMA: Schema = {
             },
           ],
           constraints: [],
-          stats: null,
-          comment: null,
+          stats: { estimated_rows: 1234, total_bytes: 8192 },
+          comment: "people",
           triggers: [],
           dependents: [],
           kind: "r",
@@ -127,17 +129,22 @@ const SCHEMA: Schema = {
 };
 
 describe("buildCompletionSchema", () => {
+  // The namespace is `{[path]: {self, children}}`, which is what lets a
+  // table entry carry its own metadata instead of the bare name
+  // lang-sql would synthesise.
+  type Built = Record<string, { self: Completion; children: Completion[] }>;
+  const built = () => buildCompletionSchema(SCHEMA) as Built;
+  const labels = (columns: Completion[]) => columns.map((c) => c.label);
+
   it("maps qualified table names to their columns", () => {
-    const built = buildCompletionSchema(SCHEMA);
-    expect(built["public.users"]).toEqual(["id", "email"]);
-    expect(built["analytics.events"]).toEqual(["user_id"]);
+    expect(labels(built()["public.users"].children)).toEqual(["id", "email"]);
+    expect(labels(built()["analytics.events"].children)).toEqual(["user_id"]);
   });
 
   it("also exposes public tables unqualified", () => {
     // `public` is on the default search path, so `users` must complete
     // without typing `public.`.
-    const built = buildCompletionSchema(SCHEMA);
-    expect(built["users"]).toEqual(["id", "email"]);
+    expect(labels(built()["users"].children)).toEqual(["id", "email"]);
   });
 
   it("exposes a non-public table unqualified when the name is unique", () => {
@@ -146,13 +153,90 @@ describe("buildCompletionSchema", () => {
     // bare name — `from analytics.events where events.user_id ...` —
     // which is ordinary SQL, and completing nothing there was the more
     // surprising behaviour of the two.
-    const built = buildCompletionSchema(SCHEMA);
-    expect(built["events"]).toEqual(["user_id"]);
-    expect(built["analytics.events"]).toEqual(["user_id"]);
+    expect(labels(built()["events"].children)).toEqual(["user_id"]);
+    expect(labels(built()["analytics.events"].children)).toEqual(["user_id"]);
   });
 
   it("returns an empty object for a null schema", () => {
     expect(buildCompletionSchema(null)).toEqual({});
+  });
+
+  it("puts a column's type in the detail line", () => {
+    const [id, email] = built()["public.users"].children;
+    expect(id.detail).toBe("int4 pk");
+    expect(email.detail).toBe("text");
+  });
+
+  it("names what a foreign key points at", () => {
+    const [userId] = built()["analytics.events"].children;
+    // Cross-schema, so the schema is kept: `users.id` alone would be
+    // ambiguous from inside `analytics`.
+    expect(userId.detail).toBe("int4 pk → public.users.id");
+  });
+
+  it("puts nullability and defaults in the info panel, not the line", () => {
+    const [id, email] = built()["public.users"].children;
+    expect(id.info).toBe("not null");
+    expect(email.info).toBe("not null");
+    const [total] = built()["public.invoices"].children;
+    expect(total.detail).toBe("numeric");
+    expect(total.info).toBeUndefined();
+  });
+
+  it("offers keys before ordinary columns", () => {
+    const [id, email] = built()["public.users"].children;
+    expect(id.boost).toBeGreaterThan(email.boost ?? 0);
+    const [userId] = built()["analytics.events"].children;
+    // A primary key that is also a foreign key is still a primary key.
+    expect(userId.boost).toBe(2);
+  });
+
+  it("labels a view and leaves an ordinary table unlabelled", () => {
+    expect(built()["public.paid_invoices"].self.detail).toBe("view");
+    expect(built()["public.users"].self.detail).toBeUndefined();
+  });
+
+  it("describes a table by its comment and size", () => {
+    expect(built()["public.users"].self.info).toBe("people — ~1,234 rows, 8.2 kB");
+    expect(built()["public.invoices"].self.info).toBeUndefined();
+  });
+
+  it("sorts a bare non-public name below the public tables it joins", () => {
+    // An unqualified name resolves through search_path, which reaches
+    // public first, so that is the table being offered first.
+    expect(built()["events"].self.boost).toBe(-1);
+    expect(built()["users"].self.boost).toBe(1);
+    // Qualified, there is nothing to disambiguate.
+    expect(built()["analytics.events"].self.boost).toBe(0);
+  });
+
+  it("quotes a name that would not read back as itself", () => {
+    // lang-sql quotes for us only when it builds the completion itself,
+    // which it no longer does for anything here. Neither name below
+    // reads back unquoted: one has a capital and a space, the other is
+    // a reserved word.
+    const [id] = built()["public.users"].children;
+    expect(id.apply).toBeUndefined();
+
+    const awkward = buildCompletionSchema({
+      schemas: [
+        {
+          name: "public",
+          tables: [
+            {
+              ...SCHEMA.schemas[0].tables[0],
+              name: "Odd Name",
+              columns: [
+                { ...SCHEMA.schemas[0].tables[0].columns[0], name: "user" },
+              ],
+            },
+          ],
+        },
+      ],
+    }) as Built;
+
+    expect(awkward["public.Odd Name"].children[0].apply).toBe('"user"');
+    expect(awkward["public.Odd Name"].self.apply).toBe('"Odd Name"');
   });
 });
 
@@ -352,6 +436,13 @@ describe("quoteIdent", () => {
 });
 
 describe("buildCompletionSchema unqualified names", () => {
+  // Only which tables are reachable by which name matters here, so the
+  // metadata each entry carries is read off as a plain column list.
+  const columns = (namespace: SQLNamespace, path: string) =>
+    (namespace as Record<string, { children: Completion[] } | undefined>)[
+      path
+    ]?.children.map((c) => c.label);
+
   const table = (schema: string, name: string, columns: string[]) => ({
     schema,
     name,
@@ -384,8 +475,8 @@ describe("buildCompletionSchema unqualified names", () => {
       schemaWith({ name: "od_pdp", tables: [table("od_pdp", "invoice", ["id", "reason"])] }),
     );
 
-    expect(built["od_pdp.invoice"]).toEqual(["id", "reason"]);
-    expect(built["invoice"]).toEqual(["id", "reason"]);
+    expect(columns(built, "od_pdp.invoice")).toEqual(["id", "reason"]);
+    expect(columns(built, "invoice")).toEqual(["id", "reason"]);
   });
 
   it("lets public win when two schemas share a table name", () => {
@@ -399,8 +490,8 @@ describe("buildCompletionSchema unqualified names", () => {
       ),
     );
 
-    expect(built["invoice"]).toEqual(["total"]);
-    expect(built["od_pdp.invoice"]).toEqual(["reason"]);
+    expect(columns(built, "invoice")).toEqual(["total"]);
+    expect(columns(built, "od_pdp.invoice")).toEqual(["reason"]);
   });
 
   it("leaves an ambiguous bare name out rather than guessing", () => {
@@ -413,9 +504,9 @@ describe("buildCompletionSchema unqualified names", () => {
       ),
     );
 
-    expect(built["invoice"]).toBeUndefined();
-    expect(built["a.invoice"]).toEqual(["x"]);
-    expect(built["b.invoice"]).toEqual(["y"]);
+    expect(columns(built, "invoice")).toBeUndefined();
+    expect(columns(built, "a.invoice")).toEqual(["x"]);
+    expect(columns(built, "b.invoice")).toEqual(["y"]);
   });
 });
 

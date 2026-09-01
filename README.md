@@ -42,8 +42,10 @@ Tabs behave like a real editor: a single click opens a preview tab that the
 next click replaces, a double click pins it.
 
 **Know the schema.** A sidebar tree of schemas, tables, columns, keys and
-indexes, feeding SQL autocomplete. Double-clicking a table opens a detail tab
-with its structure, or its rows.
+indexes, feeding SQL autocomplete — which offers each column with its type,
+marks keys and names what a foreign key points at, and refreshes itself when a
+DDL statement commits. Double-clicking a table opens a detail tab with its
+structure, or its rows.
 
 **Edit rows in place.** Double-click a cell to change it, `⌘⌫` for SQL `NULL`,
 `⇧⌘⌫` to stage a row for deletion, `⇧⌘N` to stage a new one. Enum and boolean

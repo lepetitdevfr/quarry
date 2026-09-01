@@ -1,5 +1,5 @@
 import CodeMirror from "@uiw/react-codemirror";
-import { sql, PostgreSQL } from "@codemirror/lang-sql";
+import { sql, PostgreSQL, type SQLNamespace } from "@codemirror/lang-sql";
 import { acceptCompletion, startCompletion } from "@codemirror/autocomplete";
 import { keymap, type EditorView } from "@codemirror/view";
 import { Prec } from "@codemirror/state";
@@ -14,8 +14,8 @@ interface Props {
   /** Runs `sql`, or the whole buffer when it is omitted. */
   onRun: (sql?: string) => void;
   busy: boolean;
-  /** Table name → column names, from `buildCompletionSchema`. */
-  completionSchema: Record<string, string[]>;
+  /** Schema → table → columns, from `buildCompletionSchema`. */
+  completionSchema: SQLNamespace;
   /** Pane height in pixels, owned by the caller's drag handle. */
   height: number;
   /**

@@ -235,6 +235,29 @@ fn record_write(
     }
 }
 
+/// Emitted after a DDL statement commits.
+///
+/// The cached schema now describes a database that no longer exists:
+/// the tree lists a table that was dropped, and autocomplete offers
+/// columns that were renamed. Introspection is the frontend's to
+/// re-run, so this only says that it should — the alternative,
+/// re-introspecting here, would refresh the cache for a window that is
+/// not looking at it.
+pub const SCHEMA_CHANGED_EVENT: &str = "schema://changed";
+
+/// Tell the UI its picture of the structure is stale, when it is.
+///
+/// Only DDL, and only after it commits: a rolled-back `drop table`
+/// changed nothing, and re-introspecting after every `update` would
+/// walk the catalog for nothing several times a minute.
+fn announce_schema_change(app: &tauri::AppHandle, kind: crate::guard::plan::WriteKind) {
+    if !crate::guard::plan::changes_structure(kind) {
+        return;
+    }
+    use tauri::Emitter;
+    let _ = app.emit(SCHEMA_CHANGED_EVENT, ());
+}
+
 /// The audit log's name for a kind of write.
 fn kind_name(kind: crate::guard::plan::WriteKind) -> &'static str {
     use crate::guard::plan::WriteKind;
@@ -286,6 +309,7 @@ fn ddl_object(
 
 #[tauri::command]
 pub async fn execute(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     sql: String,
     generated: bool,
@@ -350,6 +374,7 @@ pub async fn execute(
                 None,
                 None,
             );
+            announce_schema_change(&app, kind);
             Ok(ExecuteResponse::Done(result))
         }
         Ok(crate::exec::guarded::Outcome::Waiting {
@@ -400,6 +425,7 @@ pub async fn execute(
 /// user would have been told had they waited.
 #[tauri::command]
 pub async fn resolve_write(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     token: String,
     commit: bool,
@@ -425,6 +451,7 @@ pub async fn resolve_write(
 
     match &outcome {
         Ok(result) if commit => {
+            let kind = crate::guard::write_kind(&sql);
             record_run(
                 &state,
                 &sql,
@@ -436,12 +463,16 @@ pub async fn resolve_write(
             record_write(
                 &state,
                 &sql,
-                kind_name(crate::guard::write_kind(&sql)),
+                kind_name(kind),
                 result.affected_rows.map(|n| n as i64),
                 "committed",
                 None,
                 None,
             );
+            // The confirmation path is where DDL usually lands: it has
+            // no rowcount to be judged on, so `plan::verdict` always
+            // asks.
+            announce_schema_change(&app, kind);
         }
         Ok(_) => {
             record_run(

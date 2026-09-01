@@ -122,6 +122,25 @@ pub fn verdict(
     }
 }
 
+/// Whether a committed write of this kind leaves the cached schema
+/// describing a database that no longer exists.
+///
+/// A `match` rather than `kind == Ddl` so a kind added later has to
+/// answer the question: a new DDL form that fell through to `false`
+/// would leave the tree listing a dropped table, and the failure is
+/// silent.
+pub fn changes_structure(kind: WriteKind) -> bool {
+    match kind {
+        WriteKind::Ddl => true,
+        // `Other` covers what the parser could not read, which is a
+        // real possibility for exotic DDL. Refreshing on every one of
+        // those would walk the catalog after statements that never
+        // touch it, so the miss is accepted and the refresh button is
+        // the escape hatch.
+        WriteKind::Update | WriteKind::Delete | WriteKind::Insert | WriteKind::Other => false,
+    }
+}
+
 /// The one sentence the confirmation leads with.
 fn summary_for(kind: WriteKind, affected: Option<u64>, object: Option<&str>) -> String {
     if kind == WriteKind::Ddl {
@@ -289,5 +308,14 @@ mod tests {
         assert_eq!(expected_rows("update t set a = 1 -- expect: lots"), None);
         assert_eq!(expected_rows("update t set a = 1 -- expected: 3"), None);
         assert_eq!(expected_rows("update t set a = 1"), None);
+    }
+
+    #[test]
+    fn only_ddl_invalidates_the_cached_schema() {
+        assert!(changes_structure(WriteKind::Ddl));
+        assert!(!changes_structure(WriteKind::Update));
+        assert!(!changes_structure(WriteKind::Delete));
+        assert!(!changes_structure(WriteKind::Insert));
+        assert!(!changes_structure(WriteKind::Other));
     }
 }

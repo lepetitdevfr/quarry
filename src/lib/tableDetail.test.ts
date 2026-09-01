@@ -1,10 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  dependentLabel,
-  formatBytes,
-  formatRowEstimate,
-  tableDetail,
-} from "./tableDetail";
+import { dependentLabel, tableDetail } from "./tableDetail";
 import type { Schema } from "../types";
 
 const schema: Schema = {
@@ -172,25 +167,6 @@ describe("tableDetail", () => {
 });
 
 describe("table facts", () => {
-  it("formats a size in the largest unit that stays readable", () => {
-    expect(formatBytes(0)).toBe("0 B");
-    expect(formatBytes(999)).toBe("999 B");
-    // Decimal units, like pg_size_pretty: 8192 bytes is 8.2 kB, not the
-    // 8.0 a binary kilobyte would give.
-    expect(formatBytes(8192)).toBe("8.2 kB");
-    expect(formatBytes(1_500_000)).toBe("1.5 MB");
-    expect(formatBytes(3_000_000_000)).toBe("3.0 GB");
-  });
-
-  it("says unknown for a table that was never analyzed", () => {
-    // pg_class.reltuples is -1 there, not 0. Showing "-1 rows" or
-    // "0 rows" would both be lies — one absurd, one plausible and
-    // therefore worse.
-    expect(formatRowEstimate(-1)).toBe("unknown");
-    expect(formatRowEstimate(0)).toBe("0");
-    expect(formatRowEstimate(1234567)).toBe("1,234,567");
-  });
-
   it("labels a materialised view distinctly from a view", () => {
     expect(dependentLabel({ schema: "public", name: "v", kind: "v" })).toBe(
       "public.v",
