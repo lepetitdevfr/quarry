@@ -38,8 +38,8 @@ difference changes what you write next.
 
 **Keep your queries.** A collection tree of saved queries, each mirrored to a
 `.sql` file on disk so the library is greppable and diffable outside the app.
-Tabs behave like a real editor: a single click opens a preview tab that the
-next click replaces, a double click pins it.
+Tabs behave like a real editor: a query preview opens in a tab the next one
+replaces, while a table you open from the tree stays put.
 
 **Know the schema.** A sidebar tree of schemas, tables, columns, keys and
 indexes, feeding SQL autocomplete — which offers each column with its type,
