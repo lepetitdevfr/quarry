@@ -6,7 +6,9 @@ import { Prec } from "@codemirror/state";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { quarryEditorExtensions } from "./editorTheme";
 import { asAppError } from "../lib/errors";
+import { scopedColumnSource } from "../lib/scopedColumns";
 import { statementRangeAt } from "../lib/statements";
+import type { Schema } from "../types";
 
 interface Props {
   value: string;
@@ -16,6 +18,11 @@ interface Props {
   busy: boolean;
   /** Schema → table → columns, from `buildCompletionSchema`. */
   completionSchema: SQLNamespace;
+  /**
+   * The same structure unbuilt, for the completions that depend on what
+   * the statement being typed says rather than on the database alone.
+   */
+  schema: Schema | null;
   /** Pane height in pixels, owned by the caller's drag handle. */
   height: number;
   /**
@@ -45,6 +52,7 @@ export function SqlEditor({
   onRun,
   busy,
   completionSchema,
+  schema,
   height,
   onReady,
   onFormat,
@@ -141,12 +149,8 @@ export function SqlEditor({
     [formatRange],
   );
 
-  // Prec.highest ensures Cmd+Enter reaches us before CodeMirror's own
-  // bindings. useMemo keeps the extension array stable across renders,
-  // which stops CodeMirror from tearing down its state on every keystroke.
-  const extensions = useMemo(
-    () => [
-      ...quarryEditorExtensions,
+  const sqlSupport = useMemo(
+    () =>
       sql({
         dialect: PostgreSQL,
         schema: completionSchema,
@@ -155,6 +159,23 @@ export function SqlEditor({
         defaultSchema: "public",
         upperCaseKeywords: false,
       }),
+    [completionSchema],
+  );
+
+  const scopedColumns = useMemo(() => scopedColumnSource(schema), [schema]);
+
+  // Prec.highest ensures Cmd+Enter reaches us before CodeMirror's own
+  // bindings. useMemo keeps the extension array stable across renders,
+  // which stops CodeMirror from tearing down its state on every keystroke.
+  const extensions = useMemo(
+    () => [
+      ...quarryEditorExtensions,
+      sqlSupport,
+      // Registered as a second source for the same language rather than
+      // wrapping lang-sql's: CodeMirror merges what several sources
+      // return, so keywords, table names and these columns all reach
+      // the same list.
+      sqlSupport.language.data.of({ autocomplete: scopedColumns }),
       Prec.highest(
         keymap.of([
           {
@@ -217,7 +238,7 @@ export function SqlEditor({
         ]),
       ),
     ],
-    [runStatement, formatStatement, formatBuffer, completionSchema],
+    [runStatement, formatStatement, formatBuffer, sqlSupport, scopedColumns],
   );
 
   return (

@@ -42,9 +42,10 @@ Tabs behave like a real editor: a query preview opens in a tab the next one
 replaces, while a table you open from the tree stays put.
 
 **Know the schema.** A sidebar tree of schemas, tables, columns, keys and
-indexes, feeding SQL autocomplete — which offers each column with its type,
-marks keys and names what a foreign key points at, and refreshes itself when a
-DDL statement commits. Double-clicking a table opens a detail tab with its
+indexes, feeding SQL autocomplete — which completes the columns of whatever
+the statement already has in FROM, shows each one's type, marks keys and names
+what a foreign key points at, and refreshes itself when a DDL statement
+commits. Double-clicking a table opens a detail tab with its
 structure, or its rows.
 
 **Edit rows in place.** Double-click a cell to change it, `⌘⌫` for SQL `NULL`,

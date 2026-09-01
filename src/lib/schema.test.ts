@@ -5,6 +5,7 @@ import {
   matchesFilter,
   previewSql,
   quoteIdent,
+  scopedColumnCompletions,
 } from "./schema";
 import type { Completion } from "@codemirror/autocomplete";
 import type { SQLNamespace } from "@codemirror/lang-sql";
@@ -523,5 +524,114 @@ describe("relationLabel", () => {
     // decision, not something you query differently.
     expect(relationLabel("r")).toBeUndefined();
     expect(relationLabel("p")).toBeUndefined();
+  });
+});
+
+describe("scopedColumnCompletions", () => {
+  const scoped = (refs: Parameters<typeof scopedColumnCompletions>[1]) =>
+    scopedColumnCompletions(SCHEMA, refs);
+  const ref = (
+    table: string,
+    alias: string | null = null,
+    schema: string | null = null,
+  ) => ({ schema, table, alias });
+
+  it("offers the columns of the one table in scope, bare", () => {
+    const options = scoped([ref("customers")]);
+    expect(options).toEqual([]);
+
+    const users = scoped([ref("users")]);
+    expect(users.map((c) => c.label)).toEqual(["id", "email"]);
+    // Nothing to disambiguate, so nothing is qualified: this is what
+    // the user would have typed.
+    expect(users.map((c) => c.apply)).toEqual([undefined, undefined]);
+    expect(users[0].detail).toBe("int4 pk");
+  });
+
+  it("ranks a column in scope above the table names it competes with", () => {
+    const [id, email] = scoped([ref("users")]);
+    const tables = buildCompletionSchema(SCHEMA) as Record<
+      string,
+      { self: Completion }
+    >;
+    expect(email.boost).toBeGreaterThan(tables["users"].self.boost ?? 0);
+    // The ordering among the columns themselves is unchanged.
+    expect(id.boost).toBeGreaterThan(email.boost ?? 0);
+  });
+
+  it("qualifies what it inserts when a join has two tables in scope", () => {
+    const options = scoped([ref("users", "u"), ref("events", "e", "analytics")]);
+    expect(options.map((c) => c.label)).toEqual(["id", "email", "user_id"]);
+    // A bare `id` in a join is ambiguous SQL Postgres refuses, so the
+    // completion inserts the alias with it.
+    expect(options.map((c) => c.apply)).toEqual(["u.id", "u.email", "e.user_id"]);
+    // And the list says which table each came from, because two of
+    // them can share a name.
+    expect(options[0].detail).toBe("int4 pk · u");
+    expect(options[2].detail).toBe("int4 pk → public.users.id · e");
+  });
+
+  it("falls back to the table name when the statement gave no alias", () => {
+    const options = scoped([ref("users"), ref("invoices")]);
+    expect(options.map((c) => c.apply)).toEqual([
+      "users.id",
+      "users.email",
+      "invoices.total",
+    ]);
+  });
+
+  it("resolves an unqualified name through public first", () => {
+    // `events` is only in analytics, so a bare reference still finds it.
+    expect(scoped([ref("events")]).map((c) => c.label)).toEqual(["user_id"]);
+
+    // Where two schemas hold the name, `search_path` reaches public
+    // first, so that is the table the statement would actually read.
+    const shared: Schema = {
+      schemas: [
+        {
+          name: "archive",
+          tables: [
+            {
+              ...SCHEMA.schemas[0].tables[0],
+              schema: "archive",
+              columns: [
+                { ...SCHEMA.schemas[0].tables[0].columns[0], name: "archived" },
+              ],
+            },
+          ],
+        },
+        { name: "public", tables: [SCHEMA.schemas[0].tables[0]] },
+      ],
+    };
+    expect(
+      scopedColumnCompletions(shared, [ref("users")]).map((c) => c.label),
+    ).toEqual(["id", "email"]);
+  });
+
+  it("offers nothing for a bare name two non-public schemas share", () => {
+    // No search_path answer, and guessing would be wrong half the time.
+    const ambiguous: Schema = {
+      schemas: ["a", "b"].map((name) => ({
+        name,
+        tables: [{ ...SCHEMA.schemas[0].tables[0], schema: name }],
+      })),
+    };
+    expect(scopedColumnCompletions(ambiguous, [ref("users")])).toEqual([]);
+  });
+
+  it("offers nothing for a table the catalog does not know", () => {
+    expect(scoped([ref("ghosts")])).toEqual([]);
+    expect(scoped([ref("users", null, "nowhere")])).toEqual([]);
+    expect(scopedColumnCompletions(null, [ref("users")])).toEqual([]);
+  });
+
+  it("keeps both sides of a self-join apart", () => {
+    const options = scoped([ref("users", "a"), ref("users", "b")]);
+    expect(options.map((c) => c.apply)).toEqual([
+      "a.id",
+      "a.email",
+      "b.id",
+      "b.email",
+    ]);
   });
 });

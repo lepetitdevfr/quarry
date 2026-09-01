@@ -1542,6 +1542,7 @@ export default function App() {
                   onRun={onRunTableSql}
                   busy={busy}
                   completionSchema={completionSchema}
+                  schema={dbSchema}
                   height={editorHeight}
                   onReady={onEditorReady}
                   onFormat={formatSql}
@@ -1612,6 +1613,7 @@ export default function App() {
               onRun={run}
               busy={busy}
               completionSchema={completionSchema}
+              schema={dbSchema}
               height={editorHeight}
               onReady={onEditorReady}
               onFormat={formatSql}

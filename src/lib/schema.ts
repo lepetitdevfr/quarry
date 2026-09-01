@@ -1,6 +1,7 @@
 import type { Completion } from "@codemirror/autocomplete";
 import type { SQLNamespace } from "@codemirror/lang-sql";
 import type { Schema, SchemaColumn, SchemaTable } from "../types";
+import type { TableRef } from "./fromClause";
 import { formatBytes, formatRowEstimate } from "./format";
 
 /**
@@ -261,6 +262,78 @@ export function buildCompletionSchema(schema: Schema | null): SQLNamespace {
   return built;
 }
 
+/**
+ * The columns of the tables a statement already has in scope.
+ *
+ * This is the completion `@codemirror/lang-sql` cannot produce.
+ * It offers a column only after a qualifier — `c.` — or from a
+ * `defaultTable` named once in the configuration, so
+ * `select * from customers where ` offered the name of every table in
+ * the database and not one column of the table the statement was
+ * about.
+ *
+ * With more than one table in scope the entries apply themselves
+ * qualified: picking `id` in a join inserts `o.id`, because a bare `id`
+ * there is ambiguous SQL that Postgres refuses. With one table there is
+ * nothing to disambiguate and the bare name is what you would have
+ * typed.
+ */
+export function scopedColumnCompletions(
+  schema: Schema | null,
+  refs: TableRef[],
+): Completion[] {
+  if (!schema) return [];
+
+  const resolved = refs
+    .map((ref) => ({ ref, table: resolveRef(schema, ref) }))
+    .filter((r): r is { ref: TableRef; table: SchemaTable } => r.table !== null);
+
+  const qualify = resolved.length > 1;
+
+  return resolved.flatMap(({ ref, table }) =>
+    table.columns.map((column) => {
+      const base = columnCompletion(column, table);
+      const qualifier = ref.alias ?? table.name;
+
+      return {
+        ...base,
+        // Above every table name in the list. A statement that already
+        // said which table it is about is far more likely to want a
+        // column of it than the name of a different table.
+        boost: (base.boost ?? 0) + 3,
+        detail: qualify ? `${base.detail} · ${qualifier}` : base.detail,
+        apply: qualify
+          ? `${quoteIdent(qualifier)}.${quoteIdent(column.name)}`
+          : base.apply,
+      };
+    }),
+  );
+}
+
+/**
+ * The table a reference names, or null when the catalog does not know
+ * it.
+ *
+ * An unqualified name resolves the way the statement would: through
+ * `search_path`, which reaches `public` first. A name that is in two
+ * non-public schemas and neither is `public` has no answer, and
+ * offering one schema's columns for the other's table would be wrong
+ * half the time.
+ */
+function resolveRef(schema: Schema, ref: TableRef): SchemaTable | null {
+  if (ref.schema !== null) {
+    const node = schema.schemas.find((n) => n.name === ref.schema);
+    return node?.tables.find((t) => t.name === ref.table) ?? null;
+  }
+
+  const matches = schema.schemas.flatMap((node) =>
+    node.tables.filter((t) => t.name === ref.table),
+  );
+
+  const inPublic = matches.find((t) => t.schema === "public");
+  if (inPublic) return inPublic;
+  return matches.length === 1 ? matches[0] : null;
+}
 
 /** How many rows a table preview fetches. */
 export const PREVIEW_LIMIT = 500;
