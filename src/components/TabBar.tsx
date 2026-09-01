@@ -58,6 +58,12 @@ export function TabBar({
             onClick={() => onActivate(tab.id)}
             onContextMenu={(e) => openMenu(e, tabMenu(tab))}
             onKeyDown={(e) => {
+              // Only when the tab itself has focus. The naming field
+              // renders inside this row, so its keystrokes bubble
+              // through here: Space was being preventDefault'd and
+              // never reached the input, which made it impossible to
+              // type a query name with a space in it.
+              if (e.target !== e.currentTarget) return;
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
                 onActivate(tab.id);
