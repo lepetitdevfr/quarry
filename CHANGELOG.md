@@ -1,3 +1,15 @@
+## [0.8.0](https://github.com/lepetitdevfr/quarry/compare/v0.7.1...v0.8.0) (2026-09-01)
+
+### Features
+
+* **autocomplete:** complete columns from the statement's FROM clause ([a8e8b38](https://github.com/lepetitdevfr/quarry/commit/a8e8b38b29d4b88b04323433d70939dc17c59d88))
+* **autocomplete:** complete columns with their type and keys ([0402c41](https://github.com/lepetitdevfr/quarry/commit/0402c41a8d97f4ae1b5e9e343ac6f44095400b35))
+* **tabs:** pin what the tree opens ([92b5fe8](https://github.com/lepetitdevfr/quarry/commit/92b5fe8dcaefa84b336e1706838351f3613efbc3))
+
+### Fixes
+
+* **tabs:** let a query name contain a space ([4d22672](https://github.com/lepetitdevfr/quarry/commit/4d22672345523578df26b4db744f5cd71c5b8f65))
+
 ## [0.7.1](https://github.com/lepetitdevfr/quarry/compare/v0.7.0...v0.7.1) (2026-08-25)
 
 ### Fixes
