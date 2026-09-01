@@ -110,6 +110,13 @@ Both return the full tab list, as every other tab command does.
 
 ### Preview reuse
 
+> **Amended 2026-08-26.** Opening a table from the tree now pins the
+> tab: the table you opened stays put when you open the next one, and
+> opening the same table again focuses the tab it already has instead
+> of adding a second. Tables no longer take the preview path described
+> below; the preview slot remains, serving query previews, and a pinned
+> table tab still takes that row over when it is free.
+
 Single-click opens a **preview** table tab (`is_preview = 1`), reused by
 the next single-click. Without this, arrowing through a large tree
 would open a tab per row.

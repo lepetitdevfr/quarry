@@ -621,6 +621,64 @@ fn a_table_tab_clears_the_query_preview_it_replaces() {
 }
 
 #[test]
+fn opening_a_pinned_table_twice_focuses_the_tab_it_has() {
+    // Pinned tabs survive the next open, so without this the second
+    // double-click on a table would leave two identical tabs.
+    let (s, _dir) = store();
+
+    s.open_table_tab("public", "users", TableMode::Data, TabPin::Pinned)
+        .unwrap();
+    s.open_table_tab("public", "events", TableMode::Data, TabPin::Pinned)
+        .unwrap();
+    let tabs = s
+        .open_table_tab("public", "users", TableMode::Data, TabPin::Pinned)
+        .unwrap();
+
+    assert_eq!(tabs.len(), 2, "no third tab for a table already open");
+    let users = tabs
+        .iter()
+        .find(|t| t.target_table.as_deref() == Some("users"))
+        .unwrap();
+    assert!(users.is_active, "the existing tab is focused");
+}
+
+#[test]
+fn the_same_table_in_another_mode_gets_its_own_tab() {
+    // Data and structure show different things; focusing the data tab
+    // when the user asked for the structure would show the wrong one.
+    let (s, _dir) = store();
+
+    s.open_table_tab("public", "users", TableMode::Data, TabPin::Pinned)
+        .unwrap();
+    let tabs = s
+        .open_table_tab("public", "users", TableMode::Structure, TabPin::Pinned)
+        .unwrap();
+
+    assert_eq!(tabs.len(), 2);
+    let structure = tabs
+        .iter()
+        .find(|t| t.mode == Some(TableMode::Structure))
+        .unwrap();
+    assert!(structure.is_active);
+}
+
+#[test]
+fn a_pinned_open_does_not_reuse_a_preview_of_the_same_table() {
+    // The preview row is disposable and matching it would defeat the
+    // point of the pin: the tab must come out kept, not still a preview.
+    let (s, _dir) = store();
+
+    s.open_table_tab("public", "users", TableMode::Data, TabPin::Preview)
+        .unwrap();
+    let tabs = s
+        .open_table_tab("public", "users", TableMode::Data, TabPin::Pinned)
+        .unwrap();
+
+    assert_eq!(tabs.len(), 1, "the preview slot is taken over");
+    assert!(!tabs[0].is_preview);
+}
+
+#[test]
 fn double_clicking_pins_the_tab_that_was_a_preview() {
     // Single-click then double-click: the pin has to stick even though
     // the row already existed as a preview.

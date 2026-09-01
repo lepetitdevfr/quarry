@@ -884,22 +884,24 @@ export default function App() {
     [runSql, text],
   );
 
-  // Single-click in the tree: the rows, which is what you usually want
-  // from a table. The tab is disposable and reused by the next click, so
-  // browsing the tree does not open a tab per row — but note each click
-  // does run the preview query, unlike the structure view, which renders
-  // from the cached schema.
+  // Double-click (or ↵) in the tree: the rows, which is what you usually
+  // want from a table. The tab is pinned, so opening the next table
+  // leaves this one standing — a table you opened is a place you meant
+  // to keep. Opening the same table again focuses the tab it already
+  // has rather than adding a second. Note each open does run the preview
+  // query, unlike the structure view, which renders from the cached
+  // schema.
   const openTableData = useCallback(
     async (schemaName: string, tableName: string) => {
-      // The preview tab is reused by the next click, so it can arrive
-      // holding the previous table's sort. Clearing it on the tab we are
+      // The tab may be one that already existed for this table, so it
+      // can arrive holding an older sort. Clearing it on the tab we are
       // actually about to fill, rather than on whichever tab was active
       // a moment ago, is the whole point of aiming these by id.
       const target = await actions.openTableTab(
         schemaName,
         tableName,
         "data",
-        "preview",
+        "pinned",
       );
       setTabResults((all) => withResult(all, target, { sort: null }));
       const sql = previewSql(schemaName, tableName);

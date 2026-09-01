@@ -138,9 +138,12 @@ impl Store {
     /// Open a table preview, reusing the existing preview slot if there
     /// is one.
     ///
-    /// This is why previews do not pile up: double-clicking ten tables
+    /// This is why previews do not pile up: previewing ten queries
     /// leaves one tab, not ten. A preview that has been promoted (the
     /// user edited it) is an ordinary tab and is never reused here.
+    /// Tables no longer come through here — the tree pins what it
+    /// opens — but the slot is still shared, so a table tab can take
+    /// this row over.
     pub fn open_preview_tab(&self, title: &str, sql: &str) -> Result<Vec<Tab>, AppError> {
         let conn = self.lock();
 
@@ -189,13 +192,16 @@ impl Store {
     /// Open a tab targeting a table, reusing the preview slot unless
     /// `pin` is `Pinned`.
     ///
-    /// `Pinned` is what a double-click passes: an explicit "keep this
-    /// one", so the next single-click in the tree opens elsewhere instead
-    /// of overwriting it. The preview slot is shared with query previews,
-    /// so this clears `scratch_sql` on the reuse path — otherwise a
-    /// table tab would still be carrying the previous preview's SQL —
-    /// and `query_id`, so a reused saved-query preview stops pointing at
-    /// its query.
+    /// `Pinned` is what the tree passes: an explicit "keep this one", so
+    /// the next table opened from the tree lands elsewhere instead of
+    /// overwriting it. A pinned open first looks for a tab already
+    /// showing that table in that mode and focuses it — otherwise
+    /// opening the same table twice would leave two identical tabs,
+    /// the same rule `open_tab` and `open_record_tab` already follow.
+    /// The preview slot is shared with query previews, so this clears
+    /// `scratch_sql` on the reuse path — otherwise a table tab would
+    /// still be carrying the previous preview's SQL — and `query_id`,
+    /// so a reused saved-query preview stops pointing at its query.
     pub fn open_table_tab(
         &self,
         schema: &str,
@@ -206,6 +212,30 @@ impl Store {
         let conn = self.lock();
 
         let is_preview = pin.is_preview();
+
+        if is_preview == 0 {
+            let existing: Option<String> = conn
+                .query_row(
+                    "select id from tabs
+                      where is_preview = 0 and target_schema = :schema
+                        and target_table = :table and mode = :mode
+                      order by position
+                      limit 1",
+                    named_params! {
+                        ":schema": schema,
+                        ":table": table,
+                        ":mode": mode.as_str(),
+                    },
+                    |r| r.get(0),
+                )
+                .ok();
+
+            if let Some(id) = existing {
+                activate(&conn, &id)?;
+                drop(conn);
+                return self.tabs();
+            }
+        }
 
         let id = match preview_slot(&conn) {
             Some(id) => {
